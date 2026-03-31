@@ -12,61 +12,86 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #f5f4f0; c
 .nav { display:flex; background:#fff; border-bottom:1px solid #e0dfd8; padding:0 16px; overflow-x:auto; }
 .nav-item { font-size:13px; padding:10px 14px; cursor:pointer; color:#6b6b67; border-bottom:2px solid transparent; white-space:nowrap; transition:all .15s; }
 .nav-item.active { color:#1a1a18; border-bottom-color:#1a1a18; font-weight:600; }
-.main { padding:16px; max-width:1100px; margin:0 auto; }
+.main { padding:16px; max-width:1200px; margin:0 auto; }
 .card { background:#fff; border:1px solid #e0dfd8; border-radius:12px; padding:16px 18px; margin-bottom:12px; }
-.card-title { font-size:13px; font-weight:600; margin-bottom:12px; }
-.kpi4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
+.card-title { font-size:13px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+.kpi4 { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:12px; }
 .kpi { background:#fff; border:1px solid #e0dfd8; border-radius:12px; padding:12px 14px; }
 .kpi-label { font-size:11px; color:#6b6b67; margin-bottom:4px; }
-.kpi-val { font-size:22px; font-weight:700; }
+.kpi-val { font-size:20px; font-weight:700; }
 .kpi-sub { font-size:11px; color:#6b6b67; margin-top:2px; }
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
 .form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
 .field { display:flex; flex-direction:column; gap:4px; }
 label { font-size:11px; color:#6b6b67; font-weight:600; }
-input, select { font-size:13px; padding:8px 10px; border:1px solid #c0bfb8; border-radius:8px; background:#f5f4f0; color:#1a1a18; width:100%; }
+input, select, textarea { font-size:13px; padding:8px 10px; border:1px solid #c0bfb8; border-radius:8px; background:#f5f4f0; color:#1a1a18; width:100%; }
 input:focus, select:focus { outline:2px solid #185FA5; border-color:#185FA5; }
+.search-bar { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.search-bar input { flex:1; background:#fff; }
 .btn { font-size:13px; padding:9px 20px; border-radius:8px; border:none; cursor:pointer; font-weight:600; transition:opacity .15s; }
 .btn:hover { opacity:.85; }
 .btn-blue { background:#185FA5; color:#fff; }
 .btn-green { background:#3B6D11; color:#fff; }
 .btn-red { background:#A32D2D; color:#fff; }
 .btn-sm { font-size:11px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer; font-weight:600; }
+.btn-outline { background:transparent; border:1px solid #c0bfb8; color:#1a1a18; }
 table { width:100%; border-collapse:collapse; font-size:12px; }
 th { text-align:left; color:#6b6b67; font-weight:600; padding:6px 8px; border-bottom:1px solid #e0dfd8; }
 td { padding:8px 8px; border-bottom:1px solid #e0dfd8; vertical-align:middle; }
 tr:last-child td { border-bottom:none; }
+tr:hover { background:#fafaf8; cursor:pointer; }
 .pill { display:inline-block; font-size:10px; font-weight:700; padding:2px 8px; border-radius:99px; }
-.pill-ok   { background:#EAF3DE; color:#27500A; }
+.pill-ok { background:#EAF3DE; color:#27500A; }
 .pill-warn { background:#FAEEDA; color:#633806; }
-.pill-err  { background:#FCEBEB; color:#791F1F; }
+.pill-err { background:#FCEBEB; color:#791F1F; }
 .pill-blue { background:#E6F1FB; color:#0C447C; }
 .pill-gray { background:#F1EFE8; color:#444441; }
+.pill-purple { background:#EEEDFE; color:#3C3489; }
 .empty { text-align:center; color:#6b6b67; font-size:13px; padding:28px; }
 .toast-area { position:sticky; top:52px; z-index:99; }
 .toast { padding:10px 16px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:8px; animation:fadeIn .2s; }
-.toast-ok   { background:#EAF3DE; color:#27500A; border:1px solid #C0DD97; }
-.toast-err  { background:#FCEBEB; color:#791F1F; border:1px solid #F7C1C1; }
+.toast-ok { background:#EAF3DE; color:#27500A; border:1px solid #C0DD97; }
+.toast-err { background:#FCEBEB; color:#791F1F; border:1px solid #F7C1C1; }
 .toast-info { background:#E6F1FB; color:#0C447C; border:1px solid #B5D4F4; }
 @keyframes fadeIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
 .alert-row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid #e0dfd8; font-size:12px; }
 .alert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.section { display:none; }
-.section.active { display:block; }
-@media(max-width:600px) { .kpi4{grid-template-columns:1fr 1fr;} .form-row{grid-template-columns:1fr;} .form-row-3{grid-template-columns:1fr;} }
-
-.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center; }
+.section { display:none; } .section.active { display:block; }
+.tag-badge { display:inline-block; font-size:10px; font-weight:600; padding:2px 8px; border-radius:99px; background:#E6F1FB; color:#0C447C; margin:2px; cursor:pointer; }
+.tag-badge.selected { background:#185FA5; color:#fff; }
+.tag-input-row { display:flex; gap:8px; margin-bottom:8px; }
+.tag-input-row input { flex:1; }
+.toggle-actif { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+.toggle-btn { width:40px; height:22px; border-radius:11px; border:none; cursor:pointer; font-size:10px; font-weight:700; transition:background .2s; }
+.toggle-btn.on { background:#3B6D11; color:#fff; }
+.toggle-btn.off { background:#e0dfd8; color:#6b6b67; }
+.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }
 .modal-overlay.open { display:flex; }
-.modal-box { background:#fff; border-radius:16px; padding:24px; width:90%; max-width:480px; box-shadow:0 8px 32px rgba(0,0,0,0.15); }
-.modal-title { font-size:15px; font-weight:700; margin-bottom:16px; }
+.modal-box { background:#fff; border-radius:16px; padding:24px; width:95%; max-width:560px; max-height:90vh; overflow-y:auto; }
+.modal-title { font-size:16px; font-weight:700; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; }
+.modal-close { cursor:pointer; font-size:18px; color:#6b6b67; background:none; border:none; }
 .modal-btns { display:flex; gap:10px; margin-top:16px; justify-content:flex-end; }
+.fiche-section { margin-top:16px; border-top:1px solid #e0dfd8; padding-top:16px; }
+.fiche-row { display:flex; justify-content:space-between; padding:5px 0; font-size:13px; border-bottom:1px solid #f5f4f0; }
+.fiche-label { color:#6b6b67; }
+.fiche-val { font-weight:600; }
+.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:12px 0; }
+.stat-box { background:#f5f4f0; border-radius:8px; padding:10px 12px; text-align:center; }
+.stat-val { font-size:18px; font-weight:700; }
+.stat-label { font-size:11px; color:#6b6b67; margin-top:2px; }
+.acces-card { background:#E6F1FB; border:1px solid #B5D4F4; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+.acces-url { font-family:monospace; font-size:12px; background:#fff; padding:8px 12px; border-radius:6px; border:1px solid #e0dfd8; word-break:break-all; margin-top:8px; }
+@media(max-width:600px) { .kpi4{grid-template-columns:1fr 1fr;} .form-row{grid-template-columns:1fr;} .form-row-3{grid-template-columns:1fr;} .stat-grid{grid-template-columns:1fr 1fr;} }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">Sy<span>Ndongo</span></div>
-  <div style="font-size:12px;color:#6b6b67">Transport Ndongo Fall · Manager</div>
+  <div class="logo">Sy<span>Ndongo</span> <span id="version-badge" style="font-size:10px;font-weight:400;color:#6b6b67">v5</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <input type="text" id="global-search" placeholder="Rechercher véhicule ou chauffeur..." style="width:260px;font-size:12px;" oninput="globalSearch(this.value)">
+    <span style="font-size:12px;color:#6b6b67">Transport Ndongo Fall · Manager</span>
+  </div>
 </div>
 
 <div class="nav" id="nav">
@@ -77,6 +102,7 @@ tr:last-child td { border-bottom:none; }
   <div class="nav-item" onclick="showPage('versements',this)">Versements</div>
   <div class="nav-item" onclick="showPage('depenses',this)">Dépenses</div>
   <div class="nav-item" onclick="showPage('alertes',this)">Alertes</div>
+  <div class="nav-item" onclick="showPage('acces',this)">Accès</div>
 </div>
 
 <div class="main">
@@ -85,10 +111,11 @@ tr:last-child td { border-bottom:none; }
   <!-- DASHBOARD -->
   <div class="section active" id="p-dashboard">
     <div class="kpi4">
-      <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="kpi-rec" style="color:#3B6D11">0 F</div><div class="kpi-sub">FCFA</div></div>
-      <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="kpi-dep" style="color:#A32D2D">0 F</div><div class="kpi-sub">FCFA</div></div>
+      <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="kpi-rec" style="color:#3B6D11">0 F</div></div>
+      <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="kpi-dep" style="color:#A32D2D">0 F</div></div>
       <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="kpi-marge">0 F</div><div class="kpi-sub" id="kpi-pct">—</div></div>
-      <div class="kpi"><div class="kpi-label">Véhicules actifs</div><div class="kpi-val" id="kpi-veh">—</div><div class="kpi-sub" id="kpi-chauf">—</div></div>
+      <div class="kpi"><div class="kpi-label">Véhicules actifs</div><div class="kpi-val" id="kpi-veh">—</div></div>
+      <div class="kpi"><div class="kpi-label">Ont travaillé aujourd'hui</div><div class="kpi-val" id="kpi-today" style="color:#185FA5">—</div></div>
     </div>
     <div class="card"><div class="card-title">Alertes actives</div><div id="dash-alertes"><div class="empty">Chargement…</div></div></div>
     <div class="card"><div class="card-title">Rentabilité par véhicule</div><div id="dash-rent"><div class="empty">Chargement…</div></div></div>
@@ -99,21 +126,45 @@ tr:last-child td { border-bottom:none; }
     <div class="card">
       <div class="card-title">Ajouter un véhicule</div>
       <div class="form-row">
-        <div class="field"><label>Immatriculation *</label><input id="v-immat" placeholder="DK-0000-A"></div>
-        <div class="field"><label>Marque *</label><input id="v-marque" placeholder="Samand, Kia…"></div>
+        <div class="field"><label>Immatriculation * (anti-doublon)</label><input id="v-immat" placeholder="AA-0000-A"></div>
+        <div class="field"><label>Marque *</label><input id="v-marque" placeholder="Iran Khodro, Kia…"></div>
       </div>
       <div class="form-row-3">
-        <div class="field"><label>Modèle</label><input id="v-modele" placeholder="LX, Picanto…"></div>
+        <div class="field"><label>Modèle</label><input id="v-modele" placeholder="Samand, Picanto…"></div>
         <div class="field"><label>Année</label><input id="v-annee" type="number" value="2020"></div>
         <div class="field"><label>Km actuel</label><input id="v-km" type="number" value="0"></div>
       </div>
       <div class="form-row">
         <div class="field"><label>Km prochain vidange</label><input id="v-vidange" type="number" placeholder="85000"></div>
+        <div class="field"><label>Tag / Groupe</label><select id="v-tag"><option value="">— Aucun tag —</option></select></div>
+      </div>
+      <div class="form-row">
         <div class="field"><label>Statut</label><select id="v-statut"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select></div>
+        <div class="field"><label>Propriétaire</label><input id="v-proprio" placeholder="Nom du propriétaire"></div>
       </div>
       <button class="btn btn-blue" onclick="ajouterVehicule()">Enregistrer le véhicule</button>
     </div>
-    <div class="card"><div class="card-title">Parc automobile</div><div id="t-vehicules"><div class="empty">Chargement…</div></div></div>
+
+    <div class="card">
+      <div class="card-title">
+        Parc automobile
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="v-search" placeholder="Rechercher…" style="width:180px;font-size:12px" oninput="loadVehicules()">
+          <select id="v-filter-tag" style="font-size:12px;width:140px" onchange="loadVehicules()"><option value="">Tous les tags</option></select>
+        </div>
+      </div>
+      <div id="t-vehicules"><div class="empty">Chargement…</div></div>
+    </div>
+
+    <!-- Gestion des tags -->
+    <div class="card">
+      <div class="card-title">Gérer les tags / groupes</div>
+      <div class="tag-input-row">
+        <input id="new-tag" placeholder="Nouveau tag (ex: Proprietaire 2, Zone Dakar…)" onkeypress="if(event.key==='Enter')ajouterTag()">
+        <button class="btn btn-blue" style="white-space:nowrap" onclick="ajouterTag()">Ajouter tag</button>
+      </div>
+      <div id="tags-list"></div>
+    </div>
   </div>
 
   <!-- CHAUFFEURS -->
@@ -125,12 +176,22 @@ tr:last-child td { border-bottom:none; }
         <div class="field"><label>Nom *</label><input id="c-nom" placeholder="Sy"></div>
       </div>
       <div class="form-row">
-        <div class="field"><label>Téléphone *</label><input id="c-tel" placeholder="+221771234567"></div>
-        <div class="field"><label>N° Permis</label><input id="c-permis" placeholder="SN-2020-00123"></div>
+        <div class="field"><label>Téléphone * (anti-doublon)</label><input id="c-tel" placeholder="+221771234567"></div>
+        <div class="field"><label>N° Permis (anti-doublon)</label><input id="c-permis" placeholder="SN-2020-00123"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Adresse</label><input id="c-adresse" placeholder="Quartier, Ville"></div>
+        <div class="field"><label>Notes</label><input id="c-notes" placeholder="Informations complémentaires"></div>
       </div>
       <button class="btn btn-blue" onclick="ajouterChauffeur()">Enregistrer le chauffeur</button>
     </div>
-    <div class="card"><div class="card-title">Liste des chauffeurs</div><div id="t-chauffeurs"><div class="empty">Chargement…</div></div></div>
+    <div class="card">
+      <div class="card-title">
+        Liste des chauffeurs
+        <input type="text" id="c-search" placeholder="Rechercher…" style="width:200px;font-size:12px" oninput="loadChauffeurs()">
+      </div>
+      <div id="t-chauffeurs"><div class="empty">Chargement…</div></div>
+    </div>
   </div>
 
   <!-- AFFECTATIONS -->
@@ -194,532 +255,515 @@ tr:last-child td { border-bottom:none; }
       </div>
       <div class="form-row">
         <div class="field"><label>Canal</label><select id="al-canal"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="in_app">In-app</option></select></div>
-        <div class="field"><label>Message personnalisé (optionnel)</label><input id="al-msg" placeholder="Laisser vide pour message auto"></div>
+        <div class="field"><label>Message personnalisé</label><input id="al-msg" placeholder="Laisser vide pour message auto"></div>
       </div>
       <button class="btn btn-blue" onclick="envoyerAlerte()">Envoyer l'alerte</button>
     </div>
     <div class="card"><div class="card-title">Journal des alertes</div><div id="t-alertes"><div class="empty">Aucune alerte</div></div></div>
   </div>
+
+  <!-- ACCES PROPRIETAIRES -->
+  <div class="section" id="p-acces">
+    <div class="acces-card">
+      <div style="font-size:14px;font-weight:700;color:#0C447C;margin-bottom:8px">Accès lecture seule — Propriétaires</div>
+      <div style="font-size:13px;color:#185FA5;margin-bottom:8px">Partagez ce lien avec les propriétaires. Ils peuvent voir les données mais pas les modifier.</div>
+      <div class="acces-url" id="acces-url">Chargement…</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-blue" onclick="copierLien()">Copier le lien</button>
+        <button class="btn btn-outline" onclick="ouvrirLectureSeule()">Aperçu lecture seule</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Vue résumé — ce que voient les propriétaires</div>
+      <div id="vue-proprietaire"><div class="empty">Chargement…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALES -->
+<div class="modal-overlay" id="modal-veh">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le véhicule <button class="modal-close" onclick="fermerModal('modal-veh')">×</button></div>
+    <input type="hidden" id="mv-id">
+    <div class="form-row"><div class="field"><label>Immatriculation</label><input id="mv-immat" readonly style="opacity:.6"></div><div class="field"><label>Marque</label><input id="mv-marque"></div></div>
+    <div class="form-row"><div class="field"><label>Modèle</label><input id="mv-modele"></div><div class="field"><label>Année</label><input id="mv-annee" type="number"></div></div>
+    <div class="form-row"><div class="field"><label>Km actuel</label><input id="mv-km" type="number"></div><div class="field"><label>Km prochain vidange</label><input id="mv-vidange" type="number"></div></div>
+    <div class="form-row"><div class="field"><label>Tag / Groupe</label><select id="mv-tag"><option value="">— Aucun tag —</option></select></div><div class="field"><label>Statut</label><select id="mv-statut"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select></div></div>
+    <div class="field" style="margin-bottom:10px"><label>Propriétaire</label><input id="mv-proprio" placeholder="Nom du propriétaire"></div>
+    <div class="modal-btns"><button class="btn btn-outline" onclick="fermerModal('modal-veh')">Annuler</button><button class="btn btn-blue" onclick="sauvegarderVehicule()">Enregistrer</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-chauf">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le chauffeur <button class="modal-close" onclick="fermerModal('modal-chauf')">×</button></div>
+    <input type="hidden" id="mc-id">
+    <div class="form-row"><div class="field"><label>Prénom</label><input id="mc-prenom"></div><div class="field"><label>Nom</label><input id="mc-nom"></div></div>
+    <div class="form-row"><div class="field"><label>Téléphone</label><input id="mc-tel"></div><div class="field"><label>N° Permis</label><input id="mc-permis"></div></div>
+    <div class="form-row"><div class="field"><label>Adresse</label><input id="mc-adresse"></div><div class="field"><label>Notes</label><input id="mc-notes"></div></div>
+    <div class="modal-btns"><button class="btn btn-outline" onclick="fermerModal('modal-chauf')">Annuler</button><button class="btn btn-blue" onclick="sauvegarderChauffeur()">Enregistrer</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-vers">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le versement <button class="modal-close" onclick="fermerModal('modal-vers')">×</button></div>
+    <input type="hidden" id="mver-id">
+    <div class="form-row"><div class="field"><label>Montant versé (FCFA)</label><input id="mver-montant" type="number"></div><div class="field"><label>Mode</label><select id="mver-mode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select></div></div>
+    <div class="modal-btns"><button class="btn btn-outline" onclick="fermerModal('modal-vers')">Annuler</button><button class="btn btn-green" onclick="sauvegarderVersement()">Enregistrer</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-dep">
+  <div class="modal-box">
+    <div class="modal-title">Modifier la dépense <button class="modal-close" onclick="fermerModal('modal-dep')">×</button></div>
+    <input type="hidden" id="mdep-id">
+    <div class="form-row"><div class="field"><label>Montant (FCFA)</label><input id="mdep-montant" type="number"></div><div class="field"><label>Description</label><input id="mdep-desc"></div></div>
+    <div class="modal-btns"><button class="btn btn-outline" onclick="fermerModal('modal-dep')">Annuler</button><button class="btn btn-red" onclick="sauvegarderDepense()">Enregistrer</button></div>
+  </div>
+</div>
+
+<!-- Fiche Véhicule -->
+<div class="modal-overlay" id="modal-fiche-veh">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-title">Fiche véhicule <button class="modal-close" onclick="fermerModal('modal-fiche-veh')">×</button></div>
+    <div id="fiche-veh-content"></div>
+  </div>
+</div>
+
+<!-- Fiche Chauffeur -->
+<div class="modal-overlay" id="modal-fiche-chauf">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-title">Fiche chauffeur <button class="modal-close" onclick="fermerModal('modal-fiche-chauf')">×</button></div>
+    <div id="fiche-chauf-content"></div>
+  </div>
 </div>
 
 <script>
-const API = window.location.hostname === 'localhost'
-  ? 'http://localhost:8000/api'
-  : window.location.origin + '/api';
-const fmt = n => Math.round(n||0).toLocaleString('fr-FR') + ' F';
-const pill = (txt, type) => `<span class="pill pill-${type}">${txt}</span>`;
-
-async function api(method, path, data) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (data) opts.body = JSON.stringify(data);
-  const r = await fetch(API + path, opts);
-  return r.json();
+const API = window.location.hostname==='localhost' ? 'http://localhost:8000/api' : window.location.origin+'/api';
+const fmt = n => Math.round(n||0).toLocaleString('fr-FR')+' F';
+const pill = (txt,type) => `<span class="pill pill-${type}">${txt}</span>`;
+async function api(method,path,data){
+  const opts={method,headers:{'Content-Type':'application/json'}};
+  if(data) opts.body=JSON.stringify(data);
+  const r=await fetch(API+path,opts); return r.json();
 }
-
-// Toast
-function toast(msg, type='ok') {
-  const a = document.getElementById('toast-area');
-  const d = document.createElement('div');
-  d.className = 'toast toast-' + type;
-  d.textContent = msg;
-  a.appendChild(d);
-  setTimeout(() => d.remove(), 3500);
+function toast(msg,type='ok'){
+  const a=document.getElementById('toast-area');
+  const d=document.createElement('div');
+  d.className='toast toast-'+type; d.textContent=msg; a.appendChild(d);
+  setTimeout(()=>d.remove(),3500);
 }
-
-// Navigation
-function showPage(id, el) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('p-' + id).classList.add('active');
-  el.classList.add('active');
+function showPage(id,el){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('p-'+id).classList.add('active'); el.classList.add('active');
   loadPage(id);
 }
+function fermerModal(id){document.getElementById(id).classList.remove('open');}
+function ouvrirModal(id){document.getElementById(id).classList.add('open');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('open');});
+document.getElementById('a-debut').value=new Date().toISOString().split('T')[0];
+document.getElementById('vs-date').value=new Date().toISOString().split('T')[0];
 
-// Init date fields
-document.getElementById('a-debut').value = new Date().toISOString().split('T')[0];
-document.getElementById('vs-date').value = new Date().toISOString().split('T')[0];
+// RECHERCHE GLOBALE
+function globalSearch(q){
+  if(!q.trim()) return;
+  // Switcher sur véhicules ou chauffeurs selon le contexte
+  document.getElementById('v-search').value=q;
+  document.getElementById('c-search').value=q;
+}
 
-// ─── Dashboard ───
-async function loadDashboard() {
-  const d = await api('GET', '/dashboard');
-  document.getElementById('kpi-rec').textContent = fmt(d.kpis.recettes_30j);
-  document.getElementById('kpi-dep').textContent = fmt(d.kpis.depenses_30j);
-  const marge = d.kpis.marge_nette_30j;
-  const margeEl = document.getElementById('kpi-marge');
-  margeEl.textContent = fmt(marge);
-  margeEl.style.color = marge >= 0 ? '#3B6D11' : '#A32D2D';
-  document.getElementById('kpi-pct').textContent = d.kpis.taux_marge + '% de marge';
-  document.getElementById('kpi-veh').textContent = d.kpis.vehicules_actifs + ' / ' + d.kpis.vehicules_total;
-  document.getElementById('kpi-chauf').textContent = d.kpis.chauffeurs_actifs + ' chauffeurs actifs';
-
-  const alEl = document.getElementById('dash-alertes');
-  alEl.innerHTML = d.alertes.length === 0
-    ? '<div class="empty">Aucune alerte active</div>'
-    : d.alertes.map(a => `<div class="alert-row"><span class="alert-dot" style="background:${a.type==='danger'?'#A32D2D':'#BA7517'}"></span>${a.message}</div>`).join('');
-
-  // Rentabilité
-  const vehs = await api('GET', '/vehicules');
-  const vers = await api('GET', '/versements');
-  const deps = await api('GET', '/depenses');
-  const affs = await api('GET', '/affectations');
-
-  const rentEl = document.getElementById('dash-rent');
-  if (!vehs.length) { rentEl.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
-
-  let rows = vehs.map(v => {
-    const rec = vers.filter(vs => {
-      const aff = affs.find(a => a.id === vs.affectation_id);
-      return aff && aff.vehicule && aff.vehicule.includes(v.immatriculation);
-    }).reduce((s, vs) => s + vs.montant, 0);
-    const dep = deps.filter(d => d.vehicule_id === v.id).reduce((s, d) => s + d.montant, 0);
-    const marge = rec - dep;
-    const pct = rec > 0 ? Math.round(marge / rec * 100) : 0;
-    return `<tr>
-      <td><strong>${v.immatriculation}</strong> · ${v.marque}</td>
-      <td style="color:#3B6D11">${fmt(rec)}</td>
-      <td style="color:#A32D2D">${fmt(dep)}</td>
-      <td style="color:${marge>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(marge)}</strong></td>
-      <td>${pill(pct+'%', pct>=70?'ok':pct>=40?'warn':'err')}</td>
-    </tr>`;
+// DASHBOARD
+async function loadDashboard(){
+  const d=await api('GET','/dashboard');
+  document.getElementById('kpi-rec').textContent=fmt(d.kpis.recettes_30j);
+  document.getElementById('kpi-dep').textContent=fmt(d.kpis.depenses_30j);
+  const m=d.kpis.marge_nette_30j;
+  const me=document.getElementById('kpi-marge');
+  me.textContent=fmt(m); me.style.color=m>=0?'#3B6D11':'#A32D2D';
+  document.getElementById('kpi-pct').textContent=d.kpis.taux_marge+'% de marge';
+  document.getElementById('kpi-veh').textContent=d.kpis.vehicules_actifs+' / '+d.kpis.vehicules_total;
+  document.getElementById('kpi-today').textContent=d.kpis.vehicules_travaille_aujourd_hui+' véh.';
+  const alEl=document.getElementById('dash-alertes');
+  alEl.innerHTML=d.alertes.length===0?'<div class="empty">Aucune alerte active</div>':d.alertes.map(a=>`<div class="alert-row"><span class="alert-dot" style="background:${a.type==='danger'?'#A32D2D':'#BA7517'}"></span>${a.message}</div>`).join('');
+  const vehs=await api('GET','/vehicules');
+  const vers=await api('GET','/versements');
+  const deps=await api('GET','/depenses');
+  const affs=await api('GET','/affectations');
+  const rentEl=document.getElementById('dash-rent');
+  if(!vehs.length){rentEl.innerHTML='<div class="empty">Aucun véhicule</div>';return;}
+  const rows=vehs.map(v=>{
+    const rec=vers.filter(vs=>{const a=affs.find(a=>a.id===vs.affectation_id);return a&&(a.vehicule||'').includes(v.immatriculation);}).reduce((s,vs)=>s+vs.montant,0);
+    const dep=deps.filter(d=>d.vehicule_id===v.id).reduce((s,d)=>s+d.montant,0);
+    const mg=rec-dep; const pct=rec>0?Math.round(mg/rec*100):0;
+    return `<tr onclick="voirFicheVehicule('${v.id}')"><td><strong>${v.immatriculation}</strong> · ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</td><td style="color:#3B6D11">${fmt(rec)}</td><td style="color:#A32D2D">${fmt(dep)}</td><td style="color:${mg>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(mg)}</strong></td><td>${pill(pct+'%',pct>=70?'ok':pct>=40?'warn':'err')}</td></tr>`;
   }).join('');
-  rentEl.innerHTML = `<table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>`;
+  rentEl.innerHTML=`<table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ─── Véhicules ───
-async function loadVehicules() {
-  const list = await api('GET', '/vehicules');
-  const el = document.getElementById('t-vehicules');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Immat.</th><th>Véhicule</th><th>Année</th><th>Km</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-    ${list.map(v => `<tr>
-      <td><strong>${v.immatriculation}</strong></td>
-      <td>${v.marque} ${v.modele||''}</td>
-      <td>${v.annee}</td>
-      <td>${(v.km_actuel||0).toLocaleString('fr-FR')} km ${v.alerte_vidange?pill('Vidange!','warn'):''}</td>
-      <td>${pill(v.statut, v.statut==='actif'?'ok':v.statut==='en_panne'?'err':'warn')}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVehicule(${JSON.stringify(v)})'>Modifier</button>
-        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVehicule('${v.id}','${v.immatriculation}')">Supprimer</button>
-      </td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function ajouterVehicule() {
-  const immat = document.getElementById('v-immat').value.trim();
-  const marque = document.getElementById('v-marque').value.trim();
-  if (!immat || !marque) { toast('Immatriculation et marque obligatoires', 'err'); return; }
-  const res = await api('POST', '/vehicules', {
-    immatriculation: immat, marque, modele: document.getElementById('v-modele').value,
-    annee: +document.getElementById('v-annee').value, km_actuel: +document.getElementById('v-km').value,
-    km_prochain_vidange: +document.getElementById('v-vidange').value || null,
-    statut: document.getElementById('v-statut').value
+// TAGS
+let allTags=[];
+async function loadTags(){
+  allTags=await api('GET','/tags');
+  const sel=['v-tag','mv-tag','v-filter-tag'];
+  sel.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    const isFilter=id==='v-filter-tag';
+    const cur=el.value;
+    el.innerHTML=(isFilter?'<option value="">Tous les tags</option>':'<option value="">— Aucun tag —</option>')+allTags.map(t=>`<option value="${t}">${t}</option>`).join('');
+    if(cur) el.value=cur;
   });
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast('Véhicule ' + immat.toUpperCase() + ' enregistré');
-  ['v-immat','v-marque','v-modele','v-vidange'].forEach(id => document.getElementById(id).value = '');
+  const tl=document.getElementById('tags-list');
+  if(tl) tl.innerHTML=allTags.map(t=>`<span class="tag-badge">${t} <span onclick="supprimerTag('${t}')" style="margin-left:4px;cursor:pointer;opacity:.7">×</span></span>`).join('');
+}
+async function ajouterTag(){
+  const v=document.getElementById('new-tag').value.trim();
+  if(!v)return;
+  await api('POST','/tags',{tag:v});
+  document.getElementById('new-tag').value='';
+  toast('Tag "'+v+'" ajouté'); loadTags();
+}
+async function supprimerTag(tag){
+  if(!confirm('Supprimer le tag "'+tag+'" ?'))return;
+  await api('DELETE','/tags',{tag}); toast('Tag supprimé','info'); loadTags();
+}
+
+// VEHICULES
+async function loadVehicules(){
+  const q=document.getElementById('v-search')?.value||'';
+  const tag=document.getElementById('v-filter-tag')?.value||'';
+  const list=await api('GET','/vehicules?q='+encodeURIComponent(q)+'&tag='+encodeURIComponent(tag));
+  const el=document.getElementById('t-vehicules');
+  if(!list.length){el.innerHTML='<div class="empty">Aucun véhicule trouvé</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Immat.</th><th>Véhicule</th><th>Tag</th><th>Propriétaire</th><th>Km</th><th>Statut</th><th>Aujourd'hui</th><th>Actions</th></tr></thead><tbody>
+  ${list.map(v=>`<tr>
+    <td onclick="voirFicheVehicule('${v.id}')" style="cursor:pointer"><strong>${v.immatriculation}</strong></td>
+    <td>${v.marque} ${v.modele||''} ${v.annee||''}</td>
+    <td>${v.tag?pill(v.tag,'purple'):'—'}</td>
+    <td>${v.proprio||'—'}</td>
+    <td>${(v.km_actuel||0).toLocaleString('fr-FR')} km ${v.alerte_vidange?pill('Vidange!','warn'):''}</td>
+    <td>${pill(v.statut,v.statut==='actif'?'ok':v.statut==='en_panne'?'err':'warn')}</td>
+    <td><button class="toggle-btn ${v.travaille_aujourd_hui===true?'on':v.travaille_aujourd_hui===false?'off':''}" onclick="toggleActivite('${v.id}',${!v.travaille_aujourd_hui},event)">${v.travaille_aujourd_hui===true?'OUI':v.travaille_aujourd_hui===false?'NON':'—'}</button></td>
+    <td style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="voirFicheVehicule('${v.id}')">Fiche</button>
+      <button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick='ouvrirModifVehicule(${JSON.stringify(v)})'>Modifier</button>
+      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVehicule('${v.id}','${v.immatriculation}')">Suppr.</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+async function toggleActivite(vehiculeId, travaille, e){
+  e.stopPropagation();
+  await api('POST','/activites',{vehicule_id:vehiculeId,travaille});
+  toast(travaille?'Marqué comme ayant travaillé':'Marqué comme en repos');
+  loadVehicules(); loadDashboard();
+}
+
+async function ajouterVehicule(){
+  const immat=document.getElementById('v-immat').value.trim();
+  const marque=document.getElementById('v-marque').value.trim();
+  if(!immat||!marque){toast('Immatriculation et marque obligatoires','err');return;}
+  const res=await api('POST','/vehicules',{
+    immatriculation:immat,marque,modele:document.getElementById('v-modele').value,
+    annee:+document.getElementById('v-annee').value,km_actuel:+document.getElementById('v-km').value,
+    km_prochain_vidange:+document.getElementById('v-vidange').value||null,
+    tag:document.getElementById('v-tag').value,
+    statut:document.getElementById('v-statut').value,
+    proprio:document.getElementById('v-proprio').value
+  });
+  if(res.detail){toast(res.detail,'err');return;}
+  toast('Véhicule '+immat.toUpperCase()+' enregistré');
+  ['v-immat','v-marque','v-modele','v-vidange','v-proprio'].forEach(id=>document.getElementById(id).value='');
   loadVehicules(); refreshSelects();
 }
 
-async function supprimerVehicule(id, immat) {
-  const res = await api('DELETE', '/vehicules/' + id);
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast('Véhicule ' + immat + ' supprimé', 'info');
-  loadVehicules(); refreshSelects();
+async function supprimerVehicule(id,immat){
+  if(!confirm('Supprimer '+immat+' ?\nCette action est irréversible.'))return;
+  const res=await api('DELETE','/vehicules/'+id);
+  if(res.detail){toast(res.detail,'err');return;}
+  toast('Véhicule supprimé','info'); loadVehicules(); refreshSelects();
 }
 
-// ─── Chauffeurs ───
-async function loadChauffeurs() {
-  const list = await api('GET', '/chauffeurs');
-  const el = document.getElementById('t-chauffeurs');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Permis</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-    ${list.map(c => `<tr>
-      <td><strong>${c.prenom} ${c.nom}</strong></td>
-      <td>${c.telephone}</td>
-      <td>${c.numero_permis||'—'}</td>
-      <td>${pill(c.statut,'ok')}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifChauffeur(${JSON.stringify(c)})'>Modifier</button>
-        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerChauffeur('${c.id}','${c.prenom} ${c.nom}')">Supprimer</button>
-      </td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function ajouterChauffeur() {
-  const prenom = document.getElementById('c-prenom').value.trim();
-  const nom = document.getElementById('c-nom').value.trim();
-  const tel = document.getElementById('c-tel').value.trim();
-  if (!prenom || !nom || !tel) { toast('Prénom, nom et téléphone obligatoires', 'err'); return; }
-  const res = await api('POST', '/chauffeurs', { prenom, nom, telephone: tel, numero_permis: document.getElementById('c-permis').value });
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast(prenom + ' ' + nom + ' enregistré');
-  ['c-prenom','c-nom','c-tel','c-permis'].forEach(id => document.getElementById(id).value='');
-  loadChauffeurs(); refreshSelects();
-}
-
-// ─── Affectations ───
-async function loadAffectations() {
-  const list = await api('GET', '/affectations');
-  const el = document.getElementById('t-affectations');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune affectation active</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Chauffeur</th><th>Véhicule</th><th>Montant/jour</th><th>Début</th><th></th></tr></thead><tbody>
-    ${list.map(a => `<tr>
-      <td><strong>${a.chauffeur}</strong></td>
-      <td>${a.vehicule}</td>
-      <td>${fmt(a.montant_journalier)}</td>
-      <td>${a.date_debut}</td>
-      <td><button class="btn-sm btn-red" onclick="cloturerAffectation('${a.id}')">Clôturer</button></td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function ajouterAffectation() {
-  const vid = document.getElementById('a-veh').value;
-  const cid = document.getElementById('a-chauf').value;
-  const montant = document.getElementById('a-montant').value;
-  const debut = document.getElementById('a-debut').value;
-  if (!vid || !cid || !montant) { toast('Tous les champs sont obligatoires', 'err'); return; }
-  const res = await api('POST', '/affectations', { vehicule_id: vid, chauffeur_id: cid, montant_journalier: +montant, date_debut: debut });
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast('Affectation créée');
-  document.getElementById('a-montant').value = '';
-  loadAffectations(); refreshSelects();
-}
-
-async function cloturerAffectation(id) {
-  await api('PATCH', '/affectations/' + id + '/cloturer');
-  toast('Affectation clôturée', 'info');
-  loadAffectations(); refreshSelects();
-}
-
-// ─── Versements ───
-async function loadVersements() {
-  const list = await api('GET', '/versements');
-  const el = document.getElementById('t-versements');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucun versement</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Date</th><th>Chauffeur</th><th>Véhicule</th><th>Versé</th><th>Attendu</th><th>Mode</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-    ${list.map(v => `<tr>
-      <td>${v.date_versement}</td>
-      <td>${v.chauffeur||'—'}</td>
-      <td>${v.vehicule||'—'}</td>
-      <td style="color:#3B6D11;font-weight:700">${fmt(v.montant)}</td>
-      <td style="color:#6b6b67">${fmt(v.montant_attendu)}</td>
-      <td>${v.mode_paiement}</td>
-      <td>${pill(v.statut, v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err')}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVersement(${JSON.stringify(v)})'>Modifier</button>
-        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVersement('${v.id}')">Supprimer</button>
-      </td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function ajouterVersement() {
-  const affId = document.getElementById('vs-aff').value;
-  const montant = document.getElementById('vs-montant').value;
-  const date = document.getElementById('vs-date').value;
-  const mode = document.getElementById('vs-mode').value;
-  if (!affId || !montant) { toast('Affectation et montant obligatoires', 'err'); return; }
-  const res = await api('POST', '/versements', { affectation_id: affId, montant: +montant, date_versement: date, mode_paiement: mode });
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  const msg = res.statut === 'recu' ? 'Versement de ' + fmt(montant) + ' reçu' : 'Versement partiel — écart ' + fmt(res.ecart);
-  toast(msg, res.statut === 'recu' ? 'ok' : 'info');
-  document.getElementById('vs-montant').value = '';
-  loadVersements();
-}
-
-// ─── Dépenses ───
-async function loadDepenses() {
-  const list = await api('GET', '/depenses');
-  const el = document.getElementById('t-depenses');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune dépense</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Actions</th></tr></thead><tbody>
-    ${list.map(d => `<tr>
-      <td>${d.date_depense}</td>
-      <td>${pill(d.categorie,'gray')}</td>
-      <td style="color:#A32D2D;font-weight:700">${fmt(d.montant)}</td>
-      <td>${d.description||'—'}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifDepense(${JSON.stringify(d)})'>Modifier</button>
-        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerDepense('${d.id}')">Supprimer</button>
-      </td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function ajouterDepense() {
-  const vid = document.getElementById('d-veh').value;
-  const montant = document.getElementById('d-montant').value;
-  if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
-  const res = await api('POST', '/depenses', {
-    vehicule_id: vid, categorie: document.getElementById('d-cat').value,
-    montant: +montant, description: document.getElementById('d-desc').value
-  });
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast('Dépense de ' + fmt(montant) + ' enregistrée');
-  document.getElementById('d-montant').value = '';
-  document.getElementById('d-desc').value = '';
-  loadDepenses();
-}
-
-// ─── Alertes ───
-async function loadAlertes() {
-  const list = await api('GET', '/alertes');
-  const el = document.getElementById('t-alertes');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune alerte</div>'; return; }
-  el.innerHTML = `<table><thead><tr><th>Date</th><th>Type</th><th>Canal</th><th>Message</th><th>Statut</th></tr></thead><tbody>
-    ${list.map(a => `<tr>
-      <td>${a.created_at ? a.created_at.slice(0,16).replace('T',' ') : '—'}</td>
-      <td>${pill(a.type_alerte,'gray')}</td>
-      <td>${pill(a.canal,'blue')}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.message}</td>
-      <td>${pill(a.statut,'warn')}</td>
-    </tr>`).join('')}
-  </tbody></table>`;
-}
-
-async function envoyerAlerte() {
-  const res = await api('POST', '/alertes', {
-    type_alerte: document.getElementById('al-type').value,
-    chauffeur_id: document.getElementById('al-chauf').value || null,
-    canal: document.getElementById('al-canal').value,
-    message: document.getElementById('al-msg').value
-  });
-  toast('Alerte ' + document.getElementById('al-canal').value + ' envoyée — ' + res.statut);
-  document.getElementById('al-msg').value = '';
-  loadAlertes();
-}
-
-// ─── Selects dynamiques ───
-async function refreshSelects() {
-  const vehs = await api('GET', '/vehicules');
-  const chaufs = await api('GET', '/chauffeurs');
-  const affs = await api('GET', '/affectations');
-
-  const vOpts = vehs.map(v => `<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
-  const cOpts = chaufs.map(c => `<option value="${c.id}">${c.prenom} ${c.nom}</option>`).join('');
-  const aOpts = affs.map(a => `<option value="${a.id}">${a.chauffeur} — ${a.vehicule} (${fmt(a.montant_journalier)}/j)</option>`).join('');
-
-  ['a-veh','d-veh'].forEach(id => { const el=document.getElementById(id); el.innerHTML='<option value="">— choisir —</option>'+vOpts; });
-  ['a-chauf','al-chauf'].forEach(id => { const el=document.getElementById(id); el.innerHTML='<option value="">— choisir —</option>'+cOpts; });
-  document.getElementById('vs-aff').innerHTML = '<option value="">— choisir —</option>' + aOpts;
-}
-
-function loadPage(id) {
-  if (id === 'dashboard') loadDashboard();
-  else if (id === 'vehicules') loadVehicules();
-  else if (id === 'chauffeurs') loadChauffeurs();
-  else if (id === 'affectations') loadAffectations();
-  else if (id === 'versements') loadVersements();
-  else if (id === 'depenses') loadDepenses();
-  else if (id === 'alertes') loadAlertes();
-}
-
-// Initialisation
-refreshSelects();
-loadDashboard();
-
-// ─── Modales ───
-function fermerModal(id) { document.getElementById(id).classList.remove('open'); }
-function ouvrirModal(id) { document.getElementById(id).classList.add('open'); }
-
-// Clic en dehors de la modale = fermer
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
-});
-
-// ─── Modifier Véhicule ───
-function ouvrirModifVehicule(v) {
-  document.getElementById('mv-id').value = v.id;
-  document.getElementById('mv-immat').value = v.immatriculation;
-  document.getElementById('mv-marque').value = v.marque;
-  document.getElementById('mv-modele').value = v.modele || '';
-  document.getElementById('mv-annee').value = v.annee;
-  document.getElementById('mv-km').value = v.km_actuel || 0;
-  document.getElementById('mv-vidange').value = v.km_prochain_vidange || '';
-  document.getElementById('mv-statut').value = v.statut;
+function ouvrirModifVehicule(v){
+  document.getElementById('mv-id').value=v.id;
+  document.getElementById('mv-immat').value=v.immatriculation;
+  document.getElementById('mv-marque').value=v.marque;
+  document.getElementById('mv-modele').value=v.modele||'';
+  document.getElementById('mv-annee').value=v.annee;
+  document.getElementById('mv-km').value=v.km_actuel||0;
+  document.getElementById('mv-vidange').value=v.km_prochain_vidange||'';
+  document.getElementById('mv-statut').value=v.statut;
+  document.getElementById('mv-proprio').value=v.proprio||'';
+  loadTags().then(()=>{ document.getElementById('mv-tag').value=v.tag||''; });
   ouvrirModal('modal-veh');
 }
-async function sauvegarderVehicule() {
-  const id = document.getElementById('mv-id').value;
-  const data = {
-    marque: document.getElementById('mv-marque').value,
-    modele: document.getElementById('mv-modele').value,
-    annee: +document.getElementById('mv-annee').value,
-    km_actuel: +document.getElementById('mv-km').value,
-    km_prochain_vidange: +document.getElementById('mv-vidange').value || null,
-    statut: document.getElementById('mv-statut').value
-  };
-  await api('PATCH', '/vehicules/' + id, data);
-  toast('Véhicule mis à jour');
-  fermerModal('modal-veh');
-  loadVehicules(); refreshSelects();
+
+async function sauvegarderVehicule(){
+  const id=document.getElementById('mv-id').value;
+  await api('PATCH','/vehicules/'+id,{
+    marque:document.getElementById('mv-marque').value,modele:document.getElementById('mv-modele').value,
+    annee:+document.getElementById('mv-annee').value,km_actuel:+document.getElementById('mv-km').value,
+    km_prochain_vidange:+document.getElementById('mv-vidange').value||null,
+    statut:document.getElementById('mv-statut').value,tag:document.getElementById('mv-tag').value,
+    proprio:document.getElementById('mv-proprio').value
+  });
+  toast('Véhicule mis à jour'); fermerModal('modal-veh'); loadVehicules(); refreshSelects();
 }
 
-// ─── Supprimer Chauffeur (avec confirmation) ───
-async function supprimerChauffeur(id, nom) {
-  if (!confirm('Supprimer ' + nom + ' ?\nCette action est irréversible.')) return;
-  const res = await api('DELETE', '/chauffeurs/' + id);
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast(nom + ' supprimé', 'info');
+async function voirFicheVehicule(id){
+  const f=await api('GET','/vehicules/'+id+'/fiche');
+  const v=f.vehicule;
+  document.getElementById('fiche-veh-content').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div><strong style="font-size:18px">${v.immatriculation}</strong> ${v.tag?pill(v.tag,'purple'):''}</div>
+      <span>${pill(v.statut,v.statut==='actif'?'ok':'err')}</span>
+    </div>
+    <div style="font-size:13px;color:#6b6b67;margin-bottom:12px">${v.marque} ${v.modele||''} ${v.annee||''} ${v.proprio?'· Prop: '+v.proprio:''}</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val" style="color:#3B6D11">${fmt(f.recettes)}</div><div class="stat-label">Recettes totales</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#A32D2D">${fmt(f.charges)}</div><div class="stat-label">Charges totales</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:${f.marge>=0?'#3B6D11':'#A32D2D'}">${fmt(f.marge)}</div><div class="stat-label">Marge nette</div></div>
+    </div>
+    <div class="fiche-section">
+      <div class="fiche-row"><span class="fiche-label">Km actuel</span><span class="fiche-val">${(v.km_actuel||0).toLocaleString('fr-FR')} km</span></div>
+      <div class="fiche-row"><span class="fiche-label">Prochaine vidange</span><span class="fiche-val">${v.km_prochain_vidange?(v.km_prochain_vidange).toLocaleString('fr-FR')+' km':'—'}</span></div>
+      <div class="fiche-row"><span class="fiche-label">Chauffeur actuel</span><span class="fiche-val">${f.chauffeur?f.chauffeur.prenom+' '+f.chauffeur.nom:'Non affecté'}</span></div>
+    </div>
+    ${f.versements.length?`<div class="fiche-section"><div style="font-size:12px;font-weight:600;margin-bottom:8px">Derniers versements</div><table><thead><tr><th>Date</th><th>Montant</th><th>Statut</th></tr></thead><tbody>${f.versements.slice(0,10).map(vs=>`<tr><td>${vs.date_versement}</td><td style="color:#3B6D11;font-weight:600">${fmt(vs.montant)}</td><td>${pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')}</td></tr>`).join('')}</tbody></table></div>`:''}
+    ${f.depenses.length?`<div class="fiche-section"><div style="font-size:12px;font-weight:600;margin-bottom:8px">Dernières dépenses</div><table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th></tr></thead><tbody>${f.depenses.slice(0,10).map(d=>`<tr><td>${d.date_depense}</td><td>${pill(d.categorie,'gray')}</td><td style="color:#A32D2D;font-weight:600">${fmt(d.montant)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  `;
+  ouvrirModal('modal-fiche-veh');
+}
+
+// CHAUFFEURS
+async function loadChauffeurs(){
+  const q=document.getElementById('c-search')?.value||'';
+  const list=await api('GET','/chauffeurs?q='+encodeURIComponent(q));
+  const el=document.getElementById('t-chauffeurs');
+  if(!list.length){el.innerHTML='<div class="empty">Aucun chauffeur trouvé</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Permis</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+  ${list.map(c=>`<tr>
+    <td onclick="voirFicheChauffeur('${c.id}')" style="cursor:pointer"><strong>${c.prenom} ${c.nom}</strong></td>
+    <td>${c.telephone}</td><td>${c.numero_permis||'—'}</td>
+    <td>${pill(c.statut,'ok')}</td>
+    <td style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="voirFicheChauffeur('${c.id}')">Fiche</button>
+      <button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick='ouvrirModifChauffeur(${JSON.stringify(c)})'>Modifier</button>
+      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerChauffeur('${c.id}','${c.prenom} ${c.nom}')">Suppr.</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+async function ajouterChauffeur(){
+  const prenom=document.getElementById('c-prenom').value.trim();
+  const nom=document.getElementById('c-nom').value.trim();
+  const tel=document.getElementById('c-tel').value.trim();
+  if(!prenom||!nom||!tel){toast('Prénom, nom et téléphone obligatoires','err');return;}
+  const res=await api('POST','/chauffeurs',{prenom,nom,telephone:tel,numero_permis:document.getElementById('c-permis').value,adresse:document.getElementById('c-adresse').value,notes:document.getElementById('c-notes').value});
+  if(res.detail){toast(res.detail,'err');return;}
+  toast(prenom+' '+nom+' enregistré');
+  ['c-prenom','c-nom','c-tel','c-permis','c-adresse','c-notes'].forEach(id=>document.getElementById(id).value='');
   loadChauffeurs(); refreshSelects();
 }
 
-// ─── Modifier Chauffeur ───
-function ouvrirModifChauffeur(c) {
-  document.getElementById('mc-id').value = c.id;
-  document.getElementById('mc-prenom').value = c.prenom;
-  document.getElementById('mc-nom').value = c.nom;
-  document.getElementById('mc-tel').value = c.telephone;
-  document.getElementById('mc-permis').value = c.numero_permis || '';
+async function supprimerChauffeur(id,nom){
+  if(!confirm('Supprimer '+nom+' ?\nCette action est irréversible.'))return;
+  await api('DELETE','/chauffeurs/'+id); toast(nom+' supprimé','info'); loadChauffeurs(); refreshSelects();
+}
+
+function ouvrirModifChauffeur(c){
+  document.getElementById('mc-id').value=c.id;
+  document.getElementById('mc-prenom').value=c.prenom;
+  document.getElementById('mc-nom').value=c.nom;
+  document.getElementById('mc-tel').value=c.telephone;
+  document.getElementById('mc-permis').value=c.numero_permis||'';
+  document.getElementById('mc-adresse').value=c.adresse||'';
+  document.getElementById('mc-notes').value=c.notes||'';
   ouvrirModal('modal-chauf');
 }
-async function sauvegarderChauffeur() {
-  const id = document.getElementById('mc-id').value;
-  const data = {
-    prenom: document.getElementById('mc-prenom').value,
-    nom: document.getElementById('mc-nom').value,
-    telephone: document.getElementById('mc-tel').value,
-    numero_permis: document.getElementById('mc-permis').value
-  };
-  await api('PATCH', '/chauffeurs/' + id, data);
-  toast('Chauffeur mis à jour');
-  fermerModal('modal-chauf');
-  loadChauffeurs(); refreshSelects();
+
+async function sauvegarderChauffeur(){
+  const id=document.getElementById('mc-id').value;
+  const res=await api('PATCH','/chauffeurs/'+id,{prenom:document.getElementById('mc-prenom').value,nom:document.getElementById('mc-nom').value,telephone:document.getElementById('mc-tel').value,numero_permis:document.getElementById('mc-permis').value,adresse:document.getElementById('mc-adresse').value,notes:document.getElementById('mc-notes').value});
+  if(res.detail){toast(res.detail,'err');return;}
+  toast('Chauffeur mis à jour'); fermerModal('modal-chauf'); loadChauffeurs(); refreshSelects();
 }
 
-// ─── Modifier Versement ───
-function ouvrirModifVersement(v) {
-  document.getElementById('mver-id').value = v.id;
-  document.getElementById('mver-montant').value = v.montant;
-  document.getElementById('mver-mode').value = v.mode_paiement;
-  ouvrirModal('modal-vers');
-}
-async function sauvegarderVersement() {
-  const id = document.getElementById('mver-id').value;
-  await api('PATCH', '/versements/' + id, {
-    montant: +document.getElementById('mver-montant').value,
-    mode_paiement: document.getElementById('mver-mode').value
-  });
-  toast('Versement mis à jour');
-  fermerModal('modal-vers');
-  loadVersements();
-}
-async function supprimerVersement(id) {
-  if (!confirm('Supprimer ce versement ?')) return;
-  await api('DELETE', '/versements/' + id);
-  toast('Versement supprimé', 'info');
-  loadVersements();
-}
-
-// ─── Modifier Dépense ───
-function ouvrirModifDepense(d) {
-  document.getElementById('mdep-id').value = d.id;
-  document.getElementById('mdep-montant').value = d.montant;
-  document.getElementById('mdep-desc').value = d.description || '';
-  ouvrirModal('modal-dep');
-}
-async function sauvegarderDepense() {
-  const id = document.getElementById('mdep-id').value;
-  await api('PATCH', '/depenses/' + id, {
-    montant: +document.getElementById('mdep-montant').value,
-    description: document.getElementById('mdep-desc').value
-  });
-  toast('Dépense mise à jour');
-  fermerModal('modal-dep');
-  loadDepenses();
-}
-async function supprimerDepense(id) {
-  if (!confirm('Supprimer cette dépense ?')) return;
-  await api('DELETE', '/depenses/' + id);
-  toast('Dépense supprimée', 'info');
-  loadDepenses();
+async function voirFicheChauffeur(id){
+  const f=await api('GET','/chauffeurs/'+id+'/fiche');
+  const c=f.chauffeur;
+  document.getElementById('fiche-chauf-content').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="width:48px;height:48px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#185FA5">${c.prenom[0]}${c.nom[0]}</div>
+      <div><div style="font-size:18px;font-weight:700">${c.prenom} ${c.nom}</div><div style="font-size:12px;color:#6b6b67">${c.telephone} ${c.numero_permis?'· Permis: '+c.numero_permis:''}</div></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val" style="color:#3B6D11">${fmt(f.totalVerse)}</div><div class="stat-label">Total versé</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#185FA5">${fmt(f.totalAttendu)}</div><div class="stat-label">Total attendu</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:${f.ecart<=0?'#3B6D11':'#A32D2D'}">${fmt(f.ecart)}</div><div class="stat-label">Écart</div></div>
+    </div>
+    <div class="fiche-section">
+      <div class="fiche-row"><span class="fiche-label">Véhicule actuel</span><span class="fiche-val">${f.vehicule?f.vehicule.immatriculation+' '+f.vehicule.marque:'Non affecté'}</span></div>
+      <div class="fiche-row"><span class="fiche-label">Montant journalier</span><span class="fiche-val">${f.affectation?fmt(f.affectation.montant_journalier):'—'}</span></div>
+      ${c.adresse?`<div class="fiche-row"><span class="fiche-label">Adresse</span><span class="fiche-val">${c.adresse}</span></div>`:''}
+      ${c.notes?`<div class="fiche-row"><span class="fiche-label">Notes</span><span class="fiche-val">${c.notes}</span></div>`:''}
+    </div>
+    ${f.versements.length?`<div class="fiche-section"><div style="font-size:12px;font-weight:600;margin-bottom:8px">Historique versements</div><table><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr></thead><tbody>${f.versements.slice(0,15).map(vs=>`<tr><td>${vs.date_versement}</td><td style="color:#3B6D11;font-weight:600">${fmt(vs.montant)}</td><td>${vs.mode_paiement}</td><td>${pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="fiche-section" style="color:#6b6b67;font-size:13px">Aucun versement enregistré</div>'}
+  `;
+  ouvrirModal('modal-fiche-chauf');
 }
 
+// AFFECTATIONS
+async function loadAffectations(){
+  const list=await api('GET','/affectations');
+  const el=document.getElementById('t-affectations');
+  if(!list.length){el.innerHTML='<div class="empty">Aucune affectation active</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Chauffeur</th><th>Véhicule</th><th>Montant/jour</th><th>Début</th><th></th></tr></thead><tbody>
+  ${list.map(a=>`<tr><td><strong>${a.chauffeur}</strong></td><td>${a.vehicule}</td><td>${fmt(a.montant_journalier)}</td><td>${a.date_debut}</td>
+  <td><button class="btn-sm btn-red" onclick="cloturerAffectation('${a.id}')">Clôturer</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+async function ajouterAffectation(){
+  const vid=document.getElementById('a-veh').value,cid=document.getElementById('a-chauf').value,montant=document.getElementById('a-montant').value,debut=document.getElementById('a-debut').value;
+  if(!vid||!cid||!montant){toast('Tous les champs sont obligatoires','err');return;}
+  const res=await api('POST','/affectations',{vehicule_id:vid,chauffeur_id:cid,montant_journalier:+montant,date_debut:debut});
+  if(res.detail){toast(res.detail,'err');return;}
+  toast('Affectation créée'); document.getElementById('a-montant').value=''; loadAffectations(); refreshSelects();
+}
+
+async function cloturerAffectation(id){
+  await api('PATCH','/affectations/'+id+'/cloturer'); toast('Affectation clôturée','info'); loadAffectations(); refreshSelects();
+}
+
+// VERSEMENTS
+async function loadVersements(){
+  const list=await api('GET','/versements');
+  const el=document.getElementById('t-versements');
+  if(!list.length){el.innerHTML='<div class="empty">Aucun versement</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Date</th><th>Chauffeur</th><th>Véhicule</th><th>Versé</th><th>Attendu</th><th>Mode</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+  ${list.map(v=>`<tr><td>${v.date_versement}</td><td>${v.chauffeur||'—'}</td><td>${v.vehicule||'—'}</td>
+  <td style="color:#3B6D11;font-weight:700">${fmt(v.montant)}</td><td style="color:#6b6b67">${fmt(v.montant_attendu)}</td>
+  <td>${v.mode_paiement}</td><td>${pill(v.statut,v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err')}</td>
+  <td style="display:flex;gap:4px"><button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVersement(${JSON.stringify(v)})'>Modif.</button>
+  <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVersement('${v.id}')">Suppr.</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+async function ajouterVersement(){
+  const affId=document.getElementById('vs-aff').value,montant=document.getElementById('vs-montant').value,date=document.getElementById('vs-date').value,mode=document.getElementById('vs-mode').value;
+  if(!affId||!montant){toast('Affectation et montant obligatoires','err');return;}
+  const res=await api('POST','/versements',{affectation_id:affId,montant:+montant,date_versement:date,mode_paiement:mode});
+  if(res.detail){toast(res.detail,'err');return;}
+  toast(res.statut==='recu'?'Versement de '+fmt(montant)+' reçu':'Versement partiel — écart '+fmt(res.ecart),res.statut==='recu'?'ok':'info');
+  document.getElementById('vs-montant').value=''; loadVersements();
+}
+
+function ouvrirModifVersement(v){document.getElementById('mver-id').value=v.id;document.getElementById('mver-montant').value=v.montant;document.getElementById('mver-mode').value=v.mode_paiement;ouvrirModal('modal-vers');}
+async function sauvegarderVersement(){const id=document.getElementById('mver-id').value;await api('PATCH','/versements/'+id,{montant:+document.getElementById('mver-montant').value,mode_paiement:document.getElementById('mver-mode').value});toast('Versement mis à jour');fermerModal('modal-vers');loadVersements();}
+async function supprimerVersement(id){if(!confirm('Supprimer ce versement ?'))return;await api('DELETE','/versements/'+id);toast('Versement supprimé','info');loadVersements();}
+
+// DEPENSES
+async function loadDepenses(){
+  const list=await api('GET','/depenses');
+  const el=document.getElementById('t-depenses');
+  if(!list.length){el.innerHTML='<div class="empty">Aucune dépense</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Actions</th></tr></thead><tbody>
+  ${list.map(d=>`<tr><td>${d.date_depense}</td><td>${pill(d.categorie,'gray')}</td><td style="color:#A32D2D;font-weight:700">${fmt(d.montant)}</td><td>${d.description||'—'}</td>
+  <td style="display:flex;gap:4px"><button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifDepense(${JSON.stringify(d)})'>Modif.</button>
+  <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerDepense('${d.id}')">Suppr.</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+async function ajouterDepense(){
+  const vid=document.getElementById('d-veh').value,montant=document.getElementById('d-montant').value;
+  if(!vid||!montant){toast('Véhicule et montant obligatoires','err');return;}
+  await api('POST','/depenses',{vehicule_id:vid,categorie:document.getElementById('d-cat').value,montant:+montant,description:document.getElementById('d-desc').value});
+  toast('Dépense de '+fmt(montant)+' enregistrée');
+  document.getElementById('d-montant').value='';document.getElementById('d-desc').value='';loadDepenses();
+}
+
+function ouvrirModifDepense(d){document.getElementById('mdep-id').value=d.id;document.getElementById('mdep-montant').value=d.montant;document.getElementById('mdep-desc').value=d.description||'';ouvrirModal('modal-dep');}
+async function sauvegarderDepense(){const id=document.getElementById('mdep-id').value;await api('PATCH','/depenses/'+id,{montant:+document.getElementById('mdep-montant').value,description:document.getElementById('mdep-desc').value});toast('Dépense mise à jour');fermerModal('modal-dep');loadDepenses();}
+async function supprimerDepense(id){if(!confirm('Supprimer cette dépense ?'))return;await api('DELETE','/depenses/'+id);toast('Dépense supprimée','info');loadDepenses();}
+
+// ALERTES
+async function loadAlertes(){
+  const list=await api('GET','/alertes');
+  const el=document.getElementById('t-alertes');
+  if(!list.length){el.innerHTML='<div class="empty">Aucune alerte</div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Date</th><th>Type</th><th>Canal</th><th>Message</th><th>Statut</th></tr></thead><tbody>
+  ${list.map(a=>`<tr><td>${a.created_at?a.created_at.slice(0,16).replace('T',' '):'—'}</td><td>${pill(a.type_alerte,'gray')}</td><td>${pill(a.canal,'blue')}</td>
+  <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.message}</td><td>${pill(a.statut,'warn')}</td></tr>`).join('')}</tbody></table>`;
+}
+
+async function envoyerAlerte(){
+  const res=await api('POST','/alertes',{type_alerte:document.getElementById('al-type').value,chauffeur_id:document.getElementById('al-chauf').value||null,canal:document.getElementById('al-canal').value,message:document.getElementById('al-msg').value});
+  toast('Alerte '+document.getElementById('al-canal').value+' envoyée — '+res.statut);
+  document.getElementById('al-msg').value=''; loadAlertes();
+}
+
+// ACCES PROPRIETAIRES
+async function loadAcces(){
+  const url=window.location.origin+'?readonly=1';
+  document.getElementById('acces-url').textContent=url;
+  const vehs=await api('GET','/vehicules');
+  const vers=await api('GET','/versements');
+  const deps=await api('GET','/depenses');
+  const totalRec=vers.reduce((s,v)=>s+v.montant,0);
+  const totalDep=deps.reduce((s,d)=>s+d.montant,0);
+  document.getElementById('vue-proprietaire').innerHTML=`
+    <div style="background:#f5f4f0;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px;color:#6b6b67">
+      Les propriétaires voient ce résumé : nombre de véhicules, recettes totales et marge — sans accès aux détails de versements ni aux données des chauffeurs.
+    </div>
+    <div class="stat-grid" style="margin-bottom:12px">
+      <div class="stat-box"><div class="stat-val">${vehs.length}</div><div class="stat-label">Véhicules total</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#3B6D11">${fmt(totalRec)}</div><div class="stat-label">Recettes totales</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:${totalRec-totalDep>=0?'#3B6D11':'#A32D2D'}">${fmt(totalRec-totalDep)}</div><div class="stat-label">Marge nette</div></div>
+    </div>
+    <table><thead><tr><th>Véhicule</th><th>Tag</th><th>Propriétaire</th><th>Statut</th></tr></thead><tbody>
+    ${vehs.map(v=>`<tr><td><strong>${v.immatriculation}</strong> ${v.marque}</td><td>${v.tag?pill(v.tag,'purple'):'—'}</td><td>${v.proprio||'—'}</td><td>${pill(v.statut,v.statut==='actif'?'ok':'err')}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+function copierLien(){
+  const url=window.location.origin+'?readonly=1';
+  navigator.clipboard.writeText(url).then(()=>toast('Lien copié dans le presse-papier !'));
+}
+
+function ouvrirLectureSeule(){window.open(window.location.origin+'?readonly=1','_blank');}
+
+// SELECTS
+async function refreshSelects(){
+  const vehs=await api('GET','/vehicules');
+  const chaufs=await api('GET','/chauffeurs');
+  const affs=await api('GET','/affectations');
+  const vOpts=vehs.map(v=>`<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
+  const cOpts=chaufs.map(c=>`<option value="${c.id}">${c.prenom} ${c.nom}</option>`).join('');
+  const aOpts=affs.map(a=>`<option value="${a.id}">${a.chauffeur} — ${a.vehicule} (${fmt(a.montant_journalier)}/j)</option>`).join('');
+  ['a-veh','d-veh'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">— choisir —</option>'+vOpts;});
+  ['a-chauf','al-chauf'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="">— choisir —</option>'+cOpts;});
+  const vsEl=document.getElementById('vs-aff');if(vsEl)vsEl.innerHTML='<option value="">— choisir —</option>'+aOpts;
+}
+
+function loadPage(id){
+  if(id==='dashboard') loadDashboard();
+  else if(id==='vehicules'){loadVehicules();loadTags();}
+  else if(id==='chauffeurs') loadChauffeurs();
+  else if(id==='affectations') loadAffectations();
+  else if(id==='versements') loadVersements();
+  else if(id==='depenses') loadDepenses();
+  else if(id==='alertes') loadAlertes();
+  else if(id==='acces') loadAcces();
+}
+
+// Mode lecture seule
+if(new URLSearchParams(window.location.search).get('readonly')==='1'){
+  document.querySelector('.topbar div:last-child').innerHTML='<span style="font-size:12px;background:#FAEEDA;color:#633806;padding:4px 10px;border-radius:99px;font-weight:600">Vue lecture seule — Propriétaire</span>';
+  document.querySelectorAll('.btn,.btn-sm,input,select').forEach(el=>el.disabled=true);
+  document.querySelectorAll('[onclick]').forEach(el=>{if(el.getAttribute('onclick').includes('ajouter')||el.getAttribute('onclick').includes('supprimer')||el.getAttribute('onclick').includes('modifier'))el.style.display='none';});
+}
+
+refreshSelects(); loadTags(); loadDashboard();
 </script>
-
-<!-- Modale Modifier Véhicule -->
-<div class="modal-overlay" id="modal-veh">
-  <div class="modal-box">
-    <div class="modal-title">Modifier le véhicule</div>
-    <input type="hidden" id="mv-id">
-    <div class="form-row">
-      <div class="field"><label>Immatriculation</label><input id="mv-immat" readonly style="opacity:.6"></div>
-      <div class="field"><label>Marque</label><input id="mv-marque"></div>
-    </div>
-    <div class="form-row">
-      <div class="field"><label>Modèle</label><input id="mv-modele"></div>
-      <div class="field"><label>Année</label><input id="mv-annee" type="number"></div>
-    </div>
-    <div class="form-row">
-      <div class="field"><label>Km actuel</label><input id="mv-km" type="number"></div>
-      <div class="field"><label>Km prochain vidange</label><input id="mv-vidange" type="number"></div>
-    </div>
-    <div class="field" style="margin-bottom:0"><label>Statut</label>
-      <select id="mv-statut"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select>
-    </div>
-    <div class="modal-btns">
-      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-veh')">Annuler</button>
-      <button class="btn btn-blue" onclick="sauvegarderVehicule()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modale Modifier Chauffeur -->
-<div class="modal-overlay" id="modal-chauf">
-  <div class="modal-box">
-    <div class="modal-title">Modifier le chauffeur</div>
-    <input type="hidden" id="mc-id">
-    <div class="form-row">
-      <div class="field"><label>Prénom</label><input id="mc-prenom"></div>
-      <div class="field"><label>Nom</label><input id="mc-nom"></div>
-    </div>
-    <div class="form-row">
-      <div class="field"><label>Téléphone</label><input id="mc-tel"></div>
-      <div class="field"><label>N° Permis</label><input id="mc-permis"></div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-chauf')">Annuler</button>
-      <button class="btn btn-blue" onclick="sauvegarderChauffeur()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modale Modifier Versement -->
-<div class="modal-overlay" id="modal-vers">
-  <div class="modal-box">
-    <div class="modal-title">Modifier le versement</div>
-    <input type="hidden" id="mver-id">
-    <div class="form-row">
-      <div class="field"><label>Montant versé (FCFA)</label><input id="mver-montant" type="number"></div>
-      <div class="field"><label>Mode de paiement</label>
-        <select id="mver-mode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select>
-      </div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-vers')">Annuler</button>
-      <button class="btn btn-green" onclick="sauvegarderVersement()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modale Modifier Dépense -->
-<div class="modal-overlay" id="modal-dep">
-  <div class="modal-box">
-    <div class="modal-title">Modifier la dépense</div>
-    <input type="hidden" id="mdep-id">
-    <div class="form-row">
-      <div class="field"><label>Montant (FCFA)</label><input id="mdep-montant" type="number"></div>
-      <div class="field"><label>Description</label><input id="mdep-desc"></div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-dep')">Annuler</button>
-      <button class="btn btn-red" onclick="sauvegarderDepense()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>
