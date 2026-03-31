@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SyNdongo — Gestion de flotte</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f5f4f0; color: #1a1a18; }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:10px 20px; background:#fff; border-bottom:1px solid #e0dfd8; position:sticky; top:0; z-index:100; }
+.logo { font-size:17px; font-weight:700; } .logo span { color:#185FA5; }
+.nav { display:flex; background:#fff; border-bottom:1px solid #e0dfd8; padding:0 16px; overflow-x:auto; }
+.nav-item { font-size:13px; padding:10px 14px; cursor:pointer; color:#6b6b67; border-bottom:2px solid transparent; white-space:nowrap; transition:all .15s; }
+.nav-item.active { color:#1a1a18; border-bottom-color:#1a1a18; font-weight:600; }
+.main { padding:16px; max-width:1100px; margin:0 auto; }
+.card { background:#fff; border:1px solid #e0dfd8; border-radius:12px; padding:16px 18px; margin-bottom:12px; }
+.card-title { font-size:13px; font-weight:600; margin-bottom:12px; }
+.kpi4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
+.kpi { background:#fff; border:1px solid #e0dfd8; border-radius:12px; padding:12px 14px; }
+.kpi-label { font-size:11px; color:#6b6b67; margin-bottom:4px; }
+.kpi-val { font-size:22px; font-weight:700; }
+.kpi-sub { font-size:11px; color:#6b6b67; margin-top:2px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+.form-row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
+.field { display:flex; flex-direction:column; gap:4px; }
+label { font-size:11px; color:#6b6b67; font-weight:600; }
+input, select { font-size:13px; padding:8px 10px; border:1px solid #c0bfb8; border-radius:8px; background:#f5f4f0; color:#1a1a18; width:100%; }
+input:focus, select:focus { outline:2px solid #185FA5; border-color:#185FA5; }
+.btn { font-size:13px; padding:9px 20px; border-radius:8px; border:none; cursor:pointer; font-weight:600; transition:opacity .15s; }
+.btn:hover { opacity:.85; }
+.btn-blue { background:#185FA5; color:#fff; }
+.btn-green { background:#3B6D11; color:#fff; }
+.btn-red { background:#A32D2D; color:#fff; }
+.btn-sm { font-size:11px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer; font-weight:600; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { text-align:left; color:#6b6b67; font-weight:600; padding:6px 8px; border-bottom:1px solid #e0dfd8; }
+td { padding:8px 8px; border-bottom:1px solid #e0dfd8; vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+.pill { display:inline-block; font-size:10px; font-weight:700; padding:2px 8px; border-radius:99px; }
+.pill-ok   { background:#EAF3DE; color:#27500A; }
+.pill-warn { background:#FAEEDA; color:#633806; }
+.pill-err  { background:#FCEBEB; color:#791F1F; }
+.pill-blue { background:#E6F1FB; color:#0C447C; }
+.pill-gray { background:#F1EFE8; color:#444441; }
+.empty { text-align:center; color:#6b6b67; font-size:13px; padding:28px; }
+.toast-area { position:sticky; top:52px; z-index:99; }
+.toast { padding:10px 16px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:8px; animation:fadeIn .2s; }
+.toast-ok   { background:#EAF3DE; color:#27500A; border:1px solid #C0DD97; }
+.toast-err  { background:#FCEBEB; color:#791F1F; border:1px solid #F7C1C1; }
+.toast-info { background:#E6F1FB; color:#0C447C; border:1px solid #B5D4F4; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+.alert-row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid #e0dfd8; font-size:12px; }
+.alert-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.section { display:none; }
+.section.active { display:block; }
+@media(max-width:600px) { .kpi4{grid-template-columns:1fr 1fr;} .form-row{grid-template-columns:1fr;} .form-row-3{grid-template-columns:1fr;} }
+
+.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal-box { background:#fff; border-radius:16px; padding:24px; width:90%; max-width:480px; box-shadow:0 8px 32px rgba(0,0,0,0.15); }
+.modal-title { font-size:15px; font-weight:700; margin-bottom:16px; }
+.modal-btns { display:flex; gap:10px; margin-top:16px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Sy<span>Ndongo</span></div>
+  <div style="font-size:12px;color:#6b6b67">Transport Ndongo Fall · Manager</div>
+</div>
+
+<div class="nav" id="nav">
+  <div class="nav-item active" onclick="showPage('dashboard',this)">Dashboard</div>
+  <div class="nav-item" onclick="showPage('vehicules',this)">Véhicules</div>
+  <div class="nav-item" onclick="showPage('chauffeurs',this)">Chauffeurs</div>
+  <div class="nav-item" onclick="showPage('affectations',this)">Affectations</div>
+  <div class="nav-item" onclick="showPage('versements',this)">Versements</div>
+  <div class="nav-item" onclick="showPage('depenses',this)">Dépenses</div>
+  <div class="nav-item" onclick="showPage('alertes',this)">Alertes</div>
+</div>
+
+<div class="main">
+  <div class="toast-area" id="toast-area"></div>
+
+  <!-- DASHBOARD -->
+  <div class="section active" id="p-dashboard">
+    <div class="kpi4">
+      <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="kpi-rec" style="color:#3B6D11">0 F</div><div class="kpi-sub">FCFA</div></div>
+      <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="kpi-dep" style="color:#A32D2D">0 F</div><div class="kpi-sub">FCFA</div></div>
+      <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="kpi-marge">0 F</div><div class="kpi-sub" id="kpi-pct">—</div></div>
+      <div class="kpi"><div class="kpi-label">Véhicules actifs</div><div class="kpi-val" id="kpi-veh">—</div><div class="kpi-sub" id="kpi-chauf">—</div></div>
+    </div>
+    <div class="card"><div class="card-title">Alertes actives</div><div id="dash-alertes"><div class="empty">Chargement…</div></div></div>
+    <div class="card"><div class="card-title">Rentabilité par véhicule</div><div id="dash-rent"><div class="empty">Chargement…</div></div></div>
+  </div>
+
+  <!-- VEHICULES -->
+  <div class="section" id="p-vehicules">
+    <div class="card">
+      <div class="card-title">Ajouter un véhicule</div>
+      <div class="form-row">
+        <div class="field"><label>Immatriculation *</label><input id="v-immat" placeholder="DK-0000-A"></div>
+        <div class="field"><label>Marque *</label><input id="v-marque" placeholder="Samand, Kia…"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="field"><label>Modèle</label><input id="v-modele" placeholder="LX, Picanto…"></div>
+        <div class="field"><label>Année</label><input id="v-annee" type="number" value="2020"></div>
+        <div class="field"><label>Km actuel</label><input id="v-km" type="number" value="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Km prochain vidange</label><input id="v-vidange" type="number" placeholder="85000"></div>
+        <div class="field"><label>Statut</label><select id="v-statut"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select></div>
+      </div>
+      <button class="btn btn-blue" onclick="ajouterVehicule()">Enregistrer le véhicule</button>
+    </div>
+    <div class="card"><div class="card-title">Parc automobile</div><div id="t-vehicules"><div class="empty">Chargement…</div></div></div>
+  </div>
+
+  <!-- CHAUFFEURS -->
+  <div class="section" id="p-chauffeurs">
+    <div class="card">
+      <div class="card-title">Ajouter un chauffeur</div>
+      <div class="form-row">
+        <div class="field"><label>Prénom *</label><input id="c-prenom" placeholder="Ibrahima"></div>
+        <div class="field"><label>Nom *</label><input id="c-nom" placeholder="Sy"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Téléphone *</label><input id="c-tel" placeholder="+221771234567"></div>
+        <div class="field"><label>N° Permis</label><input id="c-permis" placeholder="SN-2020-00123"></div>
+      </div>
+      <button class="btn btn-blue" onclick="ajouterChauffeur()">Enregistrer le chauffeur</button>
+    </div>
+    <div class="card"><div class="card-title">Liste des chauffeurs</div><div id="t-chauffeurs"><div class="empty">Chargement…</div></div></div>
+  </div>
+
+  <!-- AFFECTATIONS -->
+  <div class="section" id="p-affectations">
+    <div class="card">
+      <div class="card-title">Créer une affectation</div>
+      <div class="form-row">
+        <div class="field"><label>Véhicule *</label><select id="a-veh"><option value="">— choisir —</option></select></div>
+        <div class="field"><label>Chauffeur *</label><select id="a-chauf"><option value="">— choisir —</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Montant journalier (FCFA) *</label><input id="a-montant" type="number" placeholder="12000"></div>
+        <div class="field"><label>Date début</label><input id="a-debut" type="date"></div>
+      </div>
+      <button class="btn btn-blue" onclick="ajouterAffectation()">Créer l'affectation</button>
+    </div>
+    <div class="card"><div class="card-title">Affectations actives</div><div id="t-affectations"><div class="empty">Chargement…</div></div></div>
+  </div>
+
+  <!-- VERSEMENTS -->
+  <div class="section" id="p-versements">
+    <div class="card">
+      <div class="card-title">Enregistrer un versement</div>
+      <div class="form-row">
+        <div class="field"><label>Chauffeur / Véhicule *</label><select id="vs-aff"><option value="">— choisir —</option></select></div>
+        <div class="field"><label>Date</label><input id="vs-date" type="date"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Montant versé (FCFA) *</label><input id="vs-montant" type="number" placeholder="12000"></div>
+        <div class="field"><label>Mode de paiement</label><select id="vs-mode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select></div>
+      </div>
+      <button class="btn btn-green" onclick="ajouterVersement()">Enregistrer le versement</button>
+    </div>
+    <div class="card"><div class="card-title">Historique des versements</div><div id="t-versements"><div class="empty">Aucun versement</div></div></div>
+  </div>
+
+  <!-- DEPENSES -->
+  <div class="section" id="p-depenses">
+    <div class="card">
+      <div class="card-title">Enregistrer une dépense</div>
+      <div class="form-row">
+        <div class="field"><label>Véhicule *</label><select id="d-veh"><option value="">— choisir —</option></select></div>
+        <div class="field"><label>Catégorie *</label><select id="d-cat"><option value="carburant">Carburant</option><option value="reparation">Réparation (Xelcom)</option><option value="commission_yango">Commission Yango</option><option value="administratif">Administratif</option><option value="autre">Autre</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Montant (FCFA) *</label><input id="d-montant" type="number" placeholder="15000"></div>
+        <div class="field"><label>Description</label><input id="d-desc" placeholder="Ex : vidange + filtre"></div>
+      </div>
+      <button class="btn btn-red" onclick="ajouterDepense()">Enregistrer la dépense</button>
+    </div>
+    <div class="card"><div class="card-title">Historique des dépenses</div><div id="t-depenses"><div class="empty">Aucune dépense</div></div></div>
+  </div>
+
+  <!-- ALERTES -->
+  <div class="section" id="p-alertes">
+    <div class="card">
+      <div class="card-title">Envoyer une alerte</div>
+      <div class="form-row">
+        <div class="field"><label>Type</label><select id="al-type"><option value="versement_retard">Versement en retard</option><option value="document_expiration">Document expirant</option><option value="vidange_due">Vidange due</option><option value="panne">Panne déclarée</option></select></div>
+        <div class="field"><label>Chauffeur</label><select id="al-chauf"><option value="">— choisir —</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Canal</label><select id="al-canal"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="in_app">In-app</option></select></div>
+        <div class="field"><label>Message personnalisé (optionnel)</label><input id="al-msg" placeholder="Laisser vide pour message auto"></div>
+      </div>
+      <button class="btn btn-blue" onclick="envoyerAlerte()">Envoyer l'alerte</button>
+    </div>
+    <div class="card"><div class="card-title">Journal des alertes</div><div id="t-alertes"><div class="empty">Aucune alerte</div></div></div>
+  </div>
+</div>
+
+<script>
+const API = window.location.hostname === 'localhost'
+  ? 'http://localhost:8000/api'
+  : window.location.origin + '/api';
+const fmt = n => Math.round(n||0).toLocaleString('fr-FR') + ' F';
+const pill = (txt, type) => `<span class="pill pill-${type}">${txt}</span>`;
+
+async function api(method, path, data) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (data) opts.body = JSON.stringify(data);
+  const r = await fetch(API + path, opts);
+  return r.json();
+}
+
+// Toast
+function toast(msg, type='ok') {
+  const a = document.getElementById('toast-area');
+  const d = document.createElement('div');
+  d.className = 'toast toast-' + type;
+  d.textContent = msg;
+  a.appendChild(d);
+  setTimeout(() => d.remove(), 3500);
+}
+
+// Navigation
+function showPage(id, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('p-' + id).classList.add('active');
+  el.classList.add('active');
+  loadPage(id);
+}
+
+// Init date fields
+document.getElementById('a-debut').value = new Date().toISOString().split('T')[0];
+document.getElementById('vs-date').value = new Date().toISOString().split('T')[0];
+
+// ─── Dashboard ───
+async function loadDashboard() {
+  const d = await api('GET', '/dashboard');
+  document.getElementById('kpi-rec').textContent = fmt(d.kpis.recettes_30j);
+  document.getElementById('kpi-dep').textContent = fmt(d.kpis.depenses_30j);
+  const marge = d.kpis.marge_nette_30j;
+  const margeEl = document.getElementById('kpi-marge');
+  margeEl.textContent = fmt(marge);
+  margeEl.style.color = marge >= 0 ? '#3B6D11' : '#A32D2D';
+  document.getElementById('kpi-pct').textContent = d.kpis.taux_marge + '% de marge';
+  document.getElementById('kpi-veh').textContent = d.kpis.vehicules_actifs + ' / ' + d.kpis.vehicules_total;
+  document.getElementById('kpi-chauf').textContent = d.kpis.chauffeurs_actifs + ' chauffeurs actifs';
+
+  const alEl = document.getElementById('dash-alertes');
+  alEl.innerHTML = d.alertes.length === 0
+    ? '<div class="empty">Aucune alerte active</div>'
+    : d.alertes.map(a => `<div class="alert-row"><span class="alert-dot" style="background:${a.type==='danger'?'#A32D2D':'#BA7517'}"></span>${a.message}</div>`).join('');
+
+  // Rentabilité
+  const vehs = await api('GET', '/vehicules');
+  const vers = await api('GET', '/versements');
+  const deps = await api('GET', '/depenses');
+  const affs = await api('GET', '/affectations');
+
+  const rentEl = document.getElementById('dash-rent');
+  if (!vehs.length) { rentEl.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
+
+  let rows = vehs.map(v => {
+    const rec = vers.filter(vs => {
+      const aff = affs.find(a => a.id === vs.affectation_id);
+      return aff && aff.vehicule && aff.vehicule.includes(v.immatriculation);
+    }).reduce((s, vs) => s + vs.montant, 0);
+    const dep = deps.filter(d => d.vehicule_id === v.id).reduce((s, d) => s + d.montant, 0);
+    const marge = rec - dep;
+    const pct = rec > 0 ? Math.round(marge / rec * 100) : 0;
+    return `<tr>
+      <td><strong>${v.immatriculation}</strong> · ${v.marque}</td>
+      <td style="color:#3B6D11">${fmt(rec)}</td>
+      <td style="color:#A32D2D">${fmt(dep)}</td>
+      <td style="color:${marge>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(marge)}</strong></td>
+      <td>${pill(pct+'%', pct>=70?'ok':pct>=40?'warn':'err')}</td>
+    </tr>`;
+  }).join('');
+  rentEl.innerHTML = `<table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ─── Véhicules ───
+async function loadVehicules() {
+  const list = await api('GET', '/vehicules');
+  const el = document.getElementById('t-vehicules');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Immat.</th><th>Véhicule</th><th>Année</th><th>Km</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+    ${list.map(v => `<tr>
+      <td><strong>${v.immatriculation}</strong></td>
+      <td>${v.marque} ${v.modele||''}</td>
+      <td>${v.annee}</td>
+      <td>${(v.km_actuel||0).toLocaleString('fr-FR')} km ${v.alerte_vidange?pill('Vidange!','warn'):''}</td>
+      <td>${pill(v.statut, v.statut==='actif'?'ok':v.statut==='en_panne'?'err':'warn')}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVehicule(${JSON.stringify(v)})'>Modifier</button>
+        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVehicule('${v.id}','${v.immatriculation}')">Supprimer</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function ajouterVehicule() {
+  const immat = document.getElementById('v-immat').value.trim();
+  const marque = document.getElementById('v-marque').value.trim();
+  if (!immat || !marque) { toast('Immatriculation et marque obligatoires', 'err'); return; }
+  const res = await api('POST', '/vehicules', {
+    immatriculation: immat, marque, modele: document.getElementById('v-modele').value,
+    annee: +document.getElementById('v-annee').value, km_actuel: +document.getElementById('v-km').value,
+    km_prochain_vidange: +document.getElementById('v-vidange').value || null,
+    statut: document.getElementById('v-statut').value
+  });
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Véhicule ' + immat.toUpperCase() + ' enregistré');
+  ['v-immat','v-marque','v-modele','v-vidange'].forEach(id => document.getElementById(id).value = '');
+  loadVehicules(); refreshSelects();
+}
+
+async function supprimerVehicule(id, immat) {
+  const res = await api('DELETE', '/vehicules/' + id);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Véhicule ' + immat + ' supprimé', 'info');
+  loadVehicules(); refreshSelects();
+}
+
+// ─── Chauffeurs ───
+async function loadChauffeurs() {
+  const list = await api('GET', '/chauffeurs');
+  const el = document.getElementById('t-chauffeurs');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Permis</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+    ${list.map(c => `<tr>
+      <td><strong>${c.prenom} ${c.nom}</strong></td>
+      <td>${c.telephone}</td>
+      <td>${c.numero_permis||'—'}</td>
+      <td>${pill(c.statut,'ok')}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifChauffeur(${JSON.stringify(c)})'>Modifier</button>
+        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerChauffeur('${c.id}','${c.prenom} ${c.nom}')">Supprimer</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function ajouterChauffeur() {
+  const prenom = document.getElementById('c-prenom').value.trim();
+  const nom = document.getElementById('c-nom').value.trim();
+  const tel = document.getElementById('c-tel').value.trim();
+  if (!prenom || !nom || !tel) { toast('Prénom, nom et téléphone obligatoires', 'err'); return; }
+  const res = await api('POST', '/chauffeurs', { prenom, nom, telephone: tel, numero_permis: document.getElementById('c-permis').value });
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast(prenom + ' ' + nom + ' enregistré');
+  ['c-prenom','c-nom','c-tel','c-permis'].forEach(id => document.getElementById(id).value='');
+  loadChauffeurs(); refreshSelects();
+}
+
+// ─── Affectations ───
+async function loadAffectations() {
+  const list = await api('GET', '/affectations');
+  const el = document.getElementById('t-affectations');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune affectation active</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Chauffeur</th><th>Véhicule</th><th>Montant/jour</th><th>Début</th><th></th></tr></thead><tbody>
+    ${list.map(a => `<tr>
+      <td><strong>${a.chauffeur}</strong></td>
+      <td>${a.vehicule}</td>
+      <td>${fmt(a.montant_journalier)}</td>
+      <td>${a.date_debut}</td>
+      <td><button class="btn-sm btn-red" onclick="cloturerAffectation('${a.id}')">Clôturer</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function ajouterAffectation() {
+  const vid = document.getElementById('a-veh').value;
+  const cid = document.getElementById('a-chauf').value;
+  const montant = document.getElementById('a-montant').value;
+  const debut = document.getElementById('a-debut').value;
+  if (!vid || !cid || !montant) { toast('Tous les champs sont obligatoires', 'err'); return; }
+  const res = await api('POST', '/affectations', { vehicule_id: vid, chauffeur_id: cid, montant_journalier: +montant, date_debut: debut });
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Affectation créée');
+  document.getElementById('a-montant').value = '';
+  loadAffectations(); refreshSelects();
+}
+
+async function cloturerAffectation(id) {
+  await api('PATCH', '/affectations/' + id + '/cloturer');
+  toast('Affectation clôturée', 'info');
+  loadAffectations(); refreshSelects();
+}
+
+// ─── Versements ───
+async function loadVersements() {
+  const list = await api('GET', '/versements');
+  const el = document.getElementById('t-versements');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucun versement</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Date</th><th>Chauffeur</th><th>Véhicule</th><th>Versé</th><th>Attendu</th><th>Mode</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
+    ${list.map(v => `<tr>
+      <td>${v.date_versement}</td>
+      <td>${v.chauffeur||'—'}</td>
+      <td>${v.vehicule||'—'}</td>
+      <td style="color:#3B6D11;font-weight:700">${fmt(v.montant)}</td>
+      <td style="color:#6b6b67">${fmt(v.montant_attendu)}</td>
+      <td>${v.mode_paiement}</td>
+      <td>${pill(v.statut, v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err')}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVersement(${JSON.stringify(v)})'>Modifier</button>
+        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerVersement('${v.id}')">Supprimer</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function ajouterVersement() {
+  const affId = document.getElementById('vs-aff').value;
+  const montant = document.getElementById('vs-montant').value;
+  const date = document.getElementById('vs-date').value;
+  const mode = document.getElementById('vs-mode').value;
+  if (!affId || !montant) { toast('Affectation et montant obligatoires', 'err'); return; }
+  const res = await api('POST', '/versements', { affectation_id: affId, montant: +montant, date_versement: date, mode_paiement: mode });
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  const msg = res.statut === 'recu' ? 'Versement de ' + fmt(montant) + ' reçu' : 'Versement partiel — écart ' + fmt(res.ecart);
+  toast(msg, res.statut === 'recu' ? 'ok' : 'info');
+  document.getElementById('vs-montant').value = '';
+  loadVersements();
+}
+
+// ─── Dépenses ───
+async function loadDepenses() {
+  const list = await api('GET', '/depenses');
+  const el = document.getElementById('t-depenses');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune dépense</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Actions</th></tr></thead><tbody>
+    ${list.map(d => `<tr>
+      <td>${d.date_depense}</td>
+      <td>${pill(d.categorie,'gray')}</td>
+      <td style="color:#A32D2D;font-weight:700">${fmt(d.montant)}</td>
+      <td>${d.description||'—'}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifDepense(${JSON.stringify(d)})'>Modifier</button>
+        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerDepense('${d.id}')">Supprimer</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function ajouterDepense() {
+  const vid = document.getElementById('d-veh').value;
+  const montant = document.getElementById('d-montant').value;
+  if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
+  const res = await api('POST', '/depenses', {
+    vehicule_id: vid, categorie: document.getElementById('d-cat').value,
+    montant: +montant, description: document.getElementById('d-desc').value
+  });
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Dépense de ' + fmt(montant) + ' enregistrée');
+  document.getElementById('d-montant').value = '';
+  document.getElementById('d-desc').value = '';
+  loadDepenses();
+}
+
+// ─── Alertes ───
+async function loadAlertes() {
+  const list = await api('GET', '/alertes');
+  const el = document.getElementById('t-alertes');
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune alerte</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Date</th><th>Type</th><th>Canal</th><th>Message</th><th>Statut</th></tr></thead><tbody>
+    ${list.map(a => `<tr>
+      <td>${a.created_at ? a.created_at.slice(0,16).replace('T',' ') : '—'}</td>
+      <td>${pill(a.type_alerte,'gray')}</td>
+      <td>${pill(a.canal,'blue')}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.message}</td>
+      <td>${pill(a.statut,'warn')}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function envoyerAlerte() {
+  const res = await api('POST', '/alertes', {
+    type_alerte: document.getElementById('al-type').value,
+    chauffeur_id: document.getElementById('al-chauf').value || null,
+    canal: document.getElementById('al-canal').value,
+    message: document.getElementById('al-msg').value
+  });
+  toast('Alerte ' + document.getElementById('al-canal').value + ' envoyée — ' + res.statut);
+  document.getElementById('al-msg').value = '';
+  loadAlertes();
+}
+
+// ─── Selects dynamiques ───
+async function refreshSelects() {
+  const vehs = await api('GET', '/vehicules');
+  const chaufs = await api('GET', '/chauffeurs');
+  const affs = await api('GET', '/affectations');
+
+  const vOpts = vehs.map(v => `<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
+  const cOpts = chaufs.map(c => `<option value="${c.id}">${c.prenom} ${c.nom}</option>`).join('');
+  const aOpts = affs.map(a => `<option value="${a.id}">${a.chauffeur} — ${a.vehicule} (${fmt(a.montant_journalier)}/j)</option>`).join('');
+
+  ['a-veh','d-veh'].forEach(id => { const el=document.getElementById(id); el.innerHTML='<option value="">— choisir —</option>'+vOpts; });
+  ['a-chauf','al-chauf'].forEach(id => { const el=document.getElementById(id); el.innerHTML='<option value="">— choisir —</option>'+cOpts; });
+  document.getElementById('vs-aff').innerHTML = '<option value="">— choisir —</option>' + aOpts;
+}
+
+function loadPage(id) {
+  if (id === 'dashboard') loadDashboard();
+  else if (id === 'vehicules') loadVehicules();
+  else if (id === 'chauffeurs') loadChauffeurs();
+  else if (id === 'affectations') loadAffectations();
+  else if (id === 'versements') loadVersements();
+  else if (id === 'depenses') loadDepenses();
+  else if (id === 'alertes') loadAlertes();
+}
+
+// Initialisation
+refreshSelects();
+loadDashboard();
+
+// ─── Modales ───
+function fermerModal(id) { document.getElementById(id).classList.remove('open'); }
+function ouvrirModal(id) { document.getElementById(id).classList.add('open'); }
+
+// Clic en dehors de la modale = fermer
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) e.target.classList.remove('open');
+});
+
+// ─── Modifier Véhicule ───
+function ouvrirModifVehicule(v) {
+  document.getElementById('mv-id').value = v.id;
+  document.getElementById('mv-immat').value = v.immatriculation;
+  document.getElementById('mv-marque').value = v.marque;
+  document.getElementById('mv-modele').value = v.modele || '';
+  document.getElementById('mv-annee').value = v.annee;
+  document.getElementById('mv-km').value = v.km_actuel || 0;
+  document.getElementById('mv-vidange').value = v.km_prochain_vidange || '';
+  document.getElementById('mv-statut').value = v.statut;
+  ouvrirModal('modal-veh');
+}
+async function sauvegarderVehicule() {
+  const id = document.getElementById('mv-id').value;
+  const data = {
+    marque: document.getElementById('mv-marque').value,
+    modele: document.getElementById('mv-modele').value,
+    annee: +document.getElementById('mv-annee').value,
+    km_actuel: +document.getElementById('mv-km').value,
+    km_prochain_vidange: +document.getElementById('mv-vidange').value || null,
+    statut: document.getElementById('mv-statut').value
+  };
+  await api('PATCH', '/vehicules/' + id, data);
+  toast('Véhicule mis à jour');
+  fermerModal('modal-veh');
+  loadVehicules(); refreshSelects();
+}
+
+// ─── Supprimer Chauffeur (avec confirmation) ───
+async function supprimerChauffeur(id, nom) {
+  if (!confirm('Supprimer ' + nom + ' ?\nCette action est irréversible.')) return;
+  const res = await api('DELETE', '/chauffeurs/' + id);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast(nom + ' supprimé', 'info');
+  loadChauffeurs(); refreshSelects();
+}
+
+// ─── Modifier Chauffeur ───
+function ouvrirModifChauffeur(c) {
+  document.getElementById('mc-id').value = c.id;
+  document.getElementById('mc-prenom').value = c.prenom;
+  document.getElementById('mc-nom').value = c.nom;
+  document.getElementById('mc-tel').value = c.telephone;
+  document.getElementById('mc-permis').value = c.numero_permis || '';
+  ouvrirModal('modal-chauf');
+}
+async function sauvegarderChauffeur() {
+  const id = document.getElementById('mc-id').value;
+  const data = {
+    prenom: document.getElementById('mc-prenom').value,
+    nom: document.getElementById('mc-nom').value,
+    telephone: document.getElementById('mc-tel').value,
+    numero_permis: document.getElementById('mc-permis').value
+  };
+  await api('PATCH', '/chauffeurs/' + id, data);
+  toast('Chauffeur mis à jour');
+  fermerModal('modal-chauf');
+  loadChauffeurs(); refreshSelects();
+}
+
+// ─── Modifier Versement ───
+function ouvrirModifVersement(v) {
+  document.getElementById('mver-id').value = v.id;
+  document.getElementById('mver-montant').value = v.montant;
+  document.getElementById('mver-mode').value = v.mode_paiement;
+  ouvrirModal('modal-vers');
+}
+async function sauvegarderVersement() {
+  const id = document.getElementById('mver-id').value;
+  await api('PATCH', '/versements/' + id, {
+    montant: +document.getElementById('mver-montant').value,
+    mode_paiement: document.getElementById('mver-mode').value
+  });
+  toast('Versement mis à jour');
+  fermerModal('modal-vers');
+  loadVersements();
+}
+async function supprimerVersement(id) {
+  if (!confirm('Supprimer ce versement ?')) return;
+  await api('DELETE', '/versements/' + id);
+  toast('Versement supprimé', 'info');
+  loadVersements();
+}
+
+// ─── Modifier Dépense ───
+function ouvrirModifDepense(d) {
+  document.getElementById('mdep-id').value = d.id;
+  document.getElementById('mdep-montant').value = d.montant;
+  document.getElementById('mdep-desc').value = d.description || '';
+  ouvrirModal('modal-dep');
+}
+async function sauvegarderDepense() {
+  const id = document.getElementById('mdep-id').value;
+  await api('PATCH', '/depenses/' + id, {
+    montant: +document.getElementById('mdep-montant').value,
+    description: document.getElementById('mdep-desc').value
+  });
+  toast('Dépense mise à jour');
+  fermerModal('modal-dep');
+  loadDepenses();
+}
+async function supprimerDepense(id) {
+  if (!confirm('Supprimer cette dépense ?')) return;
+  await api('DELETE', '/depenses/' + id);
+  toast('Dépense supprimée', 'info');
+  loadDepenses();
+}
+
+</script>
+
+<!-- Modale Modifier Véhicule -->
+<div class="modal-overlay" id="modal-veh">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le véhicule</div>
+    <input type="hidden" id="mv-id">
+    <div class="form-row">
+      <div class="field"><label>Immatriculation</label><input id="mv-immat" readonly style="opacity:.6"></div>
+      <div class="field"><label>Marque</label><input id="mv-marque"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Modèle</label><input id="mv-modele"></div>
+      <div class="field"><label>Année</label><input id="mv-annee" type="number"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Km actuel</label><input id="mv-km" type="number"></div>
+      <div class="field"><label>Km prochain vidange</label><input id="mv-vidange" type="number"></div>
+    </div>
+    <div class="field" style="margin-bottom:0"><label>Statut</label>
+      <select id="mv-statut"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-veh')">Annuler</button>
+      <button class="btn btn-blue" onclick="sauvegarderVehicule()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale Modifier Chauffeur -->
+<div class="modal-overlay" id="modal-chauf">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le chauffeur</div>
+    <input type="hidden" id="mc-id">
+    <div class="form-row">
+      <div class="field"><label>Prénom</label><input id="mc-prenom"></div>
+      <div class="field"><label>Nom</label><input id="mc-nom"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Téléphone</label><input id="mc-tel"></div>
+      <div class="field"><label>N° Permis</label><input id="mc-permis"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-chauf')">Annuler</button>
+      <button class="btn btn-blue" onclick="sauvegarderChauffeur()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale Modifier Versement -->
+<div class="modal-overlay" id="modal-vers">
+  <div class="modal-box">
+    <div class="modal-title">Modifier le versement</div>
+    <input type="hidden" id="mver-id">
+    <div class="form-row">
+      <div class="field"><label>Montant versé (FCFA)</label><input id="mver-montant" type="number"></div>
+      <div class="field"><label>Mode de paiement</label>
+        <select id="mver-mode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-vers')">Annuler</button>
+      <button class="btn btn-green" onclick="sauvegarderVersement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale Modifier Dépense -->
+<div class="modal-overlay" id="modal-dep">
+  <div class="modal-box">
+    <div class="modal-title">Modifier la dépense</div>
+    <input type="hidden" id="mdep-id">
+    <div class="form-row">
+      <div class="field"><label>Montant (FCFA)</label><input id="mdep-montant" type="number"></div>
+      <div class="field"><label>Description</label><input id="mdep-desc"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" style="background:#f5f4f0;color:#1a1a18;border:1px solid #e0dfd8" onclick="fermerModal('modal-dep')">Annuler</button>
+      <button class="btn btn-red" onclick="sauvegarderDepense()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

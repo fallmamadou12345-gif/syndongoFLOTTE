@@ -1,0 +1,12 @@
+{
+  "name": "syndongo",
+  "version": "1.0.0",
+  "description": "Gestion de flotte VTC - Transport Ndongo Fall",
+  "main": "serveur.js",
+  "scripts": {
+    "start": "node serveur.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
