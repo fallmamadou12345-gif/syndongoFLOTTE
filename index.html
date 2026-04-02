@@ -508,9 +508,13 @@ function lancerApp() {
   const b = document.getElementById('user-badge');
   b.textContent=USER; b.style.background=ROLE==='manager'?'#EAF3DE':'#E6F1FB'; b.style.color=ROLE==='manager'?'#27500A':'#0C447C';
   if (ROLE!=='manager') document.querySelectorAll('.manager-only').forEach(el=>el.style.display='none');
+  // Onglet Accès visible pour manager et gestionnaire uniquement
+  const navAcces=document.getElementById('nav-acces');
+  if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
   document.getElementById('ad').value = new Date().toISOString().split('T')[0];
   const hier=new Date(); hier.setDate(hier.getDate()-1);
   document.getElementById('fd').value = hier.toISOString().split('T')[0];
+  const fmd=document.getElementById('fmd');if(fmd)fmd.value=hier.toISOString().split('T')[0];
   loadTags(); refreshSelects(); loadDashboard();
 }
 
@@ -543,43 +547,7 @@ document.addEventListener('click', e=>{ if(e.target.classList.contains('modal-ov
 
 function rechGlobal(q) { document.getElementById('vs-q').value=q; document.getElementById('cq').value=q; }
 
-// ─── DASHBOARD ───────────────────────────────────────────────
-async function loadDashboard() {
-  const d = await api('GET', '/dashboard');
-  if (d.detail) return;
-  document.getElementById('k-rec').textContent = fmt(d.kpis.recettes);
-  document.getElementById('k-dep').textContent = fmt(d.kpis.depenses);
-  const mg = d.kpis.marge;
-  const me = document.getElementById('k-marge');
-  me.textContent=fmt(mg); me.style.color=mg>=0?'#3B6D11':'#A32D2D';
-  document.getElementById('k-pct').textContent = d.kpis.taux_marge+'%';
-  document.getElementById('k-total').textContent = d.kpis.vehicules_total;
-  if (d.stats_jour) {
-    document.getElementById('k-actif').textContent = d.stats_jour.actif||0;
-    document.getElementById('k-panne').textContent = d.stats_jour.panne||0;
-    document.getElementById('k-repos').textContent = d.stats_jour.repos||0;
-    document.getElementById('k-inact').textContent = d.stats_jour.inactif||0;
-    document.getElementById('k-ns').textContent = d.stats_jour.non_saisi||0;
-  }
-  const ret = await api('GET', '/retards');
-  document.getElementById('k-retard').textContent = fmt(ret.reduce((s,r)=>s+r.retard,0));
-  const alEl = document.getElementById('d-alertes');
-  alEl.innerHTML = d.alertes.length===0 ? '<div class="empty">Aucune alerte</div>' :
-    d.alertes.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f5f4f0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${a.type==='danger'?'#A32D2D':'#BA7517'};flex-shrink:0;display:inline-block"></span>${a.message}</div>`).join('');
-  const vehs = await api('GET','/vehicules');
-  const vers = await api('GET','/versements');
-  const deps = await api('GET','/depenses');
-  const affs = await api('GET','/affectations');
-  const rentEl = document.getElementById('d-rent');
-  if (!vehs.length) { rentEl.innerHTML='<div class="empty">Aucun véhicule</div>'; return; }
-  const rows = vehs.map(v=>{
-    const rec = vers.filter(vs=>{ const a=affs.find(a=>a.id===vs.affectation_id); return a&&a.vehicule_id===v.id; }).reduce((s,vs)=>s+vs.montant,0);
-    const dep = deps.filter(dd=>dd.vehicule_id===v.id).reduce((s,dd)=>s+dd.montant,0);
-    const mg=rec-dep; const pct=rec>0?Math.round(mg/rec*100):0;
-    return `<tr onclick="voirFicheVeh('${v.id}')" style="cursor:pointer"><td><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</td><td style="color:#3B6D11">${fmt(rec)}</td><td style="color:#A32D2D">${fmt(dep)}</td><td style="color:${mg>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(mg)}</strong></td><td>${pill(pct+'%',pct>=70?'ok':pct>=40?'warn':'err')}</td></tr>`;
-  }).join('');
-  rentEl.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-}
+
 
 // ─── TAGS ────────────────────────────────────────────────────
 let allTags = [];
@@ -1010,17 +978,7 @@ async function loadProprietaires(){
   }).join('');
 }
 
-async function addProprietaire(btn){
-  const nom=document.getElementById('pnom').value.trim(),pwd=document.getElementById('ppwd').value.trim();
-  if(!nom||!pwd){toast('Nom et mot de passe obligatoires','err');return;}
-  setBtnLoading(btn,true);
-  const r=await api('POST','/proprietaires',{nom,email:document.getElementById('pemail').value,telephone:document.getElementById('ptel').value,password:pwd});
-  setBtnLoading(btn,false);
-  if(r.detail){toast(r.detail,'err');return;}
-  toast('Accès créé — mot de passe : '+pwd);
-  ['pnom','pemail','ptel','ppwd'].forEach(id=>document.getElementById(id).value='');
-  loadProprietaires(); refreshPropSelect('vprop');
-}
+
 
 async function delProp(id,nom){if(!confirm('Supprimer accès de '+nom+' ?'))return;await api('DELETE','/proprietaires/'+id);toast('Supprimé','info');loadProprietaires();}
 
@@ -1141,6 +1099,12 @@ function loadPage(id) {
   else if(id==='depenses') loadDepenses();
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
+  else if(id==='acces'){
+    if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
+    loadProprietaires();loadPropVehsSection();
+    const prb=document.getElementById('prop-role-badge');
+    if(prb)prb.textContent=ROLE==='gestionnaire'?'(vos véhicules uniquement)':'';
+  }
 }
 
 // ─── PERIODE ─────────────────────────────────────────────────
@@ -1157,8 +1121,6 @@ function clearPeriode(){
 }
 
 // ─── DASHBOARD PERIODE ────────────────────────────────────────
-// Patch loadDashboard pour afficher le KPI Facturé et la période
-const _origLoadDash = loadDashboard;
 async function loadDashboard(){
   const per=getPeriode();
   let url='/dashboard';
@@ -1349,30 +1311,7 @@ async function loadTagsInGest(){
   if(cur)el.value=cur;
 }
 
-// ─── LOAD PAGE (mise à jour) ──────────────────────────────────
-const _origLoadPage = loadPage;
-function loadPage(id){
-  if(id==='acces'){
-    if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
-    loadProprietaires();loadPropVehsSection();
-    // Afficher badge rôle
-    const prb=document.getElementById('prop-role-badge');
-    if(prb)prb.textContent=ROLE==='gestionnaire'?'(vos véhicules uniquement)':'';
-  }
-  else _origLoadPage(id);
-}
-
-// Initialiser la date hier dans facturation multiple
-const _origLancerApp = lancerApp;
-function lancerApp(){
-  _origLancerApp();
-  const hier=new Date();hier.setDate(hier.getDate()-1);
-  const fmd=document.getElementById('fmd');
-  if(fmd)fmd.value=hier.toISOString().split('T')[0];
-  // Onglet Accès visible pour gestionnaire et manager
-  const navAcces=document.getElementById('nav-acces');
-  if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
-}
+// (fonctions loadPage et lancerApp définies plus haut — complètes)
 
 
 // ─── SECTION VÉHICULES POUR PROPRIÉTAIRE ─────────────────────
@@ -1392,9 +1331,7 @@ async function loadPropVehsSection(){
     </label>`).join('');
 }
 
-// ─── ADDPROPRIETAIRE MISE À JOUR ──────────────────────────────
-// Remplacer la fonction addProprietaire pour inclure les véhicules sélectionnés
-const _origAddProp = typeof addProprietaire !== 'undefined' ? addProprietaire : null;
+// ─── ADDPROPRIETAIRE ──────────────────────────────────────────
 async function addProprietaire(btn){
   const nom=document.getElementById('pnom').value.trim();
   const pwd=document.getElementById('ppwd').value.trim();
