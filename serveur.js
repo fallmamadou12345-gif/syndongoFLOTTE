@@ -152,18 +152,19 @@ function handleAPI(req, res, body) {
     return res.end(JSON.stringify(list));
   }
   if (p==='/api/vehicules'&&method==='POST') {
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refuse'}));}
     const immat=(data.immatriculation||'').toUpperCase().trim();
-    if(db.vehicules.find(v=>v.immatriculation===immat)) return res.end(JSON.stringify({detail:`${immat} déjà enregistré`}));
+    if(db.vehicules.find(v=>v.immatriculation===immat)) return res.end(JSON.stringify({detail:immat+' deja enregistre'}));
     const v={id:uid(),...data,immatriculation:immat,tag:data.tag||''};
     db.vehicules.push(v);
     if(data.proprio_id){const pr=db.proprietaires.find(x=>x.id===data.proprio_id);if(pr&&!pr.vehicules_ids.includes(v.id))pr.vehicules_ids.push(v.id);}
     if(data.gest_id){const gt=db.gestionnaires.find(x=>x.id===data.gest_id);if(gt&&!gt.vehicules_ids.includes(v.id))gt.vehicules_ids.push(v.id);}
-    saveDB(db);return res.end(JSON.stringify({id:v.id,message:'Véhicule créé'}));
+    if(isGest){const gt=db.gestionnaires.find(x=>x.id===auth.gest.id);if(gt&&!gt.vehicules_ids.includes(v.id))gt.vehicules_ids.push(v.id);}
+    saveDB(db);return res.end(JSON.stringify({id:v.id,message:'Vehicule cree'}));
   }
   const vM=p.match(/^\/api\/vehicules\/([^/]+)$/);
   if(vM&&method==='PATCH'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const idx=db.vehicules.findIndex(v=>v.id===vM[1]);
     if(idx!==-1){
       db.vehicules[idx]={...db.vehicules[idx],...data};
@@ -251,7 +252,7 @@ function handleAPI(req, res, body) {
     return res.end(JSON.stringify(list));
   }
   if(p==='/api/chauffeurs'&&method==='POST'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(db.chauffeurs.find(c=>c.telephone===(data.telephone||'').trim())) return res.end(JSON.stringify({detail:'Téléphone déjà enregistré'}));
     if(data.numero_permis&&db.chauffeurs.find(c=>c.numero_permis===(data.numero_permis||'').trim())) return res.end(JSON.stringify({detail:'Permis déjà enregistré'}));
     const c={id:uid(),...data,telephone:(data.telephone||'').trim(),statut:'actif',date_embauche:today()};
@@ -259,7 +260,7 @@ function handleAPI(req, res, body) {
   }
   const cM=p.match(/^\/api\/chauffeurs\/([^/]+)$/);
   if(cM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){db.chauffeurs[idx].statut='depart';saveDB(db);}return res.end(JSON.stringify({message:'Chauffeur marqué comme parti'}));}
-  if(cM&&method==='PATCH'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
 
   // ── FICHE CHAUFFEUR ───────────────────────────────────────
   const cFiche=p.match(/^\/api\/chauffeurs\/([^/]+)\/fiche$/);
@@ -291,14 +292,14 @@ function handleAPI(req, res, body) {
     })));
   }
   if(p==='/api/affectations'&&method==='POST'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(db.affectations.find(a=>a.vehicule_id===data.vehicule_id&&!a.date_fin)) return res.end(JSON.stringify({detail:'Ce véhicule a déjà un chauffeur'}));
     if(db.affectations.find(a=>a.chauffeur_id===data.chauffeur_id&&!a.date_fin)) return res.end(JSON.stringify({detail:'Ce chauffeur est déjà affecté'}));
     const a={id:uid(),...data,date_fin:null};db.affectations.push(a);saveDB(db);
     return res.end(JSON.stringify({id:a.id,message:'Affectation créée'}));
   }
   const aM=p.match(/^\/api\/affectations\/([^/]+)\/cloturer$/);
-  if(aM&&method==='PATCH'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.affectations.findIndex(a=>a.id===aM[1]);if(idx!==-1){db.affectations[idx].date_fin=today();saveDB(db);}return res.end(JSON.stringify({message:'Clôturée'}));}
+  if(aM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.affectations.findIndex(a=>a.id===aM[1]);if(idx!==-1){db.affectations[idx].date_fin=today();saveDB(db);}return res.end(JSON.stringify({message:'Clôturée'}));}
 
   // ── VERSEMENTS ────────────────────────────────────────────
   if(p==='/api/versements'&&method==='GET'){

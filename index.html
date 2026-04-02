@@ -123,11 +123,11 @@ tr:hover td{background:#fafaf8;}
   <div class="nav-item active" onclick="go('dashboard',this)">Dashboard</div>
   <div class="nav-item" onclick="go('vehicules',this)">Véhicules</div>
   <div class="nav-item" onclick="go('chauffeurs',this)">Chauffeurs</div>
-  <div class="nav-item manager-only" onclick="go('affectations',this)">Affectations</div>
-  <div class="nav-item manager-only" onclick="go('caisse',this)">Caisse &amp; Facturation</div>
-  <div class="nav-item manager-only" onclick="go('retards',this)">Retards</div>
-  <div class="nav-item manager-only" onclick="go('depenses',this)">Dépenses</div>
-  <div class="nav-item manager-only" onclick="go('alertes',this)">Alertes</div>
+  <div class="nav-item" onclick="go('affectations',this)">Affectations</div>
+  <div class="nav-item" onclick="go('caisse',this)">Caisse &amp; Facturation</div>
+  <div class="nav-item" onclick="go('retards',this)">Retards</div>
+  <div class="nav-item" onclick="go('depenses',this)">Dépenses</div>
+  <div class="nav-item" onclick="go('alertes',this)">Alertes</div>
   <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
   <div class="nav-item" id="nav-acces" onclick="go('acces',this)">Accès &amp; Partage</div>
 </div>
@@ -169,7 +169,7 @@ tr:hover td{background:#fafaf8;}
 
 <!-- VEHICULES -->
 <div class="section" id="p-vehicules">
-  <div class="card manager-only">
+  <div class="card">
     <div class="card-title">Ajouter un véhicule</div>
     <div class="form-row"><div class="field"><label>Immatriculation *</label><input id="vi" placeholder="AA-0000-A"></div><div class="field"><label>Marque *</label><input id="vm" placeholder="Iran Khodro, Kia…"></div></div>
     <div class="form-row-3"><div class="field"><label>Modèle</label><input id="vmo" placeholder="Samand…"></div><div class="field"><label>Année</label><input id="van" type="number" value="2020"></div><div class="field"><label>Km actuel</label><input id="vk" type="number" value="0"></div></div>
@@ -574,7 +574,7 @@ async function loadVehicules() {
   if(sj) list=list.filter(v=>v.statut_jour===sj);
   const el=document.getElementById('tv');
   if(!list.length){el.innerHTML='<div class="empty">Aucun véhicule</div>';return;}
-  const isM=ROLE==='manager';
+  const isM=ROLE==='manager'||ROLE==='gestionnaire';
   el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Immat.</th><th>Véhicule</th><th>Tag</th><th>Km</th><th>Statut véhicule</th><th>Statut journalier</th>${isM?'<th>Actions</th>':''}</tr></thead><tbody>
   ${list.map(v=>`<tr>
     <td onclick="voirFicheVeh('${v.id}')" style="cursor:pointer;font-weight:700;color:#185FA5">${v.immatriculation}</td>
@@ -693,7 +693,7 @@ async function loadChauffeurs() {
   const list=await api('GET','/chauffeurs?q='+encodeURIComponent(q));
   const el=document.getElementById('tc');
   if(!list.length){el.innerHTML='<div class="empty">Aucun chauffeur</div>';return;}
-  const isM=ROLE==='manager';
+  const isM=ROLE==='manager'||ROLE==='gestionnaire';
   el.innerHTML=`<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Véhicule actuel</th><th>Permis</th>${isM?'<th>Actions</th>':''}</tr></thead><tbody>
   ${list.map(c=>`<tr>
     <td onclick="voirFicheChauf('${c.id}')" style="cursor:pointer;font-weight:700;color:#185FA5">${c.prenom} ${c.nom}</td>
