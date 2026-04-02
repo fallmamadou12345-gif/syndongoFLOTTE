@@ -129,6 +129,7 @@ tr:hover td{background:#fafaf8;}
   <div class="nav-item" onclick="go('depenses',this)">Dépenses</div>
   <div class="nav-item" onclick="go('alertes',this)">Alertes</div>
   <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
+  <div class="nav-item" id="nav-hist" onclick="go('historique',this)">Historique</div>
   <div class="nav-item" id="nav-acces" onclick="go('acces',this)">Accès &amp; Partage</div>
 </div>
 <div class="main">
@@ -339,6 +340,26 @@ tr:hover td{background:#fafaf8;}
 </div><!-- fin main -->
 </div><!-- fin app -->
 
+  <!-- HISTORIQUE -->
+  <div class="section" id="p-historique">
+    <div class="card">
+      <div class="card-title">
+        Journal des modifications
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="hist-filter" style="font-size:12px;width:160px" onchange="loadHistorique()">
+            <option value="">Tous les types</option>
+            <option value="vehicule_cree">Véhicules créés</option>
+            <option value="chauffeur_cree">Chauffeurs créés</option>
+            <option value="affectation_creee">Affectations créées</option>
+            <option value="affectation_cloturee">Affectations clôturées</option>
+          </select>
+          <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="loadHistorique()">Rafraîchir</button>
+        </div>
+      </div>
+      <div id="t-historique"><div class="empty">Chargement…</div></div>
+    </div>
+  </div>
+
   <!-- ACCES & PARTAGE -->
   <div class="section" id="p-acces">
     <div class="info-banner" style="margin-bottom:12px">
@@ -508,9 +529,11 @@ function lancerApp() {
   const b = document.getElementById('user-badge');
   b.textContent=USER; b.style.background=ROLE==='manager'?'#EAF3DE':'#E6F1FB'; b.style.color=ROLE==='manager'?'#27500A':'#0C447C';
   if (ROLE!=='manager') document.querySelectorAll('.manager-only').forEach(el=>el.style.display='none');
-  // Onglet Accès visible pour manager et gestionnaire uniquement
+  // Onglets manager/gestionnaire uniquement
   const navAcces=document.getElementById('nav-acces');
   if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
+  const navHist=document.getElementById('nav-hist');
+  if(navHist&&ROLE==='proprietaire') navHist.style.display='none';
   document.getElementById('ad').value = new Date().toISOString().split('T')[0];
   const hier=new Date(); hier.setDate(hier.getDate()-1);
   document.getElementById('fd').value = hier.toISOString().split('T')[0];
@@ -1099,6 +1122,7 @@ function loadPage(id) {
   else if(id==='depenses') loadDepenses();
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
+  else if(id==='historique') loadHistorique();
   else if(id==='acces'){
     if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
     loadProprietaires();loadPropVehsSection();
@@ -1381,6 +1405,26 @@ async function loadProprietaires(){
       </div>
     </div>`;
   }).join('');
+}
+
+
+// ─── HISTORIQUE ───────────────────────────────────────────────
+async function loadHistorique(){
+  const filter=document.getElementById('hist-filter')?.value||'';
+  let list=await api('GET','/historique?limit=100');
+  if(filter) list=list.filter(h=>h.type===filter);
+  const el=document.getElementById('t-historique');
+  if(!list||!list.length){el.innerHTML='<div class="empty">Aucun historique</div>';return;}
+  const icons={vehicule_cree:'🚗',chauffeur_cree:'👤',affectation_creee:'🔗',affectation_cloturee:'✂️'};
+  const labels={vehicule_cree:'Véhicule créé',chauffeur_cree:'Chauffeur créé',affectation_creee:'Affectation créée',affectation_cloturee:'Affectation clôturée'};
+  el.innerHTML=`<table><thead><tr><th>Date/Heure</th><th>Action</th><th>Détail</th><th>Par</th></tr></thead><tbody>
+  ${list.map(h=>`<tr>
+    <td style="white-space:nowrap;font-size:11px;color:#6b6b67">${h.date?h.date.slice(0,16).replace('T',' '):'—'}</td>
+    <td>${(icons[h.type]||'•')} ${pill(labels[h.type]||h.type,h.type.includes('cloture')?'warn':h.type.includes('cree')?'ok':'blue')}</td>
+    <td style="font-weight:500">${h.ref_nom||'—'}</td>
+    <td>${pill(h.auteur||'?',h.role==='manager'?'blue':'purple')}</td>
+  </tr>`).join('')}
+  </tbody></table>`;
 }
 
 </script>
