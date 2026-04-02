@@ -480,18 +480,61 @@ function handleAPI(req, res, body) {
   }
 
   // ── PROPRIETAIRES ─────────────────────────────────────────
+  // Manager : voit tous les propriétaires
+  // Gestionnaire : voit seulement les propriétaires de ses véhicules
   if(p==='/api/proprietaires'&&method==='GET'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(isGest){
+      // Filtrer : seulement les propriétaires qui ont au moins 1 véhicule du gestionnaire
+      const myVehIds=auth.gest.vehicules_ids||[];
+      const myProps=db.proprietaires.filter(pr=>pr.vehicules_ids.some(vid=>myVehIds.includes(vid)));
+      return res.end(JSON.stringify(myProps));
+    }
     return res.end(JSON.stringify(db.proprietaires));
   }
   if(p==='/api/proprietaires'&&method==='POST'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const pr={id:uid(),nom:data.nom,email:data.email||'',telephone:data.telephone||'',password:data.password||uid().slice(0,8),vehicules_ids:[]};
-    db.proprietaires.push(pr);saveDB(db);return res.end(JSON.stringify({id:pr.id,password:pr.password,message:'Propriétaire créé'}));
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(db.proprietaires.find(pr=>pr.password===data.password)) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
+    // Gestionnaire : ne peut créer un proprio que pour ses propres véhicules
+    let vehicules_ids = data.vehicules_ids||[];
+    if(isGest){
+      const myVehIds=auth.gest.vehicules_ids||[];
+      vehicules_ids=vehicules_ids.filter(vid=>myVehIds.includes(vid));
+      if(!vehicules_ids.length) vehicules_ids=[];
+    }
+    const pr={id:uid(),nom:data.nom,email:data.email||'',telephone:data.telephone||'',
+               password:data.password||uid().slice(0,8),vehicules_ids,
+               cree_par:isGest?auth.gest.id:'manager'};
+    db.proprietaires.push(pr);saveDB(db);
+    return res.end(JSON.stringify({id:pr.id,password:pr.password,message:'Propriétaire créé'}));
   }
   const prM=p.match(/^\/api\/proprietaires\/([^/]+)$/);
-  if(prM&&method==='PATCH'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.proprietaires.findIndex(pr=>pr.id===prM[1]);if(idx!==-1){db.proprietaires[idx]={...db.proprietaires[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
-  if(prM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}db.proprietaires=db.proprietaires.filter(pr=>pr.id!==prM[1]);saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));}
+  if(prM&&method==='PATCH'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.proprietaires.findIndex(pr=>pr.id===prM[1]);
+    if(idx!==-1){
+      // Gestionnaire : ne peut modifier que les propriétaires liés à ses véhicules
+      if(isGest){
+        const myVehIds=auth.gest.vehicules_ids||[];
+        const prVehs=db.proprietaires[idx].vehicules_ids||[];
+        if(!prVehs.some(vid=>myVehIds.includes(vid))){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+        // Filtrer les vehicules_ids dans la mise à jour
+        if(data.vehicules_ids) data.vehicules_ids=data.vehicules_ids.filter(vid=>myVehIds.includes(vid));
+      }
+      db.proprietaires[idx]={...db.proprietaires[idx],...data};saveDB(db);
+    }
+    return res.end(JSON.stringify({message:'Mis à jour'}));
+  }
+  if(prM&&method==='DELETE'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(isGest){
+      // Gestionnaire : ne peut supprimer que les propriétaires qu'il a créés
+      const pr=db.proprietaires.find(pr=>pr.id===prM[1]);
+      if(!pr||pr.cree_par!==auth.gest.id){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé — vous ne pouvez supprimer que les accès que vous avez créés'}));}
+    }
+    db.proprietaires=db.proprietaires.filter(pr=>pr.id!==prM[1]);saveDB(db);
+    return res.end(JSON.stringify({message:'Supprimé'}));
+  }
 
   res.writeHead(404);res.end(JSON.stringify({detail:'Route introuvable'}));
 }

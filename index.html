@@ -129,7 +129,7 @@ tr:hover td{background:#fafaf8;}
   <div class="nav-item manager-only" onclick="go('depenses',this)">Dépenses</div>
   <div class="nav-item manager-only" onclick="go('alertes',this)">Alertes</div>
   <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
-  <div class="nav-item manager-only" onclick="go('acces',this)">Accès &amp; Partage</div>
+  <div class="nav-item" id="nav-acces" onclick="go('acces',this)">Accès &amp; Partage</div>
 </div>
 <div class="main">
 <div class="toast-area" id="ta"></div>
@@ -348,7 +348,7 @@ tr:hover td{background:#fafaf8;}
     </div>
 
     <!-- GESTIONNAIRES -->
-    <div class="card" style="border-top:3px solid #3C3489">
+    <div class="card manager-only" style="border-top:3px solid #3C3489">
       <div class="card-title">Gestionnaires de flotte</div>
       <div class="form-row">
         <div class="field"><label>Nom *</label><input id="gnom" placeholder="Ibrahima Sy"></div>
@@ -363,14 +363,17 @@ tr:hover td{background:#fafaf8;}
       <div style="font-size:11px;color:#6b6b67;margin-bottom:8px" id="gtag-info"></div>
       <button class="btn btn-blue" onclick="addGestionnaire(this)">Créer le gestionnaire</button>
     </div>
-    <div class="card">
+    <div class="card manager-only">
       <div class="card-title">Gestionnaires actifs</div>
       <div id="t-gestionnaires"><div class="empty">Chargement…</div></div>
     </div>
 
     <!-- PROPRIETAIRES -->
     <div class="card" style="border-top:3px solid #185FA5;margin-top:4px">
-      <div class="card-title">Propriétaires (lecture seule)</div>
+      <div class="card-title">
+        Créer un accès propriétaire
+        <span id="prop-role-badge" style="font-size:11px;font-weight:400;color:#6b6b67"></span>
+      </div>
       <div class="form-row">
         <div class="field"><label>Nom *</label><input id="pnom" placeholder="Moussa Diallo"></div>
         <div class="field"><label>Téléphone</label><input id="ptel" placeholder="+221771234567"></div>
@@ -378,6 +381,13 @@ tr:hover td{background:#fafaf8;}
       <div class="form-row">
         <div class="field"><label>Email</label><input id="pemail" placeholder="moussa@email.com"></div>
         <div class="field"><label>Mot de passe accès *</label><input id="ppwd" placeholder="Ex: moussaflotte2026"></div>
+      </div>
+      <!-- Sélection véhicules (visible pour gestionnaire) -->
+      <div id="prop-vehs-section" style="margin-bottom:10px">
+        <label style="font-size:11px;color:#6b6b67;font-weight:600;display:block;margin-bottom:4px">Véhicules assignés à ce propriétaire</label>
+        <div id="prop-vehs-list" style="max-height:150px;overflow-y:auto;border:1px solid #e0dfd8;border-radius:8px;padding:8px">
+          <div class="empty" style="padding:10px">Chargement…</div>
+        </div>
       </div>
       <button class="btn btn-blue" onclick="addProprietaire(this)">Créer l'accès propriétaire</button>
     </div>
@@ -1342,7 +1352,13 @@ async function loadTagsInGest(){
 // ─── LOAD PAGE (mise à jour) ──────────────────────────────────
 const _origLoadPage = loadPage;
 function loadPage(id){
-  if(id==='acces'){loadGestionnaires();loadProprietaires();loadTagsInGest();}
+  if(id==='acces'){
+    if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
+    loadProprietaires();loadPropVehsSection();
+    // Afficher badge rôle
+    const prb=document.getElementById('prop-role-badge');
+    if(prb)prb.textContent=ROLE==='gestionnaire'?'(vos véhicules uniquement)':'';
+  }
   else _origLoadPage(id);
 }
 
@@ -1353,6 +1369,81 @@ function lancerApp(){
   const hier=new Date();hier.setDate(hier.getDate()-1);
   const fmd=document.getElementById('fmd');
   if(fmd)fmd.value=hier.toISOString().split('T')[0];
+  // Onglet Accès visible pour gestionnaire et manager
+  const navAcces=document.getElementById('nav-acces');
+  if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
+}
+
+
+// ─── SECTION VÉHICULES POUR PROPRIÉTAIRE ─────────────────────
+async function loadPropVehsSection(){
+  const section=document.getElementById('prop-vehs-section');
+  const listEl=document.getElementById('prop-vehs-list');
+  if(!section||!listEl)return;
+  
+  // Charger les véhicules visibles (filtrés par rôle côté serveur)
+  const vehs=await api('GET','/vehicules');
+  if(!vehs.length){listEl.innerHTML='<div class="empty" style="padding:10px">Aucun véhicule disponible</div>';return;}
+  
+  listEl.innerHTML=vehs.map(v=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f5f4f0;cursor:pointer;font-size:12px">
+      <input type="checkbox" class="prop-veh-cb" value="${v.id}" style="width:14px;height:14px">
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</span>
+    </label>`).join('');
+}
+
+// ─── ADDPROPRIETAIRE MISE À JOUR ──────────────────────────────
+// Remplacer la fonction addProprietaire pour inclure les véhicules sélectionnés
+const _origAddProp = typeof addProprietaire !== 'undefined' ? addProprietaire : null;
+async function addProprietaire(btn){
+  const nom=document.getElementById('pnom').value.trim();
+  const pwd=document.getElementById('ppwd').value.trim();
+  if(!nom||!pwd){toast('Nom et mot de passe obligatoires','err');return;}
+  
+  // Récupérer les véhicules sélectionnés
+  const selectedVehs=Array.from(document.querySelectorAll('.prop-veh-cb:checked')).map(cb=>cb.value);
+  
+  setBtnLoading(btn,true);
+  const r=await api('POST','/proprietaires',{
+    nom,email:document.getElementById('pemail').value,
+    telephone:document.getElementById('ptel').value,
+    password:pwd,
+    vehicules_ids:selectedVehs
+  });
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Accès créé pour '+nom+' — mot de passe : '+pwd);
+  ['pnom','pemail','ptel','ppwd'].forEach(id=>document.getElementById(id).value='');
+  document.querySelectorAll('.prop-veh-cb').forEach(cb=>cb.checked=false);
+  loadProprietaires();
+}
+
+// ─── LOADPROPRIETAIRES MISE À JOUR ───────────────────────────
+async function loadProprietaires(){
+  const list=await api('GET','/proprietaires');
+  const vehs=await api('GET','/vehicules');
+  const el=document.getElementById('tprop');
+  if(!el)return;
+  if(!list.length){el.innerHTML='<div class="empty">Aucun propriétaire</div>';return;}
+  el.innerHTML=list.map(p=>{
+    const pveh=vehs.filter(v=>p.vehicules_ids&&p.vehicules_ids.includes(v.id));
+    const estMonProprio=ROLE==='gestionnaire'; // gestionnaire peut modifier ses proprios
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e0dfd8;gap:10px">
+      <div>
+        <div style="font-weight:600">${p.nom} ${p.cree_par&&p.cree_par!=='manager'?pill('Gestionnaire','purple'):''}</div>
+        <div style="font-size:12px;color:#6b6b67;margin-top:2px">${p.telephone||''} ${p.email||''}</div>
+        <div style="margin-top:6px">${pveh.length?pveh.map(v=>pill(v.immatriculation,'blue')).join(' '):'<span style="font-size:12px;color:#aaa">Aucun véhicule</span>'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+        <div style="font-size:10px;color:#6b6b67">Mot de passe :</div>
+        <div onclick="navigator.clipboard.writeText('${p.password||''}').then(()=>toast('Copié !'))" style="font-family:monospace;font-size:12px;background:#f5f4f0;padding:3px 8px;border-radius:4px;border:1px solid #e0dfd8;cursor:pointer" title="Cliquer pour copier">${p.password||'—'}</div>
+        <div style="display:flex;gap:5px">
+          <button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="ouvrirAssigner('${p.id}','${p.nom}')">Véhicules</button>
+          <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delProp('${p.id}','${p.nom}')">Suppr.</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 </script>
