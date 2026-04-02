@@ -1312,7 +1312,7 @@ async function addGestionnaire(btn){
   loadGestionnaires();
 }
 
-async function delGest(id,nom){if(!confirm('Supprimer l'accès de '+nom+' ?'))return;await api('DELETE','/gestionnaires/'+id);toast('Supprimé','info');loadGestionnaires();}
+async function delGest(id,nom){if(!confirm('Supprimer acces de '+nom+' ?'))return;await api('DELETE','/gestionnaires/'+id);toast('Supprime','info');loadGestionnaires();}
 
 async function ouvrirAssignGest(gid,gnom){
   document.getElementById('m-ag-nom').textContent=gnom;
