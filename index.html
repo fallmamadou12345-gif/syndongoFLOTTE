@@ -129,16 +129,18 @@ tr:hover td{background:#fafaf8;}
   <div class="nav-item manager-only" onclick="go('depenses',this)">Dépenses</div>
   <div class="nav-item manager-only" onclick="go('alertes',this)">Alertes</div>
   <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
+  <div class="nav-item manager-only" onclick="go('acces',this)">Accès &amp; Partage</div>
 </div>
 <div class="main">
 <div class="toast-area" id="ta"></div>
 
 <!-- DASHBOARD -->
 <div class="section active" id="p-dashboard">
-  <div class="kpi-grid kpi-grid-4" style="margin-bottom:10px">
+  <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:10px">
     <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div></div>
     <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
     <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div><div id="k-pct" style="font-size:11px;color:#6b6b67"></div></div>
+    <div class="kpi"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div></div>
     <div class="kpi kpi-danger"><div class="kpi-label">Total retards versements</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div></div>
   </div>
   <div class="kpi-grid kpi-grid-6" style="margin-bottom:12px">
@@ -148,6 +150,18 @@ tr:hover td{background:#fafaf8;}
     <div class="kpi kpi-warn"><div class="kpi-label">Au repos</div><div class="kpi-val" id="k-repos" style="color:#BA7517">—</div></div>
     <div class="kpi kpi-gray"><div class="kpi-label">Inactifs</div><div class="kpi-val" id="k-inact" style="color:#555">—</div></div>
     <div class="kpi"><div class="kpi-label">Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
+  </div>
+  <div class="card" style="margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:12px;font-weight:600;color:#6b6b67">Filtre période :</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="date" id="p-debut" style="font-size:12px;width:130px" onchange="loadDashboard()">
+        <span style="font-size:12px;color:#6b6b67">→</span>
+        <input type="date" id="p-fin" style="font-size:12px;width:130px" onchange="loadDashboard()">
+        <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearPeriode()">Tout voir</button>
+      </div>
+      <div id="periode-badge" style="display:none" class="pill pill-blue"></div>
+    </div>
   </div>
   <div class="card"><div class="card-title">Alertes<button class="btn btn-blue" style="font-size:11px;padding:5px 12px" onclick="exportPDF()">Export PDF</button></div><div id="d-alertes"><div class="empty">Chargement…</div></div></div>
   <div class="card"><div class="card-title">Rentabilité par véhicule <span style="font-size:11px;color:#6b6b67;font-weight:400">(cliquer pour la fiche)</span></div><div id="d-rent"><div class="empty">Chargement…</div></div></div>
@@ -216,7 +230,38 @@ tr:hover td{background:#fafaf8;}
 <div class="section" id="p-caisse">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
     <div class="card" style="border-top:3px solid #185FA5">
-      <div class="card-title">Facturation J-1</div>
+      <div class="card-title">
+        Facturation
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm" id="btn-fac-simple" style="background:#185FA5;color:#fff" onclick="switchFacMode('simple')">Unitaire</button>
+          <button class="btn-sm" id="btn-fac-multi" style="background:#e0dfd8;color:#444" onclick="switchFacMode('multi')">Multiple</button>
+        </div>
+      </div>
+      <!-- MODE MULTIPLE -->
+      <div id="fac-multi-panel" style="display:none">
+        <div class="form-row">
+          <div class="field"><label>Date (défaut hier)</label><input id="fmd" type="date"></div>
+          <div class="field"><label>Type journée pour tous</label>
+            <select id="fmt">
+              <option value="complet">Journée complète</option>
+              <option value="demi_panne">Demi-journée (panne)</option>
+              <option value="repos">Repos (0 F)</option>
+              <option value="inactif">Inactif</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#6b6b67;margin-bottom:6px">Sélectionner les véhicules :</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+          <button class="btn-sm btn-outline" onclick="selectAllVehs()">Tout sélectionner</button>
+          <button class="btn-sm btn-outline" onclick="deselectAllVehs()">Tout déselectionner</button>
+          <select id="fm-filter-tag" style="font-size:12px;width:120px" onchange="filterVehsMulti()"><option value="">Tous tags</option></select>
+        </div>
+        <div id="fac-multi-vehs" style="max-height:180px;overflow-y:auto;border:1px solid #e0dfd8;border-radius:8px;padding:8px;margin-bottom:10px"></div>
+        <div id="fac-multi-resume" style="background:#f5f4f0;border-radius:8px;padding:8px;margin-bottom:10px;font-size:12px;color:#6b6b67"></div>
+        <button class="btn btn-blue" style="width:100%" onclick="validerFacMulti(this)">Valider la facturation multiple</button>
+      </div>
+      <!-- MODE SIMPLE -->
+      <div id="fac-simple-panel">
       <div class="form-row"><div class="field"><label>Véhicule *</label><select id="fv" onchange="onFacVeh()"><option value="">— choisir —</option></select></div><div class="field"><label>Chauffeur (auto)</label><input id="fc-nom" readonly style="opacity:.7;background:#f0efeb"></div></div>
       <div class="form-row"><div class="field"><label>Date (défaut hier)</label><input id="fd" type="date"></div><div class="field"><label>Type journée</label><select id="ft" onchange="calcFac()"><option value="complet">Journée complète</option><option value="demi_panne">Demi-journée (panne)</option><option value="repos">Repos (0 F)</option><option value="inactif">Inactif / Immobilisé</option></select></div></div>
       <div style="background:#f5f4f0;border-radius:8px;padding:12px;text-align:center;margin-bottom:12px">
@@ -226,6 +271,7 @@ tr:hover td{background:#fafaf8;}
       </div>
       <button class="btn btn-blue" style="width:100%" onclick="validerFac(this)">Valider la facturation</button>
     </div>
+      </div><!-- fin fac-simple-panel -->
     <div class="card" style="border-top:3px solid #3B6D11">
       <div class="card-title">Encaissement</div>
       <div class="field" style="margin-bottom:10px"><label>Chauffeur *</label><select id="ec" onchange="onEncChauffeur()"><option value="">— choisir —</option></select></div>
@@ -293,6 +339,55 @@ tr:hover td{background:#fafaf8;}
 </div><!-- fin main -->
 </div><!-- fin app -->
 
+  <!-- ACCES & PARTAGE -->
+  <div class="section" id="p-acces">
+    <div class="info-banner" style="margin-bottom:12px">
+      <strong>Manager (vous)</strong> — contrôle total · 
+      <strong>Gestionnaires</strong> — accès écriture sur leurs véhicules · 
+      <strong>Propriétaires</strong> — lecture seule sur leurs véhicules
+    </div>
+
+    <!-- GESTIONNAIRES -->
+    <div class="card" style="border-top:3px solid #3C3489">
+      <div class="card-title">Gestionnaires de flotte</div>
+      <div class="form-row">
+        <div class="field"><label>Nom *</label><input id="gnom" placeholder="Ibrahima Sy"></div>
+        <div class="field"><label>Téléphone</label><input id="gtel" placeholder="+221771234567"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Mot de passe accès *</label><input id="gpwd" placeholder="Ex: gestJZ2026"></div>
+        <div class="field"><label>Tag / Groupe auto-assigné</label>
+          <select id="gtag" onchange="onGestTag()"><option value="">— Choisir un tag —</option></select>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#6b6b67;margin-bottom:8px" id="gtag-info"></div>
+      <button class="btn btn-blue" onclick="addGestionnaire(this)">Créer le gestionnaire</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Gestionnaires actifs</div>
+      <div id="t-gestionnaires"><div class="empty">Chargement…</div></div>
+    </div>
+
+    <!-- PROPRIETAIRES -->
+    <div class="card" style="border-top:3px solid #185FA5;margin-top:4px">
+      <div class="card-title">Propriétaires (lecture seule)</div>
+      <div class="form-row">
+        <div class="field"><label>Nom *</label><input id="pnom" placeholder="Moussa Diallo"></div>
+        <div class="field"><label>Téléphone</label><input id="ptel" placeholder="+221771234567"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Email</label><input id="pemail" placeholder="moussa@email.com"></div>
+        <div class="field"><label>Mot de passe accès *</label><input id="ppwd" placeholder="Ex: moussaflotte2026"></div>
+      </div>
+      <button class="btn btn-blue" onclick="addProprietaire(this)">Créer l'accès propriétaire</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Propriétaires actifs</div>
+      <div id="tprop"><div class="empty">Chargement…</div></div>
+    </div>
+  </div>
+
+
 <!-- MODALES -->
 <div class="modal-overlay" id="m-veh"><div class="modal-box">
   <div class="modal-title">Modifier véhicule <button class="modal-close" onclick="M('m-veh')">×</button></div>
@@ -325,6 +420,12 @@ tr:hover td{background:#fafaf8;}
 <div class="modal-overlay" id="m-fiche-chauf"><div class="modal-box" style="max-width:640px">
   <div class="modal-title">Fiche chauffeur <button class="modal-close" onclick="M('m-fiche-chauf')">×</button></div>
   <div id="fiche-chauf-body"></div>
+</div></div>
+
+<div class="modal-overlay" id="m-assign-gest"><div class="modal-box" style="max-width:500px">
+  <div class="modal-title">Véhicules de <span id="m-ag-nom"></span><button class="modal-close" onclick="M('m-assign-gest')">×</button></div>
+  <div id="m-ag-body"></div>
+  <div class="modal-btns"><button class="btn btn-outline" onclick="M('m-assign-gest')">Fermer</button></div>
 </div></div>
 
 <div class="modal-overlay" id="m-assigner"><div class="modal-box" style="max-width:480px">
@@ -1031,6 +1132,229 @@ function loadPage(id) {
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
 }
+
+// ─── PERIODE ─────────────────────────────────────────────────
+function getPeriode(){
+  const d=document.getElementById('p-debut')?.value||'';
+  const f=document.getElementById('p-fin')?.value||'';
+  return d&&f?{date_debut:d,date_fin:f,active:true}:{active:false};
+}
+function clearPeriode(){
+  const pd=document.getElementById('p-debut');const pf=document.getElementById('p-fin');
+  if(pd)pd.value='';if(pf)pf.value='';
+  document.getElementById('periode-badge').style.display='none';
+  loadDashboard();
+}
+
+// ─── DASHBOARD PERIODE ────────────────────────────────────────
+// Patch loadDashboard pour afficher le KPI Facturé et la période
+const _origLoadDash = loadDashboard;
+async function loadDashboard(){
+  const per=getPeriode();
+  let url='/dashboard';
+  if(per.active) url+=`?date_debut=${per.date_debut}&date_fin=${per.date_fin}`;
+  const d=await api('GET',url);
+  if(d.detail)return;
+  document.getElementById('k-rec').textContent=fmt(d.kpis.recettes);
+  document.getElementById('k-dep').textContent=fmt(d.kpis.depenses);
+  const mg=d.kpis.marge;
+  const me=document.getElementById('k-marge');me.textContent=fmt(mg);me.style.color=mg>=0?'#3B6D11':'#A32D2D';
+  document.getElementById('k-pct').textContent=d.kpis.taux_marge+'%';
+  const kf=document.getElementById('k-facture');if(kf)kf.textContent=fmt(d.kpis.facture_total||0);
+  document.getElementById('k-total').textContent=d.kpis.vehicules_total;
+  if(d.stats_jour){document.getElementById('k-actif').textContent=d.stats_jour.actif||0;document.getElementById('k-panne').textContent=d.stats_jour.panne||0;document.getElementById('k-repos').textContent=d.stats_jour.repos||0;document.getElementById('k-inact').textContent=d.stats_jour.inactif||0;document.getElementById('k-ns').textContent=d.stats_jour.non_saisi||0;}
+  const retBadge=document.getElementById('k-retard');if(retBadge)retBadge.textContent=fmt(d.kpis.retard_total||0);
+  // Badge période
+  const pb=document.getElementById('periode-badge');
+  if(per.active&&pb){pb.style.display='inline-block';pb.textContent=`Période: ${per.date_debut} → ${per.date_fin}`;}
+  else if(pb) pb.style.display='none';
+  // Alertes
+  const alEl=document.getElementById('d-alertes');
+  alEl.innerHTML=d.alertes.length===0?'<div class="empty">Aucune alerte</div>':d.alertes.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f5f4f0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${a.type==='danger'?'#A32D2D':'#BA7517'};flex-shrink:0;display:inline-block"></span>${a.message}</div>`).join('');
+  // Rentabilité
+  const per2=getPeriode();
+  let vurl='/vehicules',versurl='/versements',depurl='/depenses',affurl='/affectations';
+  if(per2.active){versurl+=`?date_debut=${per2.date_debut}&date_fin=${per2.date_fin}`;depurl+=`?date_debut=${per2.date_debut}&date_fin=${per2.date_fin}`;}
+  const[vehs,vers,deps,affs]=await Promise.all([api('GET',vurl),api('GET',versurl),api('GET',depurl),api('GET',affurl)]);
+  const rentEl=document.getElementById('d-rent');
+  if(!vehs.length){rentEl.innerHTML='<div class="empty">Aucun véhicule</div>';return;}
+  const rows=vehs.map(v=>{
+    const rec=vers.filter(vs=>{const a=affs.find(a=>a.id===vs.affectation_id);return a&&a.vehicule_id===v.id;}).reduce((s,vs)=>s+vs.montant,0);
+    const dep=deps.filter(dd=>dd.vehicule_id===v.id).reduce((s,dd)=>s+dd.montant,0);
+    const mg=rec-dep;const pct=rec>0?Math.round(mg/rec*100):0;
+    return `<tr onclick="voirFicheVeh('${v.id}')" style="cursor:pointer"><td><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</td><td style="color:#3B6D11">${fmt(rec)}</td><td style="color:#A32D2D">${fmt(dep)}</td><td style="color:${mg>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(mg)}</strong></td><td>${pill(pct+'%',pct>=70?'ok':pct>=40?'warn':'err')}</td></tr>`;
+  }).join('');
+  rentEl.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ─── FACTURATION MULTIPLE ─────────────────────────────────────
+let allVehsCache = [];
+function switchFacMode(mode){
+  document.getElementById('fac-simple-panel').style.display = mode==='simple'?'block':'none';
+  document.getElementById('fac-multi-panel').style.display = mode==='multi'?'block':'none';
+  document.getElementById('btn-fac-simple').style.background = mode==='simple'?'#185FA5':'#e0dfd8';
+  document.getElementById('btn-fac-simple').style.color = mode==='simple'?'#fff':'#444';
+  document.getElementById('btn-fac-multi').style.background = mode==='multi'?'#185FA5':'#e0dfd8';
+  document.getElementById('btn-fac-multi').style.color = mode==='multi'?'#fff':'#444';
+  if(mode==='multi') loadVehsMulti();
+}
+
+async function loadVehsMulti(){
+  allVehsCache = await api('GET','/vehicules');
+  renderVehsMulti(allVehsCache);
+  // Remplir le filtre tag
+  const tagEl=document.getElementById('fm-filter-tag');
+  if(tagEl){const cur=tagEl.value;tagEl.innerHTML='<option value="">Tous tags</option>'+allTags.map(t=>`<option value="${t}">${t}</option>`).join('');if(cur)tagEl.value=cur;}
+}
+
+function filterVehsMulti(){
+  const tag=document.getElementById('fm-filter-tag')?.value||'';
+  const filtered=tag?allVehsCache.filter(v=>v.tag===tag):allVehsCache;
+  renderVehsMulti(filtered);
+}
+
+function renderVehsMulti(vehs){
+  const el=document.getElementById('fac-multi-vehs');
+  if(!vehs.length){el.innerHTML='<div class="empty">Aucun véhicule</div>';return;}
+  el.innerHTML=vehs.map(v=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f4f0;cursor:pointer;font-size:12px">
+      <input type="checkbox" class="fac-multi-cb" value="${v.id}" onchange="updateFacMultiResume()" style="width:15px;height:15px">
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}
+      <span style="color:${v.statut_jour==='actif'?'#3B6D11':v.statut_jour==='panne'?'#A32D2D':'#BA7517'};margin-left:4px;font-size:10px">${v.statut_jour||'—'}</span></span>
+    </label>`).join('');
+}
+
+function selectAllVehs(){document.querySelectorAll('.fac-multi-cb').forEach(cb=>cb.checked=true);updateFacMultiResume();}
+function deselectAllVehs(){document.querySelectorAll('.fac-multi-cb').forEach(cb=>cb.checked=false);updateFacMultiResume();}
+
+function updateFacMultiResume(){
+  const sel=Array.from(document.querySelectorAll('.fac-multi-cb:checked')).map(cb=>cb.value);
+  const type=document.getElementById('fmt')?.value||'complet';
+  const labels={complet:'Complète',demi_panne:'Demi-panne',repos:'Repos (0 F)',inactif:'Inactif'};
+  document.getElementById('fac-multi-resume').textContent=`${sel.length} véhicule(s) sélectionné(s) · Type: ${labels[type]}`;
+}
+
+async function validerFacMulti(btn){
+  const sel=Array.from(document.querySelectorAll('.fac-multi-cb:checked')).map(cb=>cb.value);
+  const type=document.getElementById('fmt').value;
+  const date=document.getElementById('fmd').value;
+  if(!sel.length){toast('Sélectionnez au moins un véhicule','err');return;}
+  if(!date){toast('Date obligatoire','err');return;}
+  setBtnLoading(btn,true);
+  const r=await api('POST','/facturations/multiple',{vehicules_ids:sel,type_journee:type,date});
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  const totalFac=r.results.reduce((s,x)=>s+x.montant_facture,0);
+  toast(`${r.message} — ${fmt(totalFac)} facturés`);
+  deselectAllVehs(); loadFac(); loadDashboard();
+}
+
+// ─── GESTIONNAIRES ────────────────────────────────────────────
+async function onGestTag(){
+  const tag=document.getElementById('gtag').value;
+  if(!tag){document.getElementById('gtag-info').textContent='';return;}
+  const vehs=await api('GET','/vehicules?tag='+encodeURIComponent(tag));
+  document.getElementById('gtag-info').textContent=`Ce gestionnaire sera auto-assigné aux ${vehs.length} véhicules du tag "${tag}" : ${vehs.map(v=>v.immatriculation).join(', ')}`;
+}
+
+async function loadGestionnaires(){
+  if(ROLE!=='manager')return;
+  const list=await api('GET','/gestionnaires');
+  const vehs=await api('GET','/vehicules');
+  const el=document.getElementById('t-gestionnaires');
+  if(!list.length){el.innerHTML='<div class="empty">Aucun gestionnaire</div>';return;}
+  el.innerHTML=list.map(g=>{
+    const gvehs=vehs.filter(v=>g.vehicules_ids&&g.vehicules_ids.includes(v.id));
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e0dfd8;gap:10px">
+      <div>
+        <div style="font-weight:600">${g.nom} ${g.tag?pill(g.tag,'purple'):''}</div>
+        <div style="font-size:12px;color:#6b6b67;margin-top:2px">${g.telephone||''}</div>
+        <div style="margin-top:6px">${gvehs.length?gvehs.map(v=>pill(v.immatriculation,'blue')).join(' '):'<span style="font-size:12px;color:#aaa">Aucun véhicule</span>'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+        <div style="font-size:10px;color:#6b6b67">Mot de passe :</div>
+        <div onclick="navigator.clipboard.writeText('${g.password||''}').then(()=>toast('Copié !'))" style="font-family:monospace;font-size:12px;background:#f5f4f0;padding:3px 8px;border-radius:4px;border:1px solid #e0dfd8;cursor:pointer" title="Cliquer pour copier">${g.password||'—'}</div>
+        <div style="display:flex;gap:5px">
+          <button class="btn-sm" style="background:#EEEDFE;color:#3C3489" onclick="ouvrirAssignGest('${g.id}','${g.nom}')">Véhicules</button>
+          <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delGest('${g.id}','${g.nom}')">Suppr.</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addGestionnaire(btn){
+  const nom=document.getElementById('gnom').value.trim();
+  const pwd=document.getElementById('gpwd').value.trim();
+  if(!nom||!pwd){toast('Nom et mot de passe obligatoires','err');return;}
+  const tag=document.getElementById('gtag').value;
+  // Si tag sélectionné, récupérer les véhicules du tag
+  let vehicules_ids=[];
+  if(tag){const vehs=await api('GET','/vehicules?tag='+encodeURIComponent(tag));vehicules_ids=vehs.map(v=>v.id);}
+  setBtnLoading(btn,true);
+  const r=await api('POST','/gestionnaires',{nom,telephone:document.getElementById('gtel').value,password:pwd,tag,vehicules_ids});
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Gestionnaire '+nom+' créé — mot de passe : '+pwd);
+  ['gnom','gtel','gpwd'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('gtag').value='';
+  document.getElementById('gtag-info').textContent='';
+  loadGestionnaires();
+}
+
+async function delGest(id,nom){if(!confirm('Supprimer l'accès de '+nom+' ?'))return;await api('DELETE','/gestionnaires/'+id);toast('Supprimé','info');loadGestionnaires();}
+
+async function ouvrirAssignGest(gid,gnom){
+  document.getElementById('m-ag-nom').textContent=gnom;
+  const vehs=await api('GET','/vehicules');
+  const gests=await api('GET','/gestionnaires');
+  const gest=gests.find(g=>g.id===gid);
+  const assigned=gest?gest.vehicules_ids||[]:[];
+  document.getElementById('m-ag-body').innerHTML=`
+    <div style="font-size:12px;color:#6b6b67;margin-bottom:10px">Cochez les véhicules à assigner à ce gestionnaire :</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">${allTags.map(t=>`<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#E6F1FB;color:#0C447C;cursor:pointer" onclick="filtrerAssignGest('${gid}','${t}')">${t}</span>`).join('')}</div>
+    <div id="m-ag-list">${vehs.map(v=>`
+    <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0efeb;cursor:pointer;font-size:13px">
+      <input type="checkbox" ${assigned.includes(v.id)?'checked':''} onchange="toggleAssignGest('${gid}','${v.id}',this.checked)" style="width:15px;height:15px">
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</span>
+    </label>`).join('')}</div>`;
+  openM('m-assign-gest');
+}
+
+async function toggleAssignGest(gid,vid,checked){
+  const gests=await api('GET','/gestionnaires');
+  const g=gests.find(x=>x.id===gid);if(!g)return;
+  let ids=g.vehicules_ids||[];
+  if(checked&&!ids.includes(vid))ids.push(vid);
+  else if(!checked)ids=ids.filter(id=>id!==vid);
+  await api('PATCH','/gestionnaires/'+gid,{vehicules_ids:ids});
+  toast('Assignation mise à jour');loadGestionnaires();
+}
+
+// Charger tags dans le select gestionnaire
+async function loadTagsInGest(){
+  const el=document.getElementById('gtag');if(!el)return;
+  const cur=el.value;
+  el.innerHTML='<option value="">— Choisir un tag —</option>'+allTags.map(t=>`<option value="${t}">${t}</option>`).join('');
+  if(cur)el.value=cur;
+}
+
+// ─── LOAD PAGE (mise à jour) ──────────────────────────────────
+const _origLoadPage = loadPage;
+function loadPage(id){
+  if(id==='acces'){loadGestionnaires();loadProprietaires();loadTagsInGest();}
+  else _origLoadPage(id);
+}
+
+// Initialiser la date hier dans facturation multiple
+const _origLancerApp = lancerApp;
+function lancerApp(){
+  _origLancerApp();
+  const hier=new Date();hier.setDate(hier.getDate()-1);
+  const fmd=document.getElementById('fmd');
+  if(fmd)fmd.value=hier.toISOString().split('T')[0];
+}
+
 </script>
 </body>
 </html>
