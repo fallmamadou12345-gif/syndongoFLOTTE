@@ -187,7 +187,7 @@ tr:hover td{background:#fafaf8;}
 
 <!-- VEHICULES -->
 <div class="section" id="p-vehicules">
-  <div class="card">
+  <div class="card no-proprio">
     <div class="card-title">Ajouter un véhicule</div>
     <div class="form-row"><div class="field"><label>Immatriculation *</label><input id="vi" placeholder="AA-0000-A"></div><div class="field"><label>Marque *</label><input id="vm" placeholder="Iran Khodro, Kia…"></div></div>
     <div class="form-row-3"><div class="field"><label>Modèle</label><input id="vmo" placeholder="Samand…"></div><div class="field"><label>Année</label><input id="van" type="number" value="2020"></div><div class="field"><label>Km actuel</label><input id="vk" type="number" value="0"></div></div>
@@ -690,6 +690,8 @@ function lancerApp() {
 
   // Cacher les formulaires manager-only pour les autres rôles
   if(ROLE!=='manager') document.querySelectorAll('.manager-only').forEach(el=>el.style.display='none');
+  // Cacher les formulaires no-proprio pour les propriétaires
+  if(ROLE==='proprietaire') document.querySelectorAll('.no-proprio').forEach(el=>el.style.display='none');
 
   // Initialiser les dates
   document.getElementById('ad').value=new Date().toISOString().split('T')[0];
