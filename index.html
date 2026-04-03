@@ -342,7 +342,10 @@ tr:hover td{background:#fafaf8;}
   <!-- RAPPORTS -->
   <div class="section" id="p-rapports">
     <div class="card">
-      <div class="card-title">Rapports — Analyse par période</div>
+      <div class="card-title">
+        <span id="rapports-titre">Rapports — Analyse par période</span>
+        <span id="rapports-scope" style="font-size:11px;font-weight:400;color:#6b6b67"></span>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
         <div class="field"><label>Du</label><input type="date" id="rp-debut" onchange="loadRapport()"></div>
         <div class="field"><label>Au</label><input type="date" id="rp-fin" onchange="loadRapport()"></div>
@@ -1029,15 +1032,34 @@ async function loadFac(){
 
 // ─── RETARDS ─────────────────────────────────────────────────
 async function loadRetards(){
-  const ret=await api('GET','/retards');
+  // Adapter le titre selon le rôle
+  const titreEl=document.getElementById('retards-titre');
+  if(titreEl) titreEl.textContent=ROLE==='proprietaire'?'Retards de versement — Vos véhicules':'Retards de versement par véhicule';
+  // Masquer stats pannes pour les propriétaires
+  const cardPannes=document.getElementById('card-stats-pannes');
+  if(cardPannes) cardPannes.style.display=ROLE==='proprietaire'?'none':'block';
+  // Période
+  const debut=document.getElementById('ret-debut')?.value||'';
+  const fin=document.getElementById('ret-fin')?.value||'';
+  let url='/retards';
+  if(debut&&fin) url+=`?date_debut=${debut}&date_fin=${fin}`;
+  const ret=await api('GET',url);
   const el=document.getElementById('tret');
   const total=ret.reduce((s,r)=>s+r.retard,0);
-  if(!ret.length){el.innerHTML='<div class="empty" style="color:#3B6D11">Aucun retard — tous les chauffeurs sont à jour ✓</div>';return;}
+  if(!ret.length){
+    el.innerHTML='<div style="text-align:center;padding:24px;color:#3B6D11;font-size:14px;font-weight:600">✓ Aucun retard — tous les versements sont à jour</div>';
+    // Masquer stats pannes pour les propriétaires
+    const pannesEl=document.getElementById('tpannes');
+    if(pannesEl&&ROLE==='proprietaire') pannesEl.closest('.card').style.display='none';
+    return;
+  }
   el.innerHTML=`<div class="danger-banner">Total retards : <strong>${fmt(total)}</strong> sur ${ret.length} véhicule(s)</div>
   <div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Versé</th><th>Retard</th></tr></thead><tbody>
   ${ret.map(r=>`<tr><td onclick="voirFicheVeh('${r.vehicule_id}')" style="cursor:pointer"><strong>${r.immatriculation}</strong> ${r.marque}</td><td>${r.tag?pill(r.tag,'purple'):'—'}</td><td>${r.chauffeur}</td><td style="color:#6b6b67">${fmt(r.total_facture)}</td><td style="color:#3B6D11">${fmt(r.total_verse)}</td><td style="color:#A32D2D;font-weight:700">${fmt(r.retard)}</td></tr>`).join('')}
   </tbody></table></div>`;
-  // Stats pannes
+  // Stats pannes (masquées pour les propriétaires)
+  const panneCard=document.querySelector('#p-retards .card:last-child');
+  if(panneCard&&ROLE==='proprietaire') panneCard.style.display='none';
   const stats=await api('GET','/activites/stats?jours=30');
   const vehs=await api('GET','/vehicules');
   const pannesEl=document.getElementById('tpannes');
@@ -1210,18 +1232,27 @@ async function exportPDF(){
   w.document.close(); setTimeout(()=>w.print(),500);
 }
 
+function clearRetardsPeriode(){
+  const rd=document.getElementById('ret-debut');
+  const rf=document.getElementById('ret-fin');
+  if(rd)rd.value='';if(rf)rf.value='';
+  loadRetards();
+}
+
 async function exportRetardsPDF(btn){
   setBtnLoading(btn,true);
   const ret=await api('GET','/retards');
   setBtnLoading(btn,false);
   const total=ret.reduce((s,r)=>s+r.retard,0);
+  const ret2=await api('GET','/retards'+(document.getElementById('ret-debut')?.value&&document.getElementById('ret-fin')?.value?`?date_debut=${document.getElementById('ret-debut').value}&date_fin=${document.getElementById('ret-fin').value}`:''));
+  const periode=document.getElementById('ret-debut')?.value?` · Du ${document.getElementById('ret-debut').value} au ${document.getElementById('ret-fin').value}`:'';
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Retards SyNdongo</title><style>body{font-family:Arial,sans-serif;padding:30px;}h1{color:#A32D2D;}table{width:100%;border-collapse:collapse;margin-top:16px;}th{background:#f5f4f0;padding:8px;text-align:left;border:1px solid #ddd;font-size:12px;}td{padding:8px;border:1px solid #ddd;font-size:12px;}.total{font-weight:bold;background:#FCEBEB;}</style></head>
-  <body><h1>Rapport des retards</h1><div style="font-size:13px;color:#666;margin-bottom:16px">Transport Ndongo Fall · ${new Date().toLocaleDateString('fr-FR')}</div>
-  <div style="background:#FCEBEB;padding:12px;border-radius:6px;font-size:14px;font-weight:bold;color:#A32D2D;margin-bottom:16px">Total retards : ${total.toLocaleString('fr-FR')} FCFA</div>
+  <body><h1>Rapport des retards</h1><div style="font-size:13px;color:#666;margin-bottom:16px">Transport Ndongo Fall · ${new Date().toLocaleDateString('fr-FR')}${periode}</div>
+  <div style="background:#FCEBEB;padding:12px;border-radius:6px;font-size:14px;font-weight:bold;color:#A32D2D;margin-bottom:16px">Total retards : ${ret2.reduce((s,r)=>s+r.retard,0).toLocaleString('fr-FR')} FCFA</div>
   <table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Versé</th><th>Retard</th></tr></thead>
-  <tbody>${ret.map(r=>`<tr><td><strong>${r.immatriculation}</strong> ${r.marque}</td><td>${r.tag||'—'}</td><td>${r.chauffeur}</td><td>${r.total_facture.toLocaleString('fr-FR')} F</td><td>${r.total_verse.toLocaleString('fr-FR')} F</td><td style="color:#A32D2D;font-weight:bold">${r.retard.toLocaleString('fr-FR')} F</td></tr>`).join('')}
-  <tr class="total"><td colspan="5">TOTAL</td><td style="color:#A32D2D">${total.toLocaleString('fr-FR')} F</td></tr>
+  <tbody>${ret2.map(r=>`<tr><td><strong>${r.immatriculation}</strong> ${r.marque}</td><td>${r.tag||'—'}</td><td>${r.chauffeur}</td><td>${r.total_facture.toLocaleString('fr-FR')} F</td><td>${r.total_verse.toLocaleString('fr-FR')} F</td><td style="color:#A32D2D;font-weight:bold">${r.retard.toLocaleString('fr-FR')} F</td></tr>`).join('')}
+  <tr class="total"><td colspan="5">TOTAL</td><td style="color:#A32D2D">${ret2.reduce((s,r)=>s+r.retard,0).toLocaleString('fr-FR')} F</td></tr>
   </tbody></table></body></html>`);
   w.document.close(); setTimeout(()=>w.print(),500);
 }
@@ -1237,7 +1268,14 @@ function loadPage(id) {
     document.getElementById('fd').value=hier.toISOString().split('T')[0];
     refreshSelects();loadFac();
   }
-  else if(id==='retards') loadRetards();
+  else if(id==='retards'){
+    // Période par défaut : ce mois
+    const rd=document.getElementById('ret-debut');
+    const rf=document.getElementById('ret-fin');
+    if(rd&&!rd.value){const d=new Date();d.setDate(1);rd.value=d.toISOString().split('T')[0];}
+    if(rf&&!rf.value) rf.value=new Date().toISOString().split('T')[0];
+    loadRetards();
+  }
   else if(id==='depenses') loadDepenses();
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
@@ -1581,9 +1619,18 @@ function setPeriodeRapide(){
 // ─── RAPPORT ──────────────────────────────────────────────────
 let rapportData = [];
 async function loadRapport(){
+  // Adapter selon le rôle
+  const scopeEl=document.getElementById('rapports-scope');
+  if(scopeEl) scopeEl.textContent=ROLE==='proprietaire'?'— Vos véhicules uniquement':ROLE==='gestionnaire'?'— Vos véhicules assignés':'';
+  // Masquer groupement "par propriétaire" pour les non-managers
+  const groupeEl=document.getElementById('rp-groupe');
+  if(groupeEl&&ROLE!=='manager'){
+    Array.from(groupeEl.options).forEach(o=>{if(o.value==='proprietaire')o.style.display='none';});
+    if(groupeEl.value==='proprietaire') groupeEl.value='vehicule';
+  }
   const debut=document.getElementById('rp-debut')?.value||'';
   const fin=document.getElementById('rp-fin')?.value||'';
-  const groupe=document.getElementById('rp-groupe')?.value||'vehicule';
+  const groupe=groupeEl?.value||'vehicule';
   if(!debut||!fin){document.getElementById('rp-table').innerHTML='<div class="empty">Sélectionnez une période</div>';return;}
   
   const [rapport,props] = await Promise.all([
