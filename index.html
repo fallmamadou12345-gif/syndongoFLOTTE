@@ -472,20 +472,48 @@ tr:hover td{background:#fafaf8;}
 
   <!-- ACCES & PARTAGE -->
   <div class="section" id="p-acces">
-    <!-- Configuration Wave -->
-    <div class="card manager-only" style="border-top:3px solid #0A85D1;margin-bottom:12px">
-      <div class="card-title">Configuration Wave API — Paiements automatiques</div>
-      <div style="background:#E6F1FB;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#0C447C">
-        <strong>Comment ça marche :</strong> Quand un chauffeur paye via Wave, le versement s'enregistre automatiquement dans SyNdongo.
-        Configurez votre clé API Wave sur Render → Environnement.
+    <!-- Configuration Wave — visible par manager ET gestionnaire -->
+    <div class="card" style="border-top:3px solid #0A85D1;margin-bottom:12px">
+      <div class="card-title">
+        Ma configuration Wave API
+        <span id="wave-role-badge" style="font-size:11px;font-weight:400;color:#6b6b67"></span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div class="field"><label>Clé API Wave (WAVE_API_KEY)</label><input readonly value="${WAVE_API_KEY_SET}" id="wave-key-display" style="opacity:.7;font-family:monospace;font-size:11px"></div>
-        <div class="field"><label>Webhook URL à configurer sur Wave</label><input readonly id="wave-webhook-url" style="font-family:monospace;font-size:11px;cursor:pointer" onclick="navigator.clipboard.writeText(this.value).then(()=>toast('Copié !'))"></div>
+      <div style="background:#E6F1FB;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#0C447C">
+        Chaque gestionnaire a sa propre clé Wave. Les paiements de vos chauffeurs sont encaissés sur votre compte Wave.
       </div>
-      <div style="font-size:12px;color:#6b6b67">
-        <strong>Pour activer :</strong> Render → Environnement → Ajouter <code>WAVE_API_KEY</code> = votre clé Wave · 
-        Sur Wave Dashboard → Webhooks → URL = <span id="wave-url-display" style="font-family:monospace;color:#185FA5"></span>
+      <!-- Clé Wave du gestionnaire connecté -->
+      <div id="wave-gest-section">
+        <div class="form-row">
+          <div class="field" style="flex:2">
+            <label>Ma clé API Wave personnelle</label>
+            <div style="display:flex;gap:8px">
+              <input type="password" id="wave-gest-key" placeholder="wave_sn_prod_XXXXXXXXXXXXX" style="flex:1;font-family:monospace;font-size:12px">
+              <button class="btn btn-blue" style="flex-shrink:0" onclick="sauvegarderCleWave(this)">Enregistrer</button>
+            </div>
+            <div style="font-size:11px;color:#6b6b67;margin-top:3px">Trouvez votre clé sur Wave for Business → API → Clés d'accès</div>
+          </div>
+          <div class="field">
+            <label>Statut</label>
+            <div id="wave-gest-statut" style="padding:8px 12px;border-radius:8px;background:#f5f4f0;font-size:12px;color:#6b6b67">Non configurée</div>
+          </div>
+        </div>
+      </div>
+      <!-- Webhook URL -->
+      <div class="form-row" style="margin-top:8px">
+        <div class="field" style="flex:1">
+          <label>URL Webhook à configurer sur Wave Dashboard</label>
+          <div style="display:flex;gap:8px">
+            <input readonly id="wave-webhook-url" style="flex:1;font-family:monospace;font-size:11px;background:#f5f4f0">
+            <button class="btn btn-outline" style="flex-shrink:0;font-size:11px" onclick="navigator.clipboard.writeText(document.getElementById('wave-webhook-url').value).then(()=>toast('URL copiée !'))">Copier</button>
+          </div>
+          <div style="font-size:11px;color:#6b6b67;margin-top:3px">Wave Dashboard → Développeurs → Webhooks → Ajouter cette URL</div>
+        </div>
+      </div>
+      <!-- Manager : clé globale en plus -->
+      <div class="manager-only" style="margin-top:12px;padding-top:12px;border-top:1px solid #e0dfd8">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">Clé Wave globale (manager — utilisée si le gestionnaire n'en a pas)</div>
+        <div style="font-size:12px;color:#6b6b67">Configurée via Render → Environnement → <code>WAVE_API_KEY</code></div>
+        <div id="wave-url-display" style="font-family:monospace;font-size:11px;color:#185FA5;margin-top:4px"></div>
       </div>
       <div id="wave-pending-list" style="margin-top:12px;display:none">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">Paiements Wave en attente :</div>
@@ -2370,10 +2398,35 @@ async function delPropOnglet(id,nom){
 async function loadWaveConfig(){
   const webhookUrl=window.location.origin+'/api/webhook/wave';
   const urlEl=document.getElementById('wave-webhook-url');
-  const urlDisplay=document.getElementById('wave-url-display');
-  const urlDisplay2=document.getElementById('wave-url-display');
   if(urlEl) urlEl.value=webhookUrl;
+  const urlDisplay=document.getElementById('wave-url-display');
   if(urlDisplay) urlDisplay.textContent=webhookUrl;
+  
+  // Badge rôle
+  const badge=document.getElementById('wave-role-badge');
+  if(badge) badge.textContent=ROLE==='gestionnaire'?'(votre clé personnelle)':'(clé du manager + clés par gestionnaire)';
+  
+  // Charger la clé Wave du gestionnaire connecté
+  if(ROLE==='gestionnaire'||ROLE==='manager'){
+    try{
+      const gests=await api('GET','/gestionnaires');
+      const monGest=gests&&gests[0];
+      const statutEl=document.getElementById('wave-gest-statut');
+      if(statutEl&&monGest){
+        if(monGest.wave_api_key==='***CONFIGUREE***'){
+          statutEl.style.background='#EAF3DE';statutEl.style.color='#27500A';
+          statutEl.textContent='Clé Wave configurée ✓';
+        } else {
+          statutEl.style.background='#FCEBEB';statutEl.style.color='#A32D2D';
+          statutEl.textContent='Non configurée — paiements Wave désactivés';
+        }
+      }
+    }catch(e){}
+  }
+  
+  // Masquer la section clé Wave pour le manager (il utilise la variable Render)
+  const gestSection=document.getElementById('wave-gest-section');
+  if(gestSection&&ROLE==='manager') gestSection.style.display='none';
   
   // Vérifier les paiements en attente
   try{
@@ -2387,6 +2440,27 @@ async function loadWaveConfig(){
       </tbody></table>`;
     }
   }catch(e){}
+}
+
+async function sauvegarderCleWave(btn){
+  const key=document.getElementById('wave-gest-key')?.value.trim();
+  if(!key){toast('Entrez votre clé Wave','err');return;}
+  // Trouver l'ID du gestionnaire connecté
+  const gests=await api('GET','/gestionnaires');
+  const monGest=gests&&gests[0];
+  if(!monGest){toast('Erreur — gestionnaire introuvable','err');return;}
+  setBtnLoading(btn,true);
+  const r=await api('PATCH','/gestionnaires/'+monGest.id,{wave_api_key:key});
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Clé Wave enregistrée avec succès !');
+  document.getElementById('wave-gest-key').value='';
+  // Mettre à jour le statut
+  const statutEl=document.getElementById('wave-gest-statut');
+  if(statutEl){
+    statutEl.style.background='#EAF3DE';statutEl.style.color='#27500A';
+    statutEl.textContent='Clé Wave configurée ✓';
+  }
 }
 
 

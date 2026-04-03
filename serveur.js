@@ -12,9 +12,10 @@ const WAVE_API_KEY = process.env.WAVE_API_KEY || '';
 const WAVE_WEBHOOK_SECRET = process.env.WAVE_WEBHOOK_SECRET || '';
 const APP_URL = process.env.APP_URL || 'https://syndongoflotte.onrender.com';
 
-// Créer une demande de paiement Wave
-async function createWavePayment(montant, phone, description, reference) {
-  if (!WAVE_API_KEY) return { error: 'WAVE_API_KEY non configurée' };
+// Créer une demande de paiement Wave (clé API = celle du gestionnaire ou du manager)
+async function createWavePayment(montant, phone, description, reference, apiKey) {
+  const key = apiKey || WAVE_API_KEY;
+  if (!key) return { error: 'Clé Wave non configurée — ajoutez votre clé dans Accès & Partage' };
   try {
     const https = require('https');
     const body = JSON.stringify({
@@ -32,7 +33,7 @@ async function createWavePayment(montant, phone, description, reference) {
         path: '/v1/checkout/sessions',
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer '+WAVE_API_KEY,
+          'Authorization': 'Bearer '+key,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body)
         }
@@ -578,8 +579,17 @@ async function handleAPI(req, res, body) {
 
   // ── GESTIONNAIRES ─────────────────────────────────────────
   if(p==='/api/gestionnaires'&&method==='GET'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    return res.end(JSON.stringify(db.gestionnaires));
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(isGest){
+      // Un gestionnaire ne voit que sa propre fiche (avec clé Wave masquée)
+      const g=db.gestionnaires.find(x=>x.id===auth.gest.id);
+      if(!g) return res.end(JSON.stringify([]));
+      const safe={...g, wave_api_key: g.wave_api_key?'***CONFIGUREE***':''};
+      return res.end(JSON.stringify([safe]));
+    }
+    // Manager voit tout mais masque les clés Wave
+    const list=db.gestionnaires.map(g=>({...g,wave_api_key:g.wave_api_key?'***CONFIGUREE***':''}));
+    return res.end(JSON.stringify(list));
   }
   if(p==='/api/gestionnaires'&&method==='POST'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
@@ -589,9 +599,21 @@ async function handleAPI(req, res, body) {
   }
   const gM=p.match(/^\/api\/gestionnaires\/([^/]+)$/);
   if(gM&&method==='PATCH'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    // Manager peut tout modifier. Gestionnaire peut modifier sa PROPRE clé Wave uniquement.
+    if(!isManager&&!(isGest&&auth.gest.id===gM[1])){
+      res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));
+    }
     const idx=db.gestionnaires.findIndex(g=>g.id===gM[1]);
-    if(idx!==-1){db.gestionnaires[idx]={...db.gestionnaires[idx],...data};saveDB(db);}
+    if(idx!==-1){
+      if(isGest&&!isManager){
+        // Gestionnaire : ne peut modifier que sa clé Wave et ses infos personnelles
+        const allowed={wave_api_key:data.wave_api_key,nom:data.nom,telephone:data.telephone,email:data.email};
+        Object.keys(allowed).forEach(k=>{if(allowed[k]!==undefined)db.gestionnaires[idx][k]=allowed[k];});
+      } else {
+        db.gestionnaires[idx]={...db.gestionnaires[idx],...data};
+      }
+      saveDB(db);
+    }
     return res.end(JSON.stringify({message:'Mis à jour'}));
   }
   if(gM&&method==='DELETE'){
@@ -714,12 +736,16 @@ async function handleAPI(req, res, body) {
     const {chauffeur_id, montant} = data;
     const chauffeur=db.chauffeurs.find(c=>c.id===chauffeur_id);
     if(!chauffeur) return res.end(JSON.stringify({detail:'Chauffeur introuvable'}));
+    // Clé Wave : celle du gestionnaire en priorité, sinon celle du manager
+    const waveKey = isGest ? (auth.gest.wave_api_key||WAVE_API_KEY) : WAVE_API_KEY;
+    if(!waveKey) return res.end(JSON.stringify({detail:'Clé Wave non configurée. Ajoutez votre clé dans Accès & Partage → Configuration Wave.'}));
     const reference='SND-'+uid().toUpperCase();
     const result = await createWavePayment(
       Number(montant),
       chauffeur.telephone,
       'SyNdongo — '+chauffeur.prenom+' '+chauffeur.nom,
-      reference
+      reference,
+      waveKey
     );
     if(result.error) return res.end(JSON.stringify({detail:'Erreur Wave: '+result.error}));
     // Sauvegarder la référence en attente
@@ -811,8 +837,9 @@ async function handleAPI(req, res, body) {
   }
 
   // Statut des paiements Wave en attente
+  // Le gestionnaire peut voir ses propres paiements en attente
   if(p==='/api/wave/pending'&&method==='GET'){
-    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const pending=db.wave_pending||{};
     const list=Object.entries(pending).map(([ref,p])=>{
       const c=db.chauffeurs.find(x=>x.id===p.chauffeur_id);
