@@ -147,37 +147,34 @@ tr:hover td{background:#fafaf8;}
     <div class="kpi"><div class="kpi-label">Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
   </div>
   <div class="card" style="margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="font-size:12px;font-weight:600;color:#6b6b67;flex-shrink:0">Filtres :</div>
       <!-- Filtre période -->
-      <div style="display:flex;align-items:center;gap:5px">
-        <span style="font-size:11px;color:#6b6b67">Période</span>
-        <input type="date" id="p-debut" style="font-size:12px;width:128px" onchange="loadDashboard()">
-        <span style="font-size:12px;color:#6b6b67">→</span>
-        <input type="date" id="p-fin" style="font-size:12px;width:128px" onchange="loadDashboard()">
-      </div>
+      <input type="date" id="p-debut" style="font-size:12px;width:128px" onchange="loadDashboard()" title="Date début">
+      <span style="font-size:12px;color:#6b6b67">→</span>
+      <input type="date" id="p-fin" style="font-size:12px;width:128px" onchange="loadDashboard()" title="Date fin">
       <!-- Filtre rapide -->
-      <select id="dash-periode-rapide" style="font-size:12px;width:130px" onchange="setDashPeriodeRapide()">
-        <option value="">Période rapide</option>
+      <select id="dash-periode-rapide" style="font-size:12px;width:120px" onchange="setDashPeriodeRapide()">
+        <option value="">Rapide…</option>
         <option value="today">Aujourd'hui</option>
         <option value="week">Cette semaine</option>
         <option value="month">Ce mois</option>
         <option value="lastmonth">Mois dernier</option>
         <option value="year">Cette année</option>
       </select>
-      <!-- Filtre tag -->
-      <select id="dash-filter-tag" style="font-size:12px;width:130px" onchange="loadDashboard()">
+      <!-- Filtre tag — cascade vers proprio et véhicule -->
+      <select id="dash-filter-tag" style="font-size:12px;width:130px" onchange="onDashTagChange()">
         <option value="">Tous les tags</option>
       </select>
-      <!-- Filtre propriétaire -->
-      <select id="dash-filter-proprio" style="font-size:12px;width:150px" onchange="loadDashboard()">
+      <!-- Filtre propriétaire — cascade vers véhicule -->
+      <select id="dash-filter-proprio" style="font-size:12px;width:150px" onchange="onDashProprioChange()">
         <option value="">Tous propriétaires</option>
       </select>
       <!-- Filtre véhicule -->
-      <select id="dash-filter-veh" style="font-size:12px;width:160px" onchange="loadDashboard()">
-        <option value="">Tous les véhicules</option>
+      <select id="dash-filter-veh" style="font-size:12px;width:155px" onchange="loadDashboard()">
+        <option value="">Tous véhicules</option>
       </select>
-      <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearDashFiltres()">Réinitialiser</button>
+      <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearDashFiltres()">✕ Réinit.</button>
       <div id="periode-badge" style="display:none" class="pill pill-blue"></div>
     </div>
   </div>
@@ -219,7 +216,7 @@ tr:hover td{background:#fafaf8;}
 
 <!-- CHAUFFEURS -->
 <div class="section" id="p-chauffeurs">
-  <div class="card">
+  <div class="card no-proprio">
     <div class="card-title">Ajouter un chauffeur</div>
     <div class="form-row"><div class="field"><label>Prénom *</label><input id="cp" placeholder="Ibrahima"></div><div class="field"><label>Nom *</label><input id="cn" placeholder="Sy"></div></div>
     <div class="form-row"><div class="field"><label>Téléphone * (anti-doublon)</label><input id="ct" placeholder="+221771234567"></div><div class="field"><label>N° Permis (anti-doublon)</label><input id="cpe" placeholder="SN-2020-00123"></div></div>
@@ -773,7 +770,7 @@ async function addTag(){
   const color=document.getElementById('new-tag-color')?.value||'#0C447C';
   await api('POST','/tags',{tag:{nom:v,bg,color}});
   document.getElementById('new-tag').value='';
-  toast('Tag "'+v+'" ajouté');loadTags();
+  toast('Tag "'+v+'" ajouté');loadTags().then(()=>{_allVehsForFilter=[];initDashFilters();});
 }
 
 async function changerCouleurTag(nom,bg,color){
@@ -1403,6 +1400,88 @@ function clearDashFiltres(){
   });
   document.getElementById('dash-periode-rapide').value='';
   document.getElementById('periode-badge').style.display='none';
+  // Réinitialiser les listes cascadantes
+  rechargeDashFilterVeh();
+  loadDashboard();
+}
+
+// ─── FILTRES CASCADANTS ────────────────────────────────────────
+let _allVehsForFilter=[], _allPropsForFilter=[];
+
+async function initDashFilters(){
+  // Charger tous les véhicules et propriétaires une seule fois
+  _allVehsForFilter=await api('GET','/vehicules');
+  if(ROLE==='manager') _allPropsForFilter=await api('GET','/proprietaires').catch(()=>[]);
+  
+  // Remplir tags
+  const dtEl=document.getElementById('dash-filter-tag');
+  if(dtEl) dtEl.innerHTML='<option value="">Tous les tags</option>'+
+    allTags.map(t=>`<option value="${tagNom(t)}">${tagNom(t)}</option>`).join('');
+  
+  // Remplir propriétaires
+  if(ROLE==='manager'){
+    const dpEl=document.getElementById('dash-filter-proprio');
+    if(dpEl) dpEl.innerHTML='<option value="">Tous propriétaires</option>'+
+      _allPropsForFilter.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  }
+  
+  rechargeDashFilterVeh();
+}
+
+function rechargeDashFilterVeh(){
+  const tag=document.getElementById('dash-filter-tag')?.value||'';
+  const propId=document.getElementById('dash-filter-proprio')?.value||'';
+  
+  let vehs=_allVehsForFilter;
+  // Filtrer par tag si sélectionné
+  if(tag) vehs=vehs.filter(v=>v.tag===tag);
+  // Filtrer par propriétaire si sélectionné
+  if(propId){
+    const prop=_allPropsForFilter.find(p=>p.id===propId);
+    if(prop) vehs=vehs.filter(v=>prop.vehicules_ids.includes(v.id));
+  }
+  
+  const dvEl=document.getElementById('dash-filter-veh');
+  if(dvEl){
+    const cur=dvEl.value;
+    dvEl.innerHTML='<option value="">Tous véhicules</option>'+
+      vehs.map(v=>`<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
+    // Garder la sélection si toujours valide
+    if(cur&&vehs.find(v=>v.id===cur)) dvEl.value=cur;
+  }
+}
+
+async function onDashTagChange(){
+  const tag=document.getElementById('dash-filter-tag')?.value||'';
+  // Filtrer les propriétaires qui ont des véhicules dans ce tag
+  if(ROLE==='manager'&&tag){
+    const vehsDuTag=_allVehsForFilter.filter(v=>v.tag===tag).map(v=>v.id);
+    const propsFiltres=_allPropsForFilter.filter(p=>
+      p.vehicules_ids&&p.vehicules_ids.some(vid=>vehsDuTag.includes(vid))
+    );
+    const dpEl=document.getElementById('dash-filter-proprio');
+    if(dpEl){
+      dpEl.innerHTML='<option value="">Tous propriétaires</option>'+
+        propsFiltres.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+    }
+  } else if(ROLE==='manager'){
+    // Réinitialiser propriétaires
+    const dpEl=document.getElementById('dash-filter-proprio');
+    if(dpEl) dpEl.innerHTML='<option value="">Tous propriétaires</option>'+
+      _allPropsForFilter.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  }
+  // Vider la sélection véhicule
+  const dvEl=document.getElementById('dash-filter-veh');
+  if(dvEl) dvEl.value='';
+  rechargeDashFilterVeh();
+  loadDashboard();
+}
+
+async function onDashProprioChange(){
+  // Vider la sélection véhicule et recalculer
+  const dvEl=document.getElementById('dash-filter-veh');
+  if(dvEl) dvEl.value='';
+  rechargeDashFilterVeh();
   loadDashboard();
 }
 
@@ -1413,13 +1492,8 @@ async function loadDashboard(){
   const filterProprio=document.getElementById('dash-filter-proprio')?.value||'';
   const filterVeh=document.getElementById('dash-filter-veh')?.value||'';
   
-  // Remplir les selects de filtres si vides
-  if(allTags.length){
-    const dtEl=document.getElementById('dash-filter-tag');
-    if(dtEl&&dtEl.options.length<=1){
-      dtEl.innerHTML='<option value="">Tous les tags</option>'+allTags.map(t=>`<option value="${tagNom(t)}">${tagNom(t)}</option>`).join('');
-    }
-  }
+  // Initialiser les filtres au premier chargement
+  if(_allVehsForFilter.length===0) await initDashFilters();
   
   let url='/dashboard';
   const params=[];
@@ -1464,20 +1538,7 @@ async function loadDashboard(){
     if(prop) vehs=vehs.filter(v=>prop.vehicules_ids.includes(v.id));
   }
   
-  // Remplir select véhicules du filtre
-  const dvEl=document.getElementById('dash-filter-veh');
-  if(dvEl&&dvEl.options.length<=1){
-    const allV=await api('GET','/vehicules');
-    dvEl.innerHTML='<option value="">Tous les véhicules</option>'+allV.map(v=>`<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
-  }
-  // Remplir select propriétaires (manager seulement)
-  if(ROLE==='manager'){
-    const dpEl=document.getElementById('dash-filter-proprio');
-    if(dpEl&&dpEl.options.length<=1){
-      const props=await api('GET','/proprietaires').catch(()=>[]);
-      dpEl.innerHTML='<option value="">Tous propriétaires</option>'+props.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
-    }
-  }
+
   
   const rentEl=document.getElementById('d-rent');
   if(!vehs.length){rentEl.innerHTML='<div class="empty">Aucun véhicule pour ces filtres</div>';return;}
