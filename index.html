@@ -220,7 +220,15 @@ tr:hover td{background:#fafaf8;}
     <div class="card-title">Ajouter un chauffeur</div>
     <div class="form-row"><div class="field"><label>Prénom *</label><input id="cp" placeholder="Ibrahima"></div><div class="field"><label>Nom *</label><input id="cn" placeholder="Sy"></div></div>
     <div class="form-row"><div class="field"><label>Téléphone * (anti-doublon)</label><input id="ct" placeholder="+221771234567"></div><div class="field"><label>N° Permis (anti-doublon)</label><input id="cpe" placeholder="SN-2020-00123"></div></div>
-    <div class="form-row"><div class="field"><label>Adresse</label><input id="ca" placeholder="Quartier, Ville"></div><div class="field"><label>Notes</label><input id="cno" placeholder="Informations complémentaires"></div></div>
+    <div class="form-row">
+      <div class="field"><label>Adresse</label><input id="ca" placeholder="Quartier, Ville"></div>
+      <div class="field"><label>Notes</label><input id="cno" placeholder="Informations complémentaires"></div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Numéros Wave 🌊 <span style="font-weight:400;color:#6b6b67">(plusieurs possibles — séparés par virgule)</span></label>
+      <input id="ctwave" placeholder="+221771234567, +221780000000, +221761234567">
+      <div style="font-size:11px;color:#6b6b67;margin-top:3px">Ces numéros servent à identifier le chauffeur lors des paiements Wave automatiques</div>
+    </div>
     <button class="btn btn-blue" onclick="addChauffeur(this)">Enregistrer</button>
   </div>
   <div class="card">
@@ -464,6 +472,26 @@ tr:hover td{background:#fafaf8;}
 
   <!-- ACCES & PARTAGE -->
   <div class="section" id="p-acces">
+    <!-- Configuration Wave -->
+    <div class="card manager-only" style="border-top:3px solid #0A85D1;margin-bottom:12px">
+      <div class="card-title">Configuration Wave API — Paiements automatiques</div>
+      <div style="background:#E6F1FB;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#0C447C">
+        <strong>Comment ça marche :</strong> Quand un chauffeur paye via Wave, le versement s'enregistre automatiquement dans SyNdongo.
+        Configurez votre clé API Wave sur Render → Environnement.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div class="field"><label>Clé API Wave (WAVE_API_KEY)</label><input readonly value="${WAVE_API_KEY_SET}" id="wave-key-display" style="opacity:.7;font-family:monospace;font-size:11px"></div>
+        <div class="field"><label>Webhook URL à configurer sur Wave</label><input readonly id="wave-webhook-url" style="font-family:monospace;font-size:11px;cursor:pointer" onclick="navigator.clipboard.writeText(this.value).then(()=>toast('Copié !'))"></div>
+      </div>
+      <div style="font-size:12px;color:#6b6b67">
+        <strong>Pour activer :</strong> Render → Environnement → Ajouter <code>WAVE_API_KEY</code> = votre clé Wave · 
+        Sur Wave Dashboard → Webhooks → URL = <span id="wave-url-display" style="font-family:monospace;color:#185FA5"></span>
+      </div>
+      <div id="wave-pending-list" style="margin-top:12px;display:none">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">Paiements Wave en attente :</div>
+        <div id="wave-pending-content"></div>
+      </div>
+    </div>
     <div class="info-banner" style="margin-bottom:12px">
       <strong>Manager (vous)</strong> — contrôle total · 
       <strong>Gestionnaires</strong> — accès écriture sur leurs véhicules · 
@@ -539,6 +567,10 @@ tr:hover td{background:#fafaf8;}
   <div class="form-row"><div class="field"><label>Prénom</label><input id="mcp"></div><div class="field"><label>Nom</label><input id="mcn"></div></div>
   <div class="form-row"><div class="field"><label>Téléphone</label><input id="mct"></div><div class="field"><label>Permis</label><input id="mcpe"></div></div>
   <div class="form-row"><div class="field"><label>Adresse</label><input id="mca"></div><div class="field"><label>Notes</label><input id="mcno"></div></div>
+  <div class="field" style="margin-bottom:10px">
+    <label>Numéros Wave 🌊 <span style="font-weight:400;color:#6b6b67">(séparés par virgule)</span></label>
+    <input id="mctwave" placeholder="+221771234567, +221780000000">
+  </div>
   <div class="modal-btns"><button class="btn btn-outline" onclick="M('m-chauf')">Annuler</button><button class="btn btn-blue" onclick="saveChauf(this)">Enregistrer</button></div>
 </div></div>
 
@@ -933,7 +965,13 @@ async function addChauffeur(btn){
   const p=document.getElementById('cp').value.trim(),n=document.getElementById('cn').value.trim(),t=document.getElementById('ct').value.trim();
   if(!p||!n||!t){toast('Prénom, nom, téléphone obligatoires','err');return;}
   setBtnLoading(btn,true);
-  const r=await api('POST','/chauffeurs',{prenom:p,nom:n,telephone:t,numero_permis:document.getElementById('cpe').value,adresse:document.getElementById('ca').value,notes:document.getElementById('cno').value});
+  // Parser les numéros Wave multiples
+  const waveRaw=document.getElementById('ctwave').value||'';
+  const numerosWave=waveRaw?waveRaw.split(',').map(n=>n.trim()).filter(n=>n):[t];
+  const r=await api('POST','/chauffeurs',{prenom:p,nom:n,telephone:t,numero_permis:document.getElementById('cpe').value,
+    numeros_wave:numerosWave, // Tableau de numéros Wave
+    telephone_wave:numerosWave[0]||t, // Compat ancien format
+    adresse:document.getElementById('ca').value,notes:document.getElementById('cno').value});
   setBtnLoading(btn,false);
   if(r.detail){toast(r.detail,'err');return;}
   toast(p+' '+n+' enregistré');
@@ -946,6 +984,9 @@ async function delChauf(id,nom){if(!confirm('Supprimer '+nom+' ?'))return;await 
 function ouvrirModifChauf(c){
   document.getElementById('mcid').value=c.id;document.getElementById('mcp').value=c.prenom;document.getElementById('mcn').value=c.nom;
   document.getElementById('mct').value=c.telephone;document.getElementById('mcpe').value=c.numero_permis||'';
+  // Afficher les numéros Wave (tableau ou string)
+  const waveNums=c.numeros_wave&&c.numeros_wave.length?c.numeros_wave.join(', '):(c.telephone_wave||c.telephone||'');
+  document.getElementById('mctwave').value=waveNums;
   document.getElementById('mca').value=c.adresse||'';document.getElementById('mcno').value=c.notes||'';
   openM('m-chauf');
 }
@@ -953,7 +994,9 @@ function ouvrirModifChauf(c){
 async function saveChauf(btn){
   const id=document.getElementById('mcid').value;
   setBtnLoading(btn,true);
-  const r=await api('PATCH','/chauffeurs/'+id,{prenom:document.getElementById('mcp').value,nom:document.getElementById('mcn').value,telephone:document.getElementById('mct').value,numero_permis:document.getElementById('mcpe').value,adresse:document.getElementById('mca').value,notes:document.getElementById('mcno').value});
+  const waveRaw2=document.getElementById('mctwave').value||'';
+  const numerosWave2=waveRaw2?waveRaw2.split(',').map(n=>n.trim()).filter(n=>n):[];
+  const r=await api('PATCH','/chauffeurs/'+id,{prenom:document.getElementById('mcp').value,nom:document.getElementById('mcn').value,telephone:document.getElementById('mct').value,numero_permis:document.getElementById('mcpe').value,numeros_wave:numerosWave2,telephone_wave:numerosWave2[0]||'',adresse:document.getElementById('mca').value,notes:document.getElementById('mcno').value});
   setBtnLoading(btn,false);
   if(r.detail){toast(r.detail,'err');return;}
   toast('Mis à jour'); M('m-chauf'); loadChauffeurs();
@@ -1171,15 +1214,33 @@ function onEncModeChange(){
   
   if(mode==='wave'){
     if(refZone){refZone.style.display='block';}
-    if(refLabel) refLabel.textContent='Référence Wave *';
-    // Générer lien Wave si chauffeur sélectionné
+    if(refLabel) refLabel.textContent='Référence Wave (auto si paiement en ligne)';
+    // Proposer le paiement Wave officiel
     if(_encChauffeurData&&waveEl&&waveUrl){
-      const montant=+document.getElementById('em').value||0;
-      const tel=_encChauffeurData.chauffeur?.telephone||'';
-      // Format Wave deeplink Sénégal
-      const waveDeepLink=`https://www.wave.com/s/send/?phone=${tel.replace('+','').replace(/\s/g,'')}&amount=${montant}&note=SyNdongo`;
-      waveUrl.href=waveDeepLink;
       waveEl.style.display='block';
+      waveUrl.href='#';
+      waveUrl.textContent='📲 Envoyer demande de paiement Wave (API officielle) →';
+      waveUrl.onclick=async(e)=>{
+        e.preventDefault();
+        const montant=+document.getElementById('em').value||0;
+        if(!montant){toast('Saisissez un montant avant','err');return;}
+        const cid=document.getElementById('ec').value;
+        waveUrl.textContent='⏳ Création session Wave…';
+        const r=await api('POST','/wave/checkout',{chauffeur_id:_encChauffeurData.chauffeur.id,montant});
+        if(r.detail){toast(r.detail,'err');waveUrl.textContent='❌ Erreur — '+r.detail;return;}
+        if(r.checkout_url){
+          window.open(r.checkout_url,'_blank');
+          waveUrl.textContent='✅ Session ouverte — En attente du paiement (ref: '+r.reference+')';
+          document.getElementById('enc-ref').value=r.reference;
+          toast('Lien Wave envoyé — référence: '+r.reference);
+        } else {
+          toast('WAVE_API_KEY non configurée — utilisez le lien direct','info');
+          const tel=(_encChauffeurData.chauffeur?.telephone||'').replace('+','').replace(/\s/g,'');
+          waveUrl.href=`https://www.wave.com/s/send/?phone=${tel}&amount=${montant}&note=SyNdongo`;
+          waveUrl.textContent='📲 Lien Wave direct (sans API) →';
+          waveUrl.onclick=null;
+        }
+      };
     }
   } else if(mode==='orange_money'){
     if(refZone){refZone.style.display='block';}
@@ -1525,7 +1586,7 @@ function loadPage(id) {
   else if(id==='historique') loadHistorique();
   else if(id==='proprietaires'){loadProprietairesOnglet();loadPropVehsList2();}
   else if(id==='acces'){
-    if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
+    if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();loadWaveConfig();}
     loadProprietaires();loadPropVehsSection();
     const prb=document.getElementById('prop-role-badge');
     if(prb)prb.textContent=ROLE==='gestionnaire'?'(vos véhicules uniquement)':'';
@@ -2303,6 +2364,56 @@ async function delPropOnglet(id,nom){
   toast('Acces supprime','info');
   loadProprietairesOnglet();
 }
+
+
+// ─── WAVE CONFIG ──────────────────────────────────────────────
+async function loadWaveConfig(){
+  const webhookUrl=window.location.origin+'/api/webhook/wave';
+  const urlEl=document.getElementById('wave-webhook-url');
+  const urlDisplay=document.getElementById('wave-url-display');
+  const urlDisplay2=document.getElementById('wave-url-display');
+  if(urlEl) urlEl.value=webhookUrl;
+  if(urlDisplay) urlDisplay.textContent=webhookUrl;
+  
+  // Vérifier les paiements en attente
+  try{
+    const pending=await api('GET','/wave/pending');
+    const pendingDiv=document.getElementById('wave-pending-list');
+    const pendingContent=document.getElementById('wave-pending-content');
+    if(pending&&pending.length>0&&pendingDiv&&pendingContent){
+      pendingDiv.style.display='block';
+      pendingContent.innerHTML=`<table><thead><tr><th>Référence</th><th>Chauffeur</th><th>Montant</th><th>Créé le</th></tr></thead><tbody>
+      ${pending.map(p=>`<tr><td style="font-family:monospace;font-size:11px">${p.reference}</td><td>${p.chauffeur}</td><td style="color:#185FA5;font-weight:600">${fmt(p.montant)}</td><td style="font-size:11px;color:#6b6b67">${p.created_at?p.created_at.slice(0,16).replace('T',' '):'—'}</td></tr>`).join('')}
+      </tbody></table>`;
+    }
+  }catch(e){}
+}
+
+
+// ─── MODIFIER / SUPPRIMER FACTURATION ────────────────────────
+async function modifFac(id, typeActuel, montantActuel){
+  const types={complet:'Journée complète',demi_panne:'Demi-journée panne',repos:'Repos',inactif:'Inactif'};
+  const nouveauType=prompt('Type de journée (complet/demi_panne/repos/inactif) :', typeActuel);
+  if(!nouveauType) return;
+  const nouveauMontant=prompt('Nouveau montant facturé (FCFA) :', montantActuel);
+  if(nouveauMontant===null) return;
+  const r=await api('PATCH','/facturations/'+id,{type_journee:nouveauType,montant_facture:+nouveauMontant});
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Facturation modifiée');
+  loadFac();loadDashboard();
+}
+
+async function suppFac(id, vehicule, date){
+  if(!confirm('Supprimer la facturation de '+vehicule+' du '+date+' ?')) return;
+  const r=await api('DELETE','/facturations/'+id);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Facturation supprimée','info');
+  loadFac();loadDashboard();
+}
+
+// ─── MODIFIER / SUPPRIMER VERSEMENT ──────────────────────────
+// (déjà dans ouvrirModifVersement et supprimerVersement)
+// Améliorer l'affichage du tableau versements avec Wave/ref
 
 </script>
 </body>

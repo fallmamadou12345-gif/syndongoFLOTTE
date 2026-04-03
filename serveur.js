@@ -7,6 +7,58 @@ const DB_FILE = process.env.DATA_PATH || './syndongo_data.json';
 const PORT = process.env.PORT || 8000;
 const MANAGER_PASSWORD = process.env.MANAGER_PASSWORD || 'ndongo2026';
 
+// ── WAVE CONFIG ───────────────────────────────────────────────
+const WAVE_API_KEY = process.env.WAVE_API_KEY || '';
+const WAVE_WEBHOOK_SECRET = process.env.WAVE_WEBHOOK_SECRET || '';
+const APP_URL = process.env.APP_URL || 'https://syndongoflotte.onrender.com';
+
+// Créer une demande de paiement Wave
+async function createWavePayment(montant, phone, description, reference) {
+  if (!WAVE_API_KEY) return { error: 'WAVE_API_KEY non configurée' };
+  try {
+    const https = require('https');
+    const body = JSON.stringify({
+      currency: 'XOF',
+      amount: montant.toString(),
+      error_url: APP_URL+'/api/wave/error',
+      success_url: APP_URL+'/api/wave/success',
+      client_reference: reference,
+      restrict_mobile: phone || undefined,
+      aggregated_merchant_id: null
+    });
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'api.wave.com',
+        path: '/v1/checkout/sessions',
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer '+WAVE_API_KEY,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body)
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch(e) { resolve({ error: data }); }
+        });
+      });
+      req.on('error', e => resolve({ error: e.message }));
+      req.write(body);
+      req.end();
+    });
+  } catch(e) { return { error: e.message }; }
+}
+
+// Vérifier la signature webhook Wave
+function verifyWaveSignature(body, signature) {
+  if (!WAVE_WEBHOOK_SECRET) return true; // Pas de secret = pas de vérification
+  const crypto = require('crypto');
+  const expected = crypto.createHmac('sha256', WAVE_WEBHOOK_SECRET).update(body).digest('hex');
+  return signature === expected;
+}
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const dir = path.dirname(DB_FILE);
@@ -273,7 +325,15 @@ function handleAPI(req, res, body) {
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(db.chauffeurs.find(c=>c.telephone===(data.telephone||'').trim())) return res.end(JSON.stringify({detail:'Téléphone déjà enregistré'}));
     if(data.numero_permis&&db.chauffeurs.find(c=>c.numero_permis===(data.numero_permis||'').trim())) return res.end(JSON.stringify({detail:'Permis déjà enregistré'}));
-    const c={id:uid(),...data,telephone:(data.telephone||'').trim(),statut:'actif',date_embauche:today(),
+    // Gérer les numéros Wave multiples
+    const numerosWave = data.numeros_wave&&data.numeros_wave.length
+      ? data.numeros_wave.map(n=>n.trim()).filter(n=>n)
+      : (data.telephone_wave?[data.telephone_wave.trim()]:[data.telephone||''].map(n=>n.trim()));
+    const c={id:uid(),...data,
+              telephone:(data.telephone||'').trim(),
+              numeros_wave: numerosWave,
+              telephone_wave: numerosWave[0]||'', // Compat
+              statut:'actif',date_embauche:today(),
               cree_par:isGest?auth.gest.id:'manager'};
     db.chauffeurs.push(c);
     // Historique
@@ -646,57 +706,119 @@ function handleAPI(req, res, body) {
     return res.end(JSON.stringify({message:'Facturation automatique créée',montant_facture,type_journee}));
   }
 
-  // ── WEBHOOK WAVE / ORANGE MONEY ──────────────────────────────
-  // Reçoit les notifications de paiement automatiques
+  // ── WAVE API OFFICIELLE ───────────────────────────────────────
+
+  // Créer une session de paiement Wave (paiement manuel déclenché par l'agent)
+  if(p==='/api/wave/checkout'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const {chauffeur_id, montant} = data;
+    const chauffeur=db.chauffeurs.find(c=>c.id===chauffeur_id);
+    if(!chauffeur) return res.end(JSON.stringify({detail:'Chauffeur introuvable'}));
+    const reference='SND-'+uid().toUpperCase();
+    const result = await createWavePayment(
+      Number(montant),
+      chauffeur.telephone,
+      'SyNdongo — '+chauffeur.prenom+' '+chauffeur.nom,
+      reference
+    );
+    if(result.error) return res.end(JSON.stringify({detail:'Erreur Wave: '+result.error}));
+    // Sauvegarder la référence en attente
+    db.wave_pending=(db.wave_pending||{});
+    db.wave_pending[reference]={chauffeur_id,montant:Number(montant),created_at:new Date().toISOString()};
+    saveDB(db);
+    return res.end(JSON.stringify({
+      checkout_url: result.wave_launch_url || result.checkout_status?.checkout_url || '',
+      reference,
+      message:'Session Wave créée'
+    }));
+  }
+
+  // Webhook Wave officiel — reçoit les événements de paiement
   if(p==='/api/webhook/wave'&&method==='POST'){
-    // Wave envoie: { amount, phone, reference, timestamp }
-    const {amount, phone, reference, timestamp} = data;
-    if(!amount||!phone) return res.end(JSON.stringify({status:'ignored',reason:'missing fields'}));
-    
-    // Chercher l'affectation par numéro de téléphone du chauffeur
-    const chauffeur=db.chauffeurs.find(c=>c.telephone&&(c.telephone.replace(/\s/g,'')===phone.replace(/\s/g,'')||c.telephone.replace('+','').replace(/\s/g,'')===phone.replace('+','').replace(/\s/g,'')));
-    if(!chauffeur){
-      console.log('Wave webhook: chauffeur non trouvé pour', phone);
-      return res.end(JSON.stringify({status:'not_found',phone}));
+    // Vérifier signature
+    const sig=req.headers['wave-signature']||'';
+    if(!verifyWaveSignature(body,sig)&&WAVE_WEBHOOK_SECRET){
+      res.writeHead(401);return res.end(JSON.stringify({status:'invalid_signature'}));
     }
-    const aff=db.affectations.find(a=>a.chauffeur_id===chauffeur.id&&!a.date_fin);
-    if(!aff) return res.end(JSON.stringify({status:'no_affectation'}));
+    // Format Wave: { type, data: { checkout_session: { client_reference, amount, payment_status } } }
+    const event=data;
+    const session=event?.data?.checkout_session||event;
+    const reference=session.client_reference||session.reference||'';
+    const amount=Number(session.amount||session.net_amount||0);
+    const payment_status=session.payment_status||event.type||'';
     
-    const montant=Number(amount);
-    const statut=montant>=aff.montant_journalier?'recu':montant>0?'partiel':'en_retard';
-    const v={id:uid(),affectation_id:aff.id,montant,montant_attendu:aff.montant_journalier,statut,
-             mode_paiement:'wave',reference:reference||'',
-             date_versement:today(),created_at:new Date().toISOString(),source:'webhook_wave'};
-    db.versements.push(v);
+    if(payment_status!=='succeeded'&&payment_status!=='checkout.session.completed'&&event.type!=='checkout.session.completed'){
+      return res.end(JSON.stringify({status:'ignored',payment_status}));
+    }
+    
+    // Trouver le chauffeur via la référence ou le téléphone
+    let chauffeur=null,affectation=null;
+    const pending=db.wave_pending&&db.wave_pending[reference];
+    if(pending){
+      // Identification par référence SyNdongo (la plus fiable)
+      chauffeur=db.chauffeurs.find(c=>c.id===pending.chauffeur_id);
+      affectation=db.affectations.find(a=>a.chauffeur_id===pending.chauffeur_id&&!a.date_fin);
+    } else {
+      // Fallback: chercher par numéro Wave pré-enregistré (priorité) puis téléphone
+      const phone=(session.client_phone||session.mobile||session.payer_mobile||'').replace(/\D/g,'');
+      if(phone){
+        // 1. Chercher dans TOUS les numéros Wave enregistrés
+        chauffeur=db.chauffeurs.find(c=>{
+          const nums=c.numeros_wave&&c.numeros_wave.length?c.numeros_wave:[c.telephone_wave||'',c.telephone||''];
+          return nums.some(n=>n&&n.replace(/\D/g,'').slice(-8)===phone.slice(-8));
+        });
+        // 2. Fallback numéro téléphone principal
+        if(!chauffeur) chauffeur=db.chauffeurs.find(c=>c.telephone&&c.telephone.replace(/\D/g,'').slice(-8)===phone.slice(-8));
+        if(chauffeur) affectation=db.affectations.find(a=>a.chauffeur_id===chauffeur.id&&!a.date_fin);
+      }
+    }
+    
+    // Logger la transaction pour audit même si non trouvé
     db.historique=(db.historique||[]);
-    db.historique.push({id:uid(),type:'encaissement_auto_wave',
-      ref_nom:chauffeur.prenom+' '+chauffeur.nom+' — '+montant+' F (Wave auto) ref:'+reference,
+    const txRef=session.transaction_id||session.id||reference||uid();
+    
+    if(!chauffeur||!affectation){
+      console.log('Wave webhook: chauffeur/affectation introuvable, ref:', reference);
+      return res.end(JSON.stringify({status:'not_found',reference}));
+    }
+    
+    const montant=amount||pending?.montant||0;
+    const statut=montant>=affectation.montant_journalier?'recu':montant>0?'partiel':'en_retard';
+    const v={id:uid(),affectation_id:affectation.id,montant,montant_attendu:affectation.montant_journalier,
+             statut,mode_paiement:'wave',reference:reference,
+             date_versement:today(),created_at:new Date().toISOString(),source:'wave_auto'};
+    db.versements.push(v);
+    // Supprimer de wave_pending
+    if(db.wave_pending&&db.wave_pending[reference]) delete db.wave_pending[reference];
+    db.historique=(db.historique||[]);
+    const vehW=db.vehicules.find(x=>x.id===affectation.vehicule_id);
+    db.historique.push({id:uid(),type:'wave_auto',
+      ref_nom:(vehW?vehW.immatriculation:'?')+' — '+chauffeur.prenom+' '+chauffeur.nom+' — '+montant+' F Wave (auto)',
       auteur:'Wave API',role:'system',date:new Date().toISOString()});
     saveDB(db);
-    console.log('Wave webhook OK:', chauffeur.prenom, chauffeur.nom, montant, 'F');
-    return res.end(JSON.stringify({status:'ok',versement_id:v.id,chauffeur:chauffeur.prenom+' '+chauffeur.nom,montant,statut}));
+    console.log('[Wave AUTO]', chauffeur.prenom, chauffeur.nom, montant, 'F', reference);
+    res.writeHead(200);return res.end(JSON.stringify({status:'ok',montant,chauffeur:chauffeur.prenom+' '+chauffeur.nom}));
   }
-  
-  if(p==='/api/webhook/orange'&&method==='POST'){
-    // Orange Money envoie un format similaire
-    const {amount, msisdn, txnid} = data;
-    if(!amount||!msisdn) return res.end(JSON.stringify({status:'ignored'}));
-    const chauffeur=db.chauffeurs.find(c=>c.telephone&&c.telephone.replace(/\D/g,'').includes(msisdn.replace(/\D/g,'').slice(-8)));
-    if(!chauffeur) return res.end(JSON.stringify({status:'not_found'}));
-    const aff=db.affectations.find(a=>a.chauffeur_id===chauffeur.id&&!a.date_fin);
-    if(!aff) return res.end(JSON.stringify({status:'no_affectation'}));
-    const montant=Number(amount);
-    const statut=montant>=aff.montant_journalier?'recu':montant>0?'partiel':'en_retard';
-    const v={id:uid(),affectation_id:aff.id,montant,montant_attendu:aff.montant_journalier,statut,
-             mode_paiement:'orange_money',reference:txnid||'',
-             date_versement:today(),created_at:new Date().toISOString(),source:'webhook_orange'};
-    db.versements.push(v);
-    db.historique=(db.historique||[]);
-    db.historique.push({id:uid(),type:'encaissement_auto_orange',
-      ref_nom:chauffeur.prenom+' '+chauffeur.nom+' — '+montant+' F (Orange auto)',
-      auteur:'Orange API',role:'system',date:new Date().toISOString()});
-    saveDB(db);
-    return res.end(JSON.stringify({status:'ok',versement_id:v.id,montant,statut}));
+
+  // Page de succès Wave (redirection après paiement)
+  if(p==='/api/wave/success'&&method==='GET'){
+    res.setHeader('Content-Type','text/html; charset=utf-8');
+    return res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Paiement réussi</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f4f0;margin:0}.box{background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;border:2px solid #3B6D11}.icon{font-size:48px}.title{font-size:20px;font-weight:700;color:#3B6D11;margin:12px 0}.sub{color:#6b6b67;font-size:14px}</style></head><body><div class="box"><div class="icon">✅</div><div class="title">Paiement Wave reçu !</div><div class="sub">Votre versement a été enregistré automatiquement dans SyNdongo.</div></div></body></html>`);
+  }
+  if(p==='/api/wave/error'&&method==='GET'){
+    res.setHeader('Content-Type','text/html; charset=utf-8');
+    return res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Erreur paiement</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f4f0;margin:0}.box{background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;border:2px solid #A32D2D}.icon{font-size:48px}.title{font-size:20px;font-weight:700;color:#A32D2D;margin:12px 0}.sub{color:#6b6b67;font-size:14px}</style></head><body><div class="box"><div class="icon">❌</div><div class="title">Paiement annulé</div><div class="sub">Le paiement Wave n'a pas abouti. Veuillez réessayer.</div></div></body></html>`);
+  }
+
+  // Statut des paiements Wave en attente
+  if(p==='/api/wave/pending'&&method==='GET'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const pending=db.wave_pending||{};
+    const list=Object.entries(pending).map(([ref,p])=>{
+      const c=db.chauffeurs.find(x=>x.id===p.chauffeur_id);
+      return{reference:ref,chauffeur:c?c.prenom+' '+c.nom:'?',montant:p.montant,created_at:p.created_at};
+    });
+    return res.end(JSON.stringify(list));
   }
 
   // ── JOURNAL DE BORD ──────────────────────────────────────────
