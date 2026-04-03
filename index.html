@@ -1355,10 +1355,14 @@ async function loadFac(){
   const el=document.getElementById('tfac');
   if(!list.length){el.innerHTML='<div class="empty">Aucune facturation</div>';return;}
   const labels={complet:'Complète',demi_panne:'Demi-panne',repos:'Repos',inactif:'Inactif'};
-  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th><th>Montant facturé</th></tr></thead><tbody>
-  ${list.map(f=>`<tr><td>${f.date}</td><td><strong>${f.vehicule}</strong></td><td>${f.chauffeur}</td>
-  <td>${pill(labels[f.type_journee]||f.type_journee,f.type_journee==='complet'?'ok':f.type_journee==='demi_panne'?'warn':'gray')}</td>
-  <td style="font-weight:600;color:${f.montant_facture>0?'#185FA5':'#6b6b67'}">${fmt(f.montant_facture)}</td></tr>`).join('')}
+  const canEdit=ROLE==='manager'||ROLE==='gestionnaire';
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th><th>Montant facturé</th>${''+( canEdit?'<th>Actions</th>':'' )}</tr></thead><tbody>
+  ${list.map(f=>`<tr>
+    <td>${f.date}</td><td><strong>${f.vehicule}</strong></td><td>${f.chauffeur}</td>
+    <td>${pill(labels[f.type_journee]||f.type_journee,f.type_journee==='complet'?'ok':f.type_journee==='demi_panne'?'warn':'gray')}</td>
+    <td style="font-weight:600;color:${f.montant_facture>0?'#185FA5':'#6b6b67'}">${fmt(f.montant_facture)}</td>
+    ${canEdit?`<td style="white-space:nowrap"><button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="modifFac('${f.id}','${f.type_journee||'complet'}',${f.montant_facture})">Modif.</button> <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="suppFac('${f.id}','${f.vehicule}','${f.date}')">Suppr.</button></td>`:''}
+  </tr>`).join('')}
   </tbody></table></div>`;
 }
 
