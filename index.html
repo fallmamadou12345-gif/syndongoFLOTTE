@@ -608,20 +608,74 @@ function deconnecter() { localStorage.removeItem('snd_tk'); TOKEN=''; ROLE=''; l
 function lancerApp() {
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-screen').style.display='block';
-  const b = document.getElementById('user-badge');
-  b.textContent=USER; b.style.background=ROLE==='manager'?'#EAF3DE':'#E6F1FB'; b.style.color=ROLE==='manager'?'#27500A':'#0C447C';
-  if (ROLE!=='manager') document.querySelectorAll('.manager-only').forEach(el=>el.style.display='none');
-  // Onglets manager/gestionnaire uniquement
-  const navAcces=document.getElementById('nav-acces');
-  if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
-  const navHist=document.getElementById('nav-hist');
-  if(navHist&&ROLE==='proprietaire') navHist.style.display='none';
-  // Rapports visible par tous
-  document.getElementById('ad').value = new Date().toISOString().split('T')[0];
-  const hier=new Date(); hier.setDate(hier.getDate()-1);
-  document.getElementById('fd').value = hier.toISOString().split('T')[0];
+
+  // Badge utilisateur
+  const b=document.getElementById('user-badge');
+  const roleColors={manager:{bg:'#EAF3DE',col:'#27500A'},gestionnaire:{bg:'#EEEDFE',col:'#3C3489'},proprietaire:{bg:'#E6F1FB',col:'#0C447C'}};
+  const rc=roleColors[ROLE]||roleColors.manager;
+  b.textContent=USER+(ROLE==='proprietaire'?' (Propriétaire)':ROLE==='gestionnaire'?' (Gestionnaire)':' (Manager)');
+  b.style.background=rc.bg; b.style.color=rc.col;
+
+  // Bannière lecture seule propriétaire
+  const banner=document.getElementById('readonly-banner');
+  if(banner) banner.style.display=ROLE==='proprietaire'?'block':'none';
+  const pw=document.getElementById('proprio-welcome');
+  if(pw) pw.style.display=ROLE==='proprietaire'?'block':'none';
+
+  // Générer la navigation selon le rôle
+  const nav=document.getElementById('nav');
+  const NAVS={
+    manager:[
+      {id:'dashboard',label:'Dashboard'},
+      {id:'vehicules',label:'Véhicules'},
+      {id:'chauffeurs',label:'Chauffeurs'},
+      {id:'affectations',label:'Affectations'},
+      {id:'caisse',label:'Caisse & Facturation'},
+      {id:'retards',label:'Retards'},
+      {id:'depenses',label:'Dépenses'},
+      {id:'alertes',label:'Alertes'},
+      {id:'rapports',label:'Rapports'},
+      {id:'journal',label:'Journal'},
+      {id:'historique',label:'Historique'},
+      {id:'acces',label:'Accès & Partage'},
+    ],
+    gestionnaire:[
+      {id:'dashboard',label:'Dashboard'},
+      {id:'vehicules',label:'Véhicules'},
+      {id:'chauffeurs',label:'Chauffeurs'},
+      {id:'affectations',label:'Affectations'},
+      {id:'caisse',label:'Caisse & Facturation'},
+      {id:'retards',label:'Retards'},
+      {id:'depenses',label:'Dépenses'},
+      {id:'rapports',label:'Rapports'},
+      {id:'journal',label:'Journal'},
+      {id:'historique',label:'Historique'},
+      {id:'acces',label:'Accès & Partage'},
+    ],
+    proprietaire:[
+      {id:'dashboard',label:'Dashboard'},
+      {id:'vehicules',label:'Mes Véhicules'},
+      {id:'chauffeurs',label:'Mes Chauffeurs'},
+      {id:'retards',label:'Retards'},
+      {id:'rapports',label:'Rapports'},
+      {id:'journal',label:'Journal'},
+    ]
+  };
+  const items=NAVS[ROLE]||NAVS.manager;
+  nav.innerHTML=items.map((item,i)=>
+    `<div class="nav-item${i===0?' active':''}" onclick="go('${item.id}',this)">${item.label}</div>`
+  ).join('');
+
+  // Cacher les formulaires manager-only pour les autres rôles
+  if(ROLE!=='manager') document.querySelectorAll('.manager-only').forEach(el=>el.style.display='none');
+
+  // Initialiser les dates
+  document.getElementById('ad').value=new Date().toISOString().split('T')[0];
+  const hier=new Date();hier.setDate(hier.getDate()-1);
+  document.getElementById('fd').value=hier.toISOString().split('T')[0];
   const fmd=document.getElementById('fmd');if(fmd)fmd.value=hier.toISOString().split('T')[0];
-  loadTags(); refreshSelects(); loadDashboard();
+
+  loadTags();refreshSelects();loadDashboard();
 }
 
 window.addEventListener('load', async ()=>{
@@ -1494,7 +1548,7 @@ async function loadTagsInGest(){
   if(cur)el.value=cur;
 }
 
-// (fonctions loadPage et lancerApp définies plus haut — complètes)
+
 
 
 // ─── SECTION VÉHICULES POUR PROPRIÉTAIRE ─────────────────────
