@@ -111,7 +111,7 @@ function vehsVisibles(db, auth) {
   return [];
 }
 
-function handleAPI(req, res, body) {
+async function handleAPI(req, res, body) {
   const db = loadDB();
   const parsed = url.parse(req.url, true);
   const p = parsed.pathname;
