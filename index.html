@@ -54,6 +54,7 @@ tr:hover td{background:#fafaf8;}
 .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;}
 .pill-ok{background:#EAF3DE;color:#27500A;}.pill-warn{background:#FAEEDA;color:#633806;}.pill-err{background:#FCEBEB;color:#791F1F;}
 .pill-blue{background:#E6F1FB;color:#0C447C;}.pill-gray{background:#F1EFE8;color:#444441;}.pill-purple{background:#EEEDFE;color:#3C3489;}
+/* Tags colorés dynamiques — générés par JS */
 .empty{text-align:center;color:#6b6b67;font-size:13px;padding:24px;}
 .toast-area{position:sticky;top:52px;z-index:99;}
 .toast{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;animation:fadeIn .2s;}
@@ -129,6 +130,7 @@ tr:hover td{background:#fafaf8;}
   <div class="nav-item" onclick="go('depenses',this)">Dépenses</div>
   <div class="nav-item" onclick="go('alertes',this)">Alertes</div>
   <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
+  <div class="nav-item" id="nav-rapports" onclick="go('rapports',this)">Rapports</div>
   <div class="nav-item" id="nav-hist" onclick="go('historique',this)">Historique</div>
   <div class="nav-item" id="nav-acces" onclick="go('acces',this)">Accès &amp; Partage</div>
 </div>
@@ -189,9 +191,14 @@ tr:hover td{background:#fafaf8;}
     <div id="tv"><div class="empty">Chargement…</div></div>
   </div>
   <div class="card manager-only">
-    <div class="card-title">Tags / Groupes</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px"><input id="new-tag" placeholder="Nouveau tag…" style="flex:1" onkeypress="if(event.key==='Enter')addTag()"><button class="btn btn-blue" onclick="addTag()">Ajouter</button></div>
-    <div id="tags-list"></div>
+    <div class="card-title">Tags / Groupes — Couleurs personnalisées</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="flex:1;min-width:150px"><label>Nom du tag</label><input id="new-tag" placeholder="Ex: Zone Nord, Proprio 1…" onkeypress="if(event.key==='Enter')addTag()"></div>
+      <div class="field"><label>Couleur fond</label><input type="color" id="new-tag-bg" value="#E6F1FB" style="width:60px;height:36px;padding:2px;cursor:pointer;border-radius:8px"></div>
+      <div class="field"><label>Couleur texte</label><input type="color" id="new-tag-color" value="#0C447C" style="width:60px;height:36px;padding:2px;cursor:pointer;border-radius:8px"></div>
+      <button class="btn btn-blue" onclick="addTag()">Ajouter</button>
+    </div>
+    <div id="tags-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
   </div>
 </div>
 
@@ -340,6 +347,42 @@ tr:hover td{background:#fafaf8;}
 </div><!-- fin main -->
 </div><!-- fin app -->
 
+  <!-- RAPPORTS -->
+  <div class="section" id="p-rapports">
+    <div class="card">
+      <div class="card-title">Rapports — Analyse par période</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+        <div class="field"><label>Du</label><input type="date" id="rp-debut" onchange="loadRapport()"></div>
+        <div class="field"><label>Au</label><input type="date" id="rp-fin" onchange="loadRapport()"></div>
+        <div class="field"><label>Grouper par</label>
+          <select id="rp-groupe" onchange="loadRapport()">
+            <option value="vehicule">Véhicule</option>
+            <option value="tag">Tag / Groupe</option>
+            <option value="proprietaire">Propriétaire</option>
+          </select>
+        </div>
+        <div class="field"><label>Période rapide</label>
+          <select id="rp-rapide" onchange="setPeriodeRapide()">
+            <option value="">— Choisir —</option>
+            <option value="today">Aujourd'hui</option>
+            <option value="week">Cette semaine</option>
+            <option value="month">Ce mois</option>
+            <option value="lastmonth">Mois dernier</option>
+            <option value="year">Cette année</option>
+          </select>
+        </div>
+      </div>
+      <!-- KPIs résumé -->
+      <div id="rp-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px"></div>
+      <!-- Tableau -->
+      <div id="rp-table"><div class="empty">Sélectionnez une période pour afficher le rapport</div></div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-blue" onclick="exportRapportPDF()">Exporter PDF</button>
+        <button class="btn btn-outline" onclick="exportRapportCSV()">Exporter CSV</button>
+      </div>
+    </div>
+  </div>
+
   <!-- HISTORIQUE -->
   <div class="section" id="p-historique">
     <div class="card">
@@ -396,12 +439,12 @@ tr:hover td{background:#fafaf8;}
         <span id="prop-role-badge" style="font-size:11px;font-weight:400;color:#6b6b67"></span>
       </div>
       <div class="form-row">
-        <div class="field"><label>Nom *</label><input id="pnom" placeholder="Moussa Diallo"></div>
-        <div class="field"><label>Téléphone</label><input id="ptel" placeholder="+221771234567"></div>
+        <div class="field"><label>Nom *</label><input id="ap-pnom" placeholder="Moussa Diallo"></div>
+        <div class="field"><label>Téléphone</label><input id="ap-ptel" placeholder="+221771234567"></div>
       </div>
       <div class="form-row">
-        <div class="field"><label>Email</label><input id="pemail" placeholder="moussa@email.com"></div>
-        <div class="field"><label>Mot de passe accès *</label><input id="ppwd" placeholder="Ex: moussaflotte2026"></div>
+        <div class="field"><label>Email</label><input id="ap-pemail" placeholder="moussa@email.com"></div>
+        <div class="field"><label>Mot de passe accès *</label><input id="ap-ppwd" placeholder="Ex: moussaflotte2026"></div>
       </div>
       <!-- Sélection véhicules (visible pour gestionnaire) -->
       <div id="prop-vehs-section" style="margin-bottom:10px">
@@ -534,6 +577,7 @@ function lancerApp() {
   if(navAcces&&ROLE==='proprietaire') navAcces.style.display='none';
   const navHist=document.getElementById('nav-hist');
   if(navHist&&ROLE==='proprietaire') navHist.style.display='none';
+  // Rapports visible par tous
   document.getElementById('ad').value = new Date().toISOString().split('T')[0];
   const hier=new Date(); hier.setDate(hier.getDate()-1);
   document.getElementById('fd').value = hier.toISOString().split('T')[0];
@@ -574,18 +618,57 @@ function rechGlobal(q) { document.getElementById('vs-q').value=q; document.getEl
 
 // ─── TAGS ────────────────────────────────────────────────────
 let allTags = [];
+// Tags avec couleurs — format: {nom, bg, color} ou string (legacy)
+function tagNom(t){ return typeof t==='object'?t.nom:t; }
+function tagBg(t){ return typeof t==='object'?t.bg:'#E6F1FB'; }
+function tagColor(t){ return typeof t==='object'?t.color:'#0C447C'; }
+function pillTag(t){
+  const nom=tagNom(t),bg=tagBg(t),col=tagColor(t);
+  return `<span class="pill" style="background:${bg};color:${col}">${nom}</span>`;
+}
+
 async function loadTags() {
   allTags = await api('GET','/tags');
-  ['vtag','mvtag','vs-tag'].forEach(id=>{
+  // Remplir les selects
+  ['vtag','mvtag','vs-tag','gtag','fm-filter-tag'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return;
-    const isFilter=id==='vs-tag'; const cur=el.value;
-    el.innerHTML=(isFilter?'<option value="">Tous tags</option>':'<option value="">— Aucun —</option>')+allTags.map(t=>`<option value="${t}">${t}</option>`).join('');
+    const isFilter=(id==='vs-tag'||id==='fm-filter-tag');
+    const cur=el.value;
+    el.innerHTML=(isFilter?'<option value="">Tous tags</option>':'<option value="">— Aucun —</option>')+
+      allTags.map(t=>`<option value="${tagNom(t)}">${tagNom(t)}</option>`).join('');
     if(cur) el.value=cur;
   });
+  // Afficher les badges avec couleurs
   const tl=document.getElementById('tags-list');
-  if(tl) tl.innerHTML=allTags.map(t=>`<span style="display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:#E6F1FB;color:#0C447C;margin:2px;cursor:pointer">${t} <span onclick="delTag('${t}')" style="opacity:.6;margin-left:3px">×</span></span>`).join('');
+  if(tl) tl.innerHTML=allTags.map(t=>`
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;background:${tagBg(t)};color:${tagColor(t)};font-size:11px;font-weight:600;border:1px solid ${tagColor(t)}33">
+      <span>${tagNom(t)}</span>
+      <input type="color" value="${tagBg(t)}" title="Couleur fond" onchange="changerCouleurTag('${tagNom(t)}',this.value,null)" style="width:18px;height:18px;border:none;border-radius:50%;padding:0;cursor:pointer;background:transparent">
+      <input type="color" value="${tagColor(t)}" title="Couleur texte" onchange="changerCouleurTag('${tagNom(t)}',null,this.value)" style="width:18px;height:18px;border:none;border-radius:50%;padding:0;cursor:pointer;background:transparent">
+      <span onclick="delTag('${tagNom(t)}')" style="cursor:pointer;opacity:.6;font-size:14px;line-height:1">×</span>
+    </div>`).join('');
 }
-async function addTag(){const v=document.getElementById('new-tag').value.trim();if(!v)return;await api('POST','/tags',{tag:v});document.getElementById('new-tag').value='';toast('Tag ajouté');loadTags();}
+
+async function addTag(){
+  const v=document.getElementById('new-tag').value.trim();
+  if(!v)return;
+  const bg=document.getElementById('new-tag-bg')?.value||'#E6F1FB';
+  const color=document.getElementById('new-tag-color')?.value||'#0C447C';
+  await api('POST','/tags',{tag:{nom:v,bg,color}});
+  document.getElementById('new-tag').value='';
+  toast('Tag "'+v+'" ajouté');loadTags();
+}
+
+async function changerCouleurTag(nom,bg,color){
+  const tag=allTags.find(t=>tagNom(t)===nom);
+  if(!tag)return;
+  const newTag={nom,bg:bg||tagBg(tag),color:color||tagColor(tag)};
+  await api('POST','/tags',{tag:newTag,update:true});
+  loadTags();
+  // Rafraîchir les véhicules si visibles
+  if(document.getElementById('p-vehicules')?.classList.contains('active')) loadVehicules();
+}
+
 async function delTag(t){if(!confirm('Supprimer "'+t+'" ?'))return;await api('DELETE','/tags',{tag:t});loadTags();}
 
 // ─── VEHICULES ───────────────────────────────────────────────
@@ -1015,7 +1098,7 @@ async function ouvrirAssigner(pid,pnom){
     <div style="font-size:12px;color:#6b6b67;margin-bottom:10px">Cochez les véhicules à assigner :</div>
     ${vehs.map(v=>`<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0efeb;cursor:pointer;font-size:13px">
       <input type="checkbox" ${assigned.includes(v.id)?'checked':''} onchange="toggleAssigner('${pid}','${v.id}',this.checked)" style="width:16px;height:16px">
-      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.modele||''} ${v.tag?pill(v.tag,'purple'):''}</span>
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.modele||''} ${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):''}</span>
     </label>`).join('')}`;
   openM('m-assigner');
 }
@@ -1122,6 +1205,7 @@ function loadPage(id) {
   else if(id==='depenses') loadDepenses();
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
+  else if(id==='rapports'){loadRapport();initPeriodeRapport();}
   else if(id==='historique') loadHistorique();
   else if(id==='acces'){
     if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
@@ -1178,7 +1262,7 @@ async function loadDashboard(){
     const rec=vers.filter(vs=>{const a=affs.find(a=>a.id===vs.affectation_id);return a&&a.vehicule_id===v.id;}).reduce((s,vs)=>s+vs.montant,0);
     const dep=deps.filter(dd=>dd.vehicule_id===v.id).reduce((s,dd)=>s+dd.montant,0);
     const mg=rec-dep;const pct=rec>0?Math.round(mg/rec*100):0;
-    return `<tr onclick="voirFicheVeh('${v.id}')" style="cursor:pointer"><td><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</td><td style="color:#3B6D11">${fmt(rec)}</td><td style="color:#A32D2D">${fmt(dep)}</td><td style="color:${mg>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(mg)}</strong></td><td>${pill(pct+'%',pct>=70?'ok':pct>=40?'warn':'err')}</td></tr>`;
+    return `<tr onclick="voirFicheVeh('${v.id}')" style="cursor:pointer"><td><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):''}</td><td style="color:#3B6D11">${fmt(rec)}</td><td style="color:#A32D2D">${fmt(dep)}</td><td style="color:${mg>=0?'#3B6D11':'#A32D2D'}"><strong>${fmt(mg)}</strong></td><td>${pill(pct+'%',pct>=70?'ok':pct>=40?'warn':'err')}</td></tr>`;
   }).join('');
   rentEl.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -1215,7 +1299,7 @@ function renderVehsMulti(vehs){
   el.innerHTML=vehs.map(v=>`
     <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f4f0;cursor:pointer;font-size:12px">
       <input type="checkbox" class="fac-multi-cb" value="${v.id}" onchange="updateFacMultiResume()" style="width:15px;height:15px">
-      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):''}
       <span style="color:${v.statut_jour==='actif'?'#3B6D11':v.statut_jour==='panne'?'#A32D2D':'#BA7517'};margin-left:4px;font-size:10px">${v.statut_jour||'—'}</span></span>
     </label>`).join('');
 }
@@ -1312,7 +1396,7 @@ async function ouvrirAssignGest(gid,gnom){
     <div id="m-ag-list">${vehs.map(v=>`
     <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0efeb;cursor:pointer;font-size:13px">
       <input type="checkbox" ${assigned.includes(v.id)?'checked':''} onchange="toggleAssignGest('${gid}','${v.id}',this.checked)" style="width:15px;height:15px">
-      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</span>
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):''}</span>
     </label>`).join('')}</div>`;
   openM('m-assign-gest');
 }
@@ -1351,30 +1435,34 @@ async function loadPropVehsSection(){
   listEl.innerHTML=vehs.map(v=>`
     <label style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f5f4f0;cursor:pointer;font-size:12px">
       <input type="checkbox" class="prop-veh-cb" value="${v.id}" style="width:14px;height:14px">
-      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pill(v.tag,'purple'):''}</span>
+      <span><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):''}</span>
     </label>`).join('');
 }
 
 // ─── ADDPROPRIETAIRE ──────────────────────────────────────────
 async function addProprietaire(btn){
-  const nom=document.getElementById('pnom').value.trim();
-  const pwd=document.getElementById('ppwd').value.trim();
+  // Lire depuis Accès & Partage (ap-) en priorité, sinon depuis l'onglet Propriétaires
+  const nomEl = document.getElementById('ap-pnom')||document.getElementById('pnom');
+  const pwdEl = document.getElementById('ap-ppwd')||document.getElementById('ppwd');
+  const emailEl = document.getElementById('ap-pemail')||document.getElementById('pemail');
+  const telEl = document.getElementById('ap-ptel')||document.getElementById('ptel');
+  
+  const nom = nomEl?.value.trim()||'';
+  const pwd = pwdEl?.value.trim()||'';
   if(!nom||!pwd){toast('Nom et mot de passe obligatoires','err');return;}
   
-  // Récupérer les véhicules sélectionnés
   const selectedVehs=Array.from(document.querySelectorAll('.prop-veh-cb:checked')).map(cb=>cb.value);
   
   setBtnLoading(btn,true);
   const r=await api('POST','/proprietaires',{
-    nom,email:document.getElementById('pemail').value,
-    telephone:document.getElementById('ptel').value,
-    password:pwd,
-    vehicules_ids:selectedVehs
+    nom, email:emailEl?.value||'',
+    telephone:telEl?.value||'',
+    password:pwd, vehicules_ids:selectedVehs
   });
   setBtnLoading(btn,false);
   if(r.detail){toast(r.detail,'err');return;}
   toast('Accès créé pour '+nom+' — mot de passe : '+pwd);
-  ['pnom','pemail','ptel','ppwd'].forEach(id=>document.getElementById(id).value='');
+  [nomEl,pwdEl,emailEl,telEl].forEach(el=>{if(el)el.value='';});
   document.querySelectorAll('.prop-veh-cb').forEach(cb=>cb.checked=false);
   loadProprietaires();
 }
@@ -1425,6 +1513,191 @@ async function loadHistorique(){
     <td>${pill(h.auteur||'?',h.role==='manager'?'blue':'purple')}</td>
   </tr>`).join('')}
   </tbody></table>`;
+}
+
+
+// ─── PÉRIODES RAPIDES ─────────────────────────────────────────
+function initPeriodeRapport(){
+  const today=new Date().toISOString().split('T')[0];
+  document.getElementById('rp-fin').value=today;
+  // Par défaut : ce mois
+  const debut=new Date(); debut.setDate(1);
+  document.getElementById('rp-debut').value=debut.toISOString().split('T')[0];
+  loadRapport();
+}
+
+function setPeriodeRapide(){
+  const val=document.getElementById('rp-rapide').value;
+  if(!val)return;
+  const now=new Date();
+  let debut,fin=new Date();
+  if(val==='today'){debut=new Date();}
+  else if(val==='week'){debut=new Date();debut.setDate(debut.getDate()-debut.getDay()+1);}
+  else if(val==='month'){debut=new Date(now.getFullYear(),now.getMonth(),1);}
+  else if(val==='lastmonth'){debut=new Date(now.getFullYear(),now.getMonth()-1,1);fin=new Date(now.getFullYear(),now.getMonth(),0);}
+  else if(val==='year'){debut=new Date(now.getFullYear(),0,1);}
+  document.getElementById('rp-debut').value=debut.toISOString().split('T')[0];
+  document.getElementById('rp-fin').value=fin.toISOString().split('T')[0];
+  loadRapport();
+}
+
+// ─── RAPPORT ──────────────────────────────────────────────────
+let rapportData = [];
+async function loadRapport(){
+  const debut=document.getElementById('rp-debut')?.value||'';
+  const fin=document.getElementById('rp-fin')?.value||'';
+  const groupe=document.getElementById('rp-groupe')?.value||'vehicule';
+  if(!debut||!fin){document.getElementById('rp-table').innerHTML='<div class="empty">Sélectionnez une période</div>';return;}
+  
+  const [rapport,props] = await Promise.all([
+    api('GET',`/rapport?date_debut=${debut}&date_fin=${fin}`),
+    ROLE==='manager'?api('GET','/proprietaires'):Promise.resolve([])
+  ]);
+  rapportData=rapport;
+  
+  // KPIs résumé
+  const totRec=rapport.reduce((s,v)=>s+v.recettes,0);
+  const totDep=rapport.reduce((s,v)=>s+v.depenses,0);
+  const totFac=rapport.reduce((s,v)=>s+v.facture,0);
+  const totRet=Math.max(0,totFac-totRec);
+  document.getElementById('rp-kpis').innerHTML=`
+    <div class="kpi"><div class="kpi-label">Total Facturé</div><div class="kpi-val" style="color:#185FA5">${fmt(totFac)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" style="color:#3B6D11">${fmt(totRec)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Dépenses</div><div class="kpi-val" style="color:#A32D2D">${fmt(totDep)}</div></div>
+    <div class="kpi"><div class="kpi-label">Retards</div><div class="kpi-val" style="color:#A32D2D">${fmt(totRet)}</div></div>`;
+
+  if(groupe==='vehicule'){
+    afficherRapportVehicule(rapport);
+  } else if(groupe==='tag'){
+    afficherRapportTag(rapport);
+  } else if(groupe==='proprietaire'){
+    afficherRapportProprietaire(rapport,props);
+  }
+}
+
+function afficherRapportVehicule(rapport){
+  const el=document.getElementById('rp-table');
+  if(!rapport.length){el.innerHTML='<div class="empty">Aucune donnée</div>';return;}
+  const rows=rapport.map(v=>{
+    const ret=Math.max(0,v.facture-v.recettes);
+    const pct=v.facture>0?Math.round(v.recettes/v.facture*100):0;
+    return `<tr>
+      <td><strong>${v.immatriculation}</strong> ${v.marque}</td>
+      <td>${v.tag?pillTag(allTags.find(t=>tagNom(t)===v.tag)||v.tag):'—'}</td>
+      <td>${v.chauffeur}</td>
+      <td style="color:#185FA5;font-weight:600">${fmt(v.facture)}</td>
+      <td style="color:#3B6D11;font-weight:600">${fmt(v.recettes)}</td>
+      <td style="color:#A32D2D">${fmt(v.depenses)}</td>
+      <td style="color:${v.recettes-v.depenses>=0?'#3B6D11':'#A32D2D'};font-weight:700">${fmt(v.recettes-v.depenses)}</td>
+      <td style="color:${ret>0?'#A32D2D':'#3B6D11'};font-weight:600">${ret>0?fmt(ret):'✓'}</td>
+      <td>${pill(pct+'%',pct>=90?'ok':pct>=60?'warn':'err')}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr>
+    <th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th><th>Retard</th><th>Taux</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function afficherRapportTag(rapport){
+  const el=document.getElementById('rp-table');
+  const byTag={};
+  rapport.forEach(v=>{
+    const t=v.tag||'Sans tag';
+    if(!byTag[t])byTag[t]={tag:t,facture:0,recettes:0,depenses:0,nb:0};
+    byTag[t].facture+=v.facture;byTag[t].recettes+=v.recettes;byTag[t].depenses+=v.depenses;byTag[t].nb++;
+  });
+  const rows=Object.values(byTag).sort((a,b)=>b.recettes-a.recettes).map(t=>{
+    const ret=Math.max(0,t.facture-t.recettes);
+    return `<tr>
+      <td>${pillTag(allTags.find(x=>tagNom(x)===t.tag)||t.tag)}</td>
+      <td>${t.nb} véh.</td>
+      <td style="color:#185FA5;font-weight:600">${fmt(t.facture)}</td>
+      <td style="color:#3B6D11;font-weight:600">${fmt(t.recettes)}</td>
+      <td style="color:#A32D2D">${fmt(t.depenses)}</td>
+      <td style="color:${t.recettes-t.depenses>=0?'#3B6D11':'#A32D2D'};font-weight:700">${fmt(t.recettes-t.depenses)}</td>
+      <td style="color:${ret>0?'#A32D2D':'#3B6D11'}">${ret>0?fmt(ret):'✓'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Tag</th><th>Véhicules</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th><th>Retard</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function afficherRapportProprietaire(rapport,props){
+  const el=document.getElementById('rp-table');
+  if(!props.length){el.innerHTML='<div class="empty">Aucun propriétaire configuré</div>';return;}
+  const vehs=allVehsCache.length?allVehsCache:[];
+  const rows=props.map(p=>{
+    const pvehIds=p.vehicules_ids||[];
+    const pvehImmat=pvehIds.map(id=>vehs.find(v=>v.id===id)?.immatriculation).filter(Boolean);
+    const pvRap=rapport.filter(v=>pvehImmat.includes(v.immatriculation));
+    const fac=pvRap.reduce((s,v)=>s+v.facture,0);
+    const rec=pvRap.reduce((s,v)=>s+v.recettes,0);
+    const dep=pvRap.reduce((s,v)=>s+v.depenses,0);
+    const ret=Math.max(0,fac-rec);
+    return `<tr>
+      <td><strong>${p.nom}</strong></td>
+      <td style="font-size:11px">${pvehImmat.slice(0,4).join(', ')}${pvehImmat.length>4?'…':''}</td>
+      <td>${pvehImmat.length} véh.</td>
+      <td style="color:#185FA5;font-weight:600">${fmt(fac)}</td>
+      <td style="color:#3B6D11;font-weight:600">${fmt(rec)}</td>
+      <td style="color:#A32D2D">${fmt(dep)}</td>
+      <td style="color:${rec-dep>=0?'#3B6D11':'#A32D2D'};font-weight:700">${fmt(rec-dep)}</td>
+      <td style="color:${ret>0?'#A32D2D':'#3B6D11'}">${ret>0?fmt(ret):'✓'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Propriétaire</th><th>Véhicules</th><th>Nb</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th><th>Retard</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ─── EXPORT CSV ───────────────────────────────────────────────
+function exportRapportCSV(){
+  if(!rapportData.length){toast('Aucune donnée à exporter','err');return;}
+  const debut=document.getElementById('rp-debut').value;
+  const fin=document.getElementById('rp-fin').value;
+  const header='Véhicule,Tag,Chauffeur,Facturé,Encaissé,Dépenses,Marge,Retard\n';
+  const rows=rapportData.map(v=>{
+    const ret=Math.max(0,v.facture-v.recettes);
+    return `${v.immatriculation},${v.tag||''},${v.chauffeur},${v.facture},${v.recettes},${v.depenses},${v.recettes-v.depenses},${ret}`;
+  }).join('\n');
+  const blob=new Blob([header+rows],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`syndongo_rapport_${debut}_${fin}.csv`;a.click();
+  toast('CSV exporté');
+}
+
+async function exportRapportPDF(){
+  const debut=document.getElementById('rp-debut').value;
+  const fin=document.getElementById('rp-fin').value;
+  const groupe=document.getElementById('rp-groupe').value;
+  const totRec=rapportData.reduce((s,v)=>s+v.recettes,0);
+  const totFac=rapportData.reduce((s,v)=>s+v.facture,0);
+  const totDep=rapportData.reduce((s,v)=>s+v.depenses,0);
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport SyNdongo</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px;font-size:12px;}h1{color:#185FA5;font-size:18px;}
+  table{width:100%;border-collapse:collapse;margin-top:16px;}
+  th{background:#f5f4f0;padding:8px;text-align:left;border:1px solid #ddd;}
+  td{padding:7px 8px;border:1px solid #ddd;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;}
+  .kpi{background:#f5f4f0;padding:10px;border-radius:6px;}
+  .kv{font-size:16px;font-weight:bold;}.kl{font-size:10px;color:#666;margin-top:3px;}
+  </style></head><body>
+  <h1>Rapport SyNdongo — ${debut} au ${fin}</h1>
+  <div style="color:#666;margin-bottom:12px">Transport Ndongo Fall · Groupé par ${groupe} · Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="kv" style="color:#185FA5">${fmt(totFac)}</div><div class="kl">Total Facturé</div></div>
+    <div class="kpi"><div class="kv" style="color:#3B6D11">${fmt(totRec)}</div><div class="kl">Total Encaissé</div></div>
+    <div class="kpi"><div class="kv" style="color:#A32D2D">${fmt(totDep)}</div><div class="kl">Total Dépenses</div></div>
+    <div class="kpi"><div class="kv" style="color:${totRec-totDep>=0?'#3B6D11':'#A32D2D'}">${fmt(totRec-totDep)}</div><div class="kl">Marge nette</div></div>
+  </div>
+  <table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th><th>Retard</th></tr></thead>
+  <tbody>${rapportData.map(v=>{const ret=Math.max(0,v.facture-v.recettes);return`<tr>
+    <td><strong>${v.immatriculation}</strong></td><td>${v.tag||'—'}</td><td>${v.chauffeur}</td>
+    <td style="color:#185FA5">${fmt(v.facture)}</td><td style="color:#3B6D11">${fmt(v.recettes)}</td>
+    <td style="color:#A32D2D">${fmt(v.depenses)}</td>
+    <td style="color:${v.recettes-v.depenses>=0?'#3B6D11':'#A32D2D'};font-weight:bold">${fmt(v.recettes-v.depenses)}</td>
+    <td style="color:${ret>0?'#A32D2D':'#3B6D11'}">${ret>0?fmt(ret):'✓'}</td>
+  </tr>`;}).join('')}</tbody></table>
+  </body></html>`);
+  w.document.close();setTimeout(()=>w.print(),500);
 }
 
 </script>

@@ -130,12 +130,18 @@ function handleAPI(req, res, body) {
   if (p==='/api/tags'&&method==='GET') return res.end(JSON.stringify(db.tags));
   if (p==='/api/tags'&&method==='POST') {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(data.tag&&!db.tags.includes(data.tag)){db.tags.push(data.tag);saveDB(db);}
-    return res.end(JSON.stringify(db.tags));
+    const tagData=data.tag;
+    if(!tagData) return res.end(JSON.stringify(db.tags));
+    const tagNom=typeof tagData==='object'?tagData.nom:tagData;
+    const existIdx=db.tags.findIndex(t=>(typeof t==='object'?t.nom:t)===tagNom);
+    if(data.update&&existIdx!==-1){db.tags[existIdx]=tagData;}
+    else if(existIdx===-1){db.tags.push(tagData);}
+    saveDB(db);return res.end(JSON.stringify(db.tags));
   }
   if (p==='/api/tags'&&method==='DELETE') {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    db.tags=db.tags.filter(t=>t!==data.tag);saveDB(db);return res.end(JSON.stringify(db.tags));
+    db.tags=db.tags.filter(t=>(typeof t==='object'?t.nom:t)!==data.tag);
+    saveDB(db);return res.end(JSON.stringify(db.tags));
   }
 
   // ── VEHICULES ─────────────────────────────────────────────
@@ -576,6 +582,55 @@ function handleAPI(req, res, body) {
     }
     db.proprietaires=db.proprietaires.filter(pr=>pr.id!==prM[1]);saveDB(db);
     return res.end(JSON.stringify({message:'Supprimé'}));
+  }
+
+  // ── FACTURATION AUTOMATIQUE PAR STATUT ───────────────────────
+  // Appelée quand on change le statut journalier d'un véhicule
+  // Actif → facture = montant_journalier (lendemain seulement)
+  // Panne ou Repos ou Inactif → facture = 0 pour ce jour
+  if(p==='/api/activites/auto_facture'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const {vehicule_id, statut_jour, date} = data;
+    const targetDate = date || today();
+    
+    // Trouver l'affectation active
+    const aff = db.affectations.find(a=>a.vehicule_id===vehicule_id&&!a.date_fin);
+    if(!aff) return res.end(JSON.stringify({message:'Aucune affectation — facturation ignorée'}));
+    
+    // Calculer le montant selon le statut
+    let montant_facture = 0;
+    let type_journee = 'repos';
+    if(statut_jour==='actif'){
+      montant_facture = aff.montant_journalier;
+      type_journee = 'complet';
+    } else if(statut_jour==='panne'){
+      montant_facture = 0; // panne = rien à payer
+      type_journee = 'demi_panne';
+    } else if(statut_jour==='repos'||statut_jour==='inactif'){
+      montant_facture = 0;
+      type_journee = statut_jour==='inactif'?'inactif':'repos';
+    }
+    
+    // Créer ou mettre à jour la facturation pour ce jour
+    const existIdx = db.facturations.findIndex(f=>f.vehicule_id===vehicule_id&&f.date===targetDate);
+    const fac = {
+      id: existIdx!==-1?db.facturations[existIdx].id:uid(),
+      vehicule_id, chauffeur_id:aff.chauffeur_id, date:targetDate,
+      type_journee, montant_facture, montant_base:aff.montant_journalier,
+      auto:true, created_at:new Date().toISOString()
+    };
+    if(existIdx!==-1) db.facturations[existIdx]=fac;
+    else db.facturations.push(fac);
+    
+    // Historique
+    const veh=db.vehicules.find(v=>v.id===vehicule_id);
+    db.historique=(db.historique||[]);
+    db.historique.push({id:uid(),type:'auto_facturation',
+      ref_nom:(veh?veh.immatriculation:'?')+' → '+type_journee+' → '+montant_facture+' F',
+      auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
+    
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Facturation automatique créée',montant_facture,type_journee}));
   }
 
   // ── HISTORIQUE ────────────────────────────────────────────
