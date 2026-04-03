@@ -184,7 +184,7 @@ tr:hover td{background:#fafaf8;}
         <option value="">Tous propriétaires</option>
       </select>
       <!-- Filtre véhicule -->
-      <select id="dash-filter-veh" style="font-size:12px;width:155px" onchange="loadDashboard()">
+      <div class="ac-wrap" style="width:155px"><input class="ac-input" id="dash-filter-veh-input" placeholder="Véhicule…" oninput="acFilter('dash-filter-veh',this.value)" onfocus="acOpen('dash-filter-veh')" autocomplete="off"><span class="ac-clear" id="dash-filter-veh-clear" onclick="acClearDash()">×</span><input type="hidden" id="dash-filter-veh"><div class="ac-dropdown" id="dash-filter-veh-dd"></div></div><!-- removed-select
         <option value="">Tous véhicules</option>
       </select>
       <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearDashFiltres()">✕ Réinit.</button>
@@ -255,8 +255,8 @@ tr:hover td{background:#fafaf8;}
   <div class="card">
     <div class="card-title">Nouvelle affectation</div>
     <div class="form-row">
-      <div class="field"><label>Véhicule libre *</label><select id="av"><option value="">— choisir —</option></select></div>
-      <div class="field"><label>Chauffeur libre *</label><select id="ac"><option value="">— choisir —</option></select></div>
+      <div class="field"><label>Véhicule libre *</label><div class="ac-wrap"><input class="ac-input" id="av-input" placeholder="Rechercher véhicule…" oninput="acFilter('av',this.value)" onfocus="acOpen('av')" autocomplete="off"><span class="ac-clear" id="av-clear" onclick="acClear('av')">×</span><input type="hidden" id="av"><div class="ac-dropdown" id="av-dd"></div></div></div>
+      <div class="field"><label>Chauffeur libre *</label><div class="ac-wrap"><input class="ac-input" id="ac-input" placeholder="Rechercher chauffeur…" oninput="acFilterChauf('ac',this.value)" onfocus="acOpenChauf('ac')" autocomplete="off"><span class="ac-clear" id="ac-clear" onclick="acClearChauf('ac')">×</span><input type="hidden" id="ac"><div class="ac-dropdown" id="ac-dd"></div></div></div>
     </div>
     <div class="form-row">
       <div class="field"><label>Montant journalier (FCFA) *</label><input id="am" type="number" placeholder="15000"></div>
@@ -303,7 +303,7 @@ tr:hover td{background:#fafaf8;}
       </div>
       <!-- MODE SIMPLE -->
       <div id="fac-simple-panel">
-      <div class="form-row"><div class="field"><label>Véhicule *</label><select id="fv" onchange="onFacVeh()"><option value="">— choisir —</option></select></div><div class="field"><label>Chauffeur (auto)</label><input id="fc-nom" readonly style="opacity:.7;background:#f0efeb"></div></div>
+      <div class="form-row"><div class="field"><label>Véhicule *</label><div class="ac-wrap"><input class="ac-input" id="fv-input" placeholder="Rechercher véhicule…" oninput="acFilter('fv',this.value)" onfocus="acOpen('fv')" autocomplete="off"><span class="ac-clear" id="fv-clear" onclick="acClear('fv')">×</span><input type="hidden" id="fv" onchange="onFacVeh()"><div class="ac-dropdown" id="fv-dd"></div></div></div><div class="field"><label>Chauffeur (auto)</label><input id="fc-nom" readonly style="opacity:.7;background:#f0efeb"></div></div>
       <div class="form-row"><div class="field"><label>Date (défaut hier)</label><input id="fd" type="date"></div><div class="field"><label>Type journée</label><select id="ft" onchange="calcFac()"><option value="complet">Journée complète</option><option value="demi_panne">Demi-journée (panne)</option><option value="repos">Repos (0 F)</option><option value="inactif">Inactif / Immobilisé</option></select></div></div>
       <div style="background:#f5f4f0;border-radius:8px;padding:12px;text-align:center;margin-bottom:12px">
         <div style="font-size:11px;color:#6b6b67;margin-bottom:4px">Montant à facturer</div>
@@ -315,7 +315,7 @@ tr:hover td{background:#fafaf8;}
       </div><!-- fin fac-simple-panel -->
     <div class="card" style="border-top:3px solid #3B6D11">
       <div class="card-title">Encaissement</div>
-      <div class="field" style="margin-bottom:10px"><label>Chauffeur *</label><select id="ec" onchange="onEncChauffeur()"><option value="">— choisir —</option></select></div>
+      <div class="field" style="margin-bottom:10px"><label>Chauffeur *</label><div class="ac-wrap"><input class="ac-input" id="ec-input" placeholder="Rechercher chauffeur…" oninput="acFilterChauf('ec',this.value)" onfocus="acOpenChauf('ec')" autocomplete="off"><span class="ac-clear" id="ec-clear" onclick="acClearChauf('ec')">×</span><input type="hidden" id="ec"><div class="ac-dropdown" id="ec-dd"></div></div></div>
       <div id="enc-dette" style="display:none;margin-bottom:8px"></div>
       <div class="form-row"><div class="field"><label>Montant reçu (FCFA) *</label><input id="em" type="number" placeholder="15000" oninput="calcFIFO()"></div><div class="field"><label>Mode</label><select id="emode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select></div></div>
       <div class="field" style="margin-bottom:10px"><label>Mode imputation</label><select id="eimputation"><option value="fifo">FIFO automatique (plus ancienne d'abord)</option><option value="manuel">Manuel (journée actuelle)</option></select></div>
@@ -370,7 +370,7 @@ tr:hover td{background:#fafaf8;}
 <div class="section" id="p-depenses">
   <div class="card">
     <div class="card-title">Enregistrer une dépense</div>
-    <div class="form-row"><div class="field"><label>Véhicule *</label><select id="dv"><option value="">— choisir —</option></select></div><div class="field"><label>Catégorie *</label><select id="dc"><option value="carburant">Carburant</option><option value="reparation">Réparation (Xelcom)</option><option value="commission_yango">Commission Yango</option><option value="administratif">Administratif</option><option value="autre">Autre</option></select></div></div>
+    <div class="form-row"><div class="field"><label>Véhicule *</label><div class="ac-wrap"><input class="ac-input" id="dv-input" placeholder="Rechercher véhicule…" oninput="acFilter('dv',this.value)" onfocus="acOpen('dv')" autocomplete="off"><span class="ac-clear" id="dv-clear" onclick="acClear('dv')">×</span><input type="hidden" id="dv"><div class="ac-dropdown" id="dv-dd"></div></div></div><div class="field"><label>Catégorie *</label><select id="dc"><option value="carburant">Carburant</option><option value="reparation">Réparation (Xelcom)</option><option value="commission_yango">Commission Yango</option><option value="administratif">Administratif</option><option value="autre">Autre</option></select></div></div>
     <div class="form-row"><div class="field"><label>Montant (FCFA) *</label><input id="dm" type="number" placeholder="15000"></div><div class="field"><label>Description</label><input id="dd" placeholder="Ex : vidange"></div></div>
     <button class="btn btn-red" onclick="addDepense(this)">Enregistrer</button>
   </div>
@@ -2745,6 +2745,109 @@ function acClear(prefix){
   if(clear) clear.style.display = 'none';
   if(prefix==='ve') loadVersements();
   else if(prefix==='ff') loadFac();
+}
+
+
+// ─── AUTOCOMPLETE CHAUFFEURS ──────────────────────────────────
+let _acChaufs = [];
+
+async function initAcChaufs(){
+  if(_acChaufs.length) return;
+  _acChaufs = await api('GET','/chauffeurs');
+}
+
+function acOpenChauf(prefix){
+  initAcChaufs().then(()=>{
+    const val = document.getElementById(prefix+'-input')?.value||'';
+    acFilterChauf(prefix, val);
+    document.getElementById(prefix+'-dd')?.classList.add('open');
+  });
+  document.addEventListener('click', function closeAc(e){
+    if(!e.target.closest('.ac-wrap')){
+      document.querySelectorAll('.ac-dropdown').forEach(d=>d.classList.remove('open'));
+      document.removeEventListener('click', closeAc);
+    }
+  });
+}
+
+function acFilterChauf(prefix, query){
+  const dd = document.getElementById(prefix+'-dd');
+  if(!dd) return;
+  const q = query.toLowerCase().trim();
+  const filtered = q ? _acChaufs.filter(c=>
+    (c.prenom+' '+c.nom).toLowerCase().includes(q) ||
+    (c.telephone||'').includes(q)
+  ) : _acChaufs;
+  
+  if(!filtered.length){
+    dd.innerHTML='<div class="ac-item" style="color:#888;cursor:default">Aucun résultat</div>';
+  } else {
+    dd.innerHTML = filtered.slice(0,20).map(c=>{
+      const nom = c.prenom+' '+c.nom;
+      const hi = q ? nom.replace(new RegExp('('+q+')', 'gi'), '<strong>$1</strong>') : nom;
+      return `<div class="ac-item" onclick="acSelectChauf('${prefix}','${c.id}','${nom}')">
+        ${hi} <span style="color:#888;font-size:11px">${c.telephone||''}</span>
+      </div>`;
+    }).join('');
+  }
+  dd.classList.add('open');
+  const clear = document.getElementById(prefix+'-clear');
+  if(clear) clear.style.display = query ? 'block' : 'none';
+}
+
+function acSelectChauf(prefix, id, nom){
+  const inp = document.getElementById(prefix+'-input');
+  const hid = document.getElementById(prefix);
+  if(inp) inp.value = nom;
+  if(hid){ hid.value = id; hid.dispatchEvent(new Event('change')); }
+  document.getElementById(prefix+'-dd')?.classList.remove('open');
+  const clear = document.getElementById(prefix+'-clear');
+  if(clear) clear.style.display = 'block';
+}
+
+function acClearChauf(prefix){
+  const inp = document.getElementById(prefix+'-input');
+  const hid = document.getElementById(prefix);
+  if(inp) inp.value = '';
+  if(hid){ hid.value = ''; hid.dispatchEvent(new Event('change')); }
+  document.getElementById(prefix+'-dd')?.classList.remove('open');
+  const clear = document.getElementById(prefix+'-clear');
+  if(clear) clear.style.display = 'none';
+}
+
+// Étendre acSelect pour déclencher les événements onchange
+const _origAcSelect = acSelect;
+function acSelect(prefix, id, immat, marque){
+  _origAcSelect(prefix, id, immat, marque);
+  // Déclencher onchange si nécessaire
+  const hid = document.getElementById(prefix);
+  if(hid) hid.dispatchEvent(new Event('change'));
+}
+
+// Étendre acClear pour déclencher les événements
+const _origAcClear = acClear;
+function acClear(prefix){
+  _origAcClear(prefix);
+  if(prefix==='dash-filter-veh'){ loadDashboard(); return; }
+  const hid = document.getElementById(prefix);
+  if(hid){ hid.value=''; hid.dispatchEvent(new Event('change')); }
+}
+
+function acClearDash(){
+  document.getElementById('dash-filter-veh-input').value='';
+  document.getElementById('dash-filter-veh').value='';
+  document.getElementById('dash-filter-veh-dd')?.classList.remove('open');
+  const clear=document.getElementById('dash-filter-veh-clear');
+  if(clear) clear.style.display='none';
+  loadDashboard();
+}
+
+// Étendre refreshSelects pour initialiser les ac
+const _origRefreshSelects = refreshSelects;
+async function refreshSelects(){
+  await _origRefreshSelects();
+  // Réinitialiser les caches pour recharger
+  _acVehs=[];_acChaufs=[];
 }
 
 </script>
