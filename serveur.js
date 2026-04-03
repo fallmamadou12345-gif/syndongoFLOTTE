@@ -19,7 +19,7 @@ function loadDB() {
   }
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   ['activites','facturations','tags','proprietaires','versements',
-   'depenses','alertes','gestionnaires','historique'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'depenses','alertes','gestionnaires','historique','journal'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   return db;
 }
 
@@ -631,6 +631,45 @@ function handleAPI(req, res, body) {
     
     saveDB(db);
     return res.end(JSON.stringify({message:'Facturation automatique créée',montant_facture,type_journee}));
+  }
+
+  // ── JOURNAL DE BORD ──────────────────────────────────────────
+  if(p==='/api/journal'&&method==='GET'){
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=db.journal||[];
+    // Filtrer par véhicules visibles
+    list=list.filter(j=>myVehs.includes(j.vehicule_id));
+    if(q.vehicule_id) list=list.filter(j=>j.vehicule_id===q.vehicule_id);
+    if(q.date_debut) list=list.filter(j=>j.date>=q.date_debut);
+    if(q.date_fin) list=list.filter(j=>j.date<=q.date_fin);
+    // Enrichir avec immat
+    list=list.slice(-200).reverse().map(j=>{
+      const v=db.vehicules.find(x=>x.id===j.vehicule_id);
+      return{...j,vehicule_immat:v?v.immatriculation:'?'};
+    });
+    return res.end(JSON.stringify(list));
+  }
+  if(p==='/api/journal'&&method==='POST'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé — lecture seule'}));}
+    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){
+      res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
+    }
+    if(!db.journal) db.journal=[];
+    const j={id:uid(),vehicule_id:data.vehicule_id,texte:data.texte,
+              type:data.type||'note',date:data.date||today(),
+              auteur:isGest?auth.gest.nom:'Manager',role:auth.role,
+              created_at:new Date().toISOString()};
+    db.journal.push(j);saveDB(db);
+    return res.end(JSON.stringify({id:j.id,message:'Note publiée'}));
+  }
+  const jM=p.match(/^\/api\/journal\/([^/]+)$/);
+  if(jM&&method==='DELETE'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!db.journal) db.journal=[];
+    const j=db.journal.find(x=>x.id===jM[1]);
+    if(j&&isGest&&j.auteur!==auth.gest.nom){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous ne pouvez supprimer que vos propres notes'}));}
+    db.journal=db.journal.filter(x=>x.id!==jM[1]);saveDB(db);
+    return res.end(JSON.stringify({message:'Note supprimée'}));
   }
 
   // ── HISTORIQUE ────────────────────────────────────────────

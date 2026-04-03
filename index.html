@@ -121,18 +121,10 @@ tr:hover td{background:#fafaf8;}
   </div>
 </div>
 <div class="nav" id="nav">
-  <div class="nav-item active" onclick="go('dashboard',this)">Dashboard</div>
-  <div class="nav-item" onclick="go('vehicules',this)">Véhicules</div>
-  <div class="nav-item" onclick="go('chauffeurs',this)">Chauffeurs</div>
-  <div class="nav-item" onclick="go('affectations',this)">Affectations</div>
-  <div class="nav-item" onclick="go('caisse',this)">Caisse &amp; Facturation</div>
-  <div class="nav-item" onclick="go('retards',this)">Retards</div>
-  <div class="nav-item" onclick="go('depenses',this)">Dépenses</div>
-  <div class="nav-item" onclick="go('alertes',this)">Alertes</div>
-  <div class="nav-item manager-only" onclick="go('proprietaires',this)">Propriétaires</div>
-  <div class="nav-item" id="nav-rapports" onclick="go('rapports',this)">Rapports</div>
-  <div class="nav-item" id="nav-hist" onclick="go('historique',this)">Historique</div>
-  <div class="nav-item" id="nav-acces" onclick="go('acces',this)">Accès &amp; Partage</div>
+  <!-- Navigation générée dynamiquement selon le rôle dans lancerApp() -->
+</div>
+<div id="readonly-banner" style="display:none;background:#FEF3C7;border-bottom:2px solid #D97706;padding:6px 20px;font-size:12px;font-weight:600;color:#92400E;text-align:center">
+  Vue lecture seule — Propriétaire · Vous consultez vos véhicules assignés
 </div>
 <div class="main">
 <div class="toast-area" id="ta"></div>
@@ -379,6 +371,50 @@ tr:hover td{background:#fafaf8;}
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn btn-blue" onclick="exportRapportPDF()">Exporter PDF</button>
         <button class="btn btn-outline" onclick="exportRapportCSV()">Exporter CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JOURNAL PROPRIÉTAIRE -->
+  <div class="section" id="p-journal">
+    <div class="card">
+      <div class="card-title">
+        Journal de bord — Vos véhicules
+        <span style="font-size:11px;font-weight:400;color:#6b6b67">Écrit par vos gestionnaires</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <select id="jour-veh-filter" style="font-size:12px;width:160px" onchange="loadJournal()"><option value="">Tous véhicules</option></select>
+        <input type="date" id="jour-debut" style="font-size:12px;width:130px" onchange="loadJournal()">
+        <span style="font-size:12px;color:#6b6b67;align-self:center">→</span>
+        <input type="date" id="jour-fin" style="font-size:12px;width:130px" onchange="loadJournal()">
+      </div>
+      <div id="t-journal"><div class="empty">Chargement…</div></div>
+    </div>
+    <!-- Manager/Gestionnaire : zone d'écriture journal -->
+    <div class="card" id="journal-write-card" style="display:none;border-top:3px solid #185FA5">
+      <div class="card-title">Écrire dans le journal</div>
+      <div class="form-row">
+        <div class="field"><label>Véhicule *</label><select id="jour-veh"><option value="">— choisir —</option></select></div>
+        <div class="field"><label>Date</label><input type="date" id="jour-date"></div>
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label>Note / Observation *</label>
+        <textarea id="jour-texte" rows="3" placeholder="Ex: Panne moteur réparée, chauffeur absent, contrôle technique effectué…" style="font-size:13px;padding:8px 10px;border:1px solid #c0bfb8;border-radius:8px;background:#f5f4f0;color:#1a1a18;width:100%;resize:vertical"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Type</label>
+          <select id="jour-type">
+            <option value="note">Note générale</option>
+            <option value="panne">Panne / Réparation</option>
+            <option value="entretien">Entretien</option>
+            <option value="incident">Incident</option>
+            <option value="chauffeur">Chauffeur</option>
+            <option value="financier">Financier</option>
+          </select>
+        </div>
+        <div class="field" style="align-self:flex-end">
+          <button class="btn btn-blue" onclick="ecrireJournal(this)">Publier la note</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1206,6 +1242,7 @@ function loadPage(id) {
   else if(id==='alertes') loadAlertes();
   else if(id==='proprietaires') loadProprietaires();
   else if(id==='rapports'){loadRapport();initPeriodeRapport();}
+  else if(id==='journal'){loadJournal();initJournal();}
   else if(id==='historique') loadHistorique();
   else if(id==='acces'){
     if(ROLE==='manager'){loadGestionnaires();loadTagsInGest();}
@@ -1698,6 +1735,87 @@ async function exportRapportPDF(){
   </tr>`;}).join('')}</tbody></table>
   </body></html>`);
   w.document.close();setTimeout(()=>w.print(),500);
+}
+
+
+// ─── JOURNAL DE BORD ──────────────────────────────────────────
+async function initJournal(){
+  // Afficher zone d'écriture pour manager et gestionnaire
+  const wc=document.getElementById('journal-write-card');
+  if(wc) wc.style.display=(ROLE==='manager'||ROLE==='gestionnaire')?'block':'none';
+  // Initialiser les dates
+  const fin=new Date().toISOString().split('T')[0];
+  const debut=new Date();debut.setDate(debut.getDate()-30);
+  const jourDebut=document.getElementById('jour-debut');
+  const jourFin=document.getElementById('jour-fin');
+  if(jourDebut&&!jourDebut.value) jourDebut.value=debut.toISOString().split('T')[0];
+  if(jourFin&&!jourFin.value) jourFin.value=fin;
+  // Date par défaut pour écriture
+  const jourDate=document.getElementById('jour-date');
+  if(jourDate) jourDate.value=fin;
+  // Remplir select véhicules
+  const vehs=await api('GET','/vehicules');
+  const jourVeh=document.getElementById('jour-veh');
+  const jourVehFilter=document.getElementById('jour-veh-filter');
+  const opts=vehs.map(v=>`<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
+  if(jourVeh) jourVeh.innerHTML='<option value="">— choisir —</option>'+opts;
+  if(jourVehFilter) jourVehFilter.innerHTML='<option value="">Tous véhicules</option>'+opts;
+  loadJournal();
+}
+
+async function loadJournal(){
+  const debut=document.getElementById('jour-debut')?.value||'';
+  const fin=document.getElementById('jour-fin')?.value||'';
+  const vid=document.getElementById('jour-veh-filter')?.value||'';
+  let url='/journal';
+  const params=[];
+  if(debut) params.push('date_debut='+debut);
+  if(fin) params.push('date_fin='+fin);
+  if(vid) params.push('vehicule_id='+vid);
+  if(params.length) url+='?'+params.join('&');
+  const list=await api('GET',url);
+  const el=document.getElementById('t-journal');
+  if(!list||!list.length){el.innerHTML='<div class="empty">Aucune note dans le journal</div>';return;}
+  const typeIcons={note:'📝',panne:'🔧',entretien:'🔩',incident:'⚠️',chauffeur:'👤',financier:'💰'};
+  const typeColors={note:'gray',panne:'err',entretien:'blue',incident:'warn',chauffeur:'purple',financier:'ok'};
+  el.innerHTML=list.map(j=>`
+    <div style="padding:12px 0;border-bottom:1px solid #e0dfd8;display:flex;gap:12px">
+      <div style="flex-shrink:0;text-align:center;min-width:44px">
+        <div style="font-size:20px">${typeIcons[j.type]||'📝'}</div>
+        <div style="font-size:10px;color:#6b6b67;margin-top:2px">${j.date||''}</div>
+      </div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          ${pill(j.vehicule_immat||'?','blue')}
+          ${pill(j.type||'note',typeColors[j.type]||'gray')}
+          <span style="font-size:11px;color:#6b6b67">${j.auteur||'?'}</span>
+          <span style="font-size:11px;color:#aaa">${j.created_at?j.created_at.slice(0,16).replace('T',' '):''}</span>
+        </div>
+        <div style="font-size:13px;color:#1a1a18;line-height:1.5">${j.texte||''}</div>
+      </div>
+      ${(ROLE==='manager'||ROLE==='gestionnaire')?`<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;flex-shrink:0" onclick="supprimerJournal('${j.id}')">×</button>`:''}
+    </div>`).join('');
+}
+
+async function ecrireJournal(btn){
+  const vid=document.getElementById('jour-veh')?.value;
+  const texte=document.getElementById('jour-texte')?.value.trim();
+  const date=document.getElementById('jour-date')?.value||new Date().toISOString().split('T')[0];
+  const type=document.getElementById('jour-type')?.value||'note';
+  if(!vid||!texte){toast('Véhicule et texte obligatoires','err');return;}
+  setBtnLoading(btn,true);
+  const r=await api('POST','/journal',{vehicule_id:vid,texte,date,type});
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Note publiée dans le journal');
+  document.getElementById('jour-texte').value='';
+  loadJournal();
+}
+
+async function supprimerJournal(id){
+  if(!confirm('Supprimer cette note ?'))return;
+  await api('DELETE','/journal/'+id);
+  toast('Note supprimée','info');loadJournal();
 }
 
 </script>
