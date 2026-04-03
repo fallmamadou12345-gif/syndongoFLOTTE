@@ -147,14 +147,37 @@ tr:hover td{background:#fafaf8;}
     <div class="kpi"><div class="kpi-label">Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
   </div>
   <div class="card" style="margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-size:12px;font-weight:600;color:#6b6b67">Filtre période :</div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <input type="date" id="p-debut" style="font-size:12px;width:130px" onchange="loadDashboard()">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:12px;font-weight:600;color:#6b6b67;flex-shrink:0">Filtres :</div>
+      <!-- Filtre période -->
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:11px;color:#6b6b67">Période</span>
+        <input type="date" id="p-debut" style="font-size:12px;width:128px" onchange="loadDashboard()">
         <span style="font-size:12px;color:#6b6b67">→</span>
-        <input type="date" id="p-fin" style="font-size:12px;width:130px" onchange="loadDashboard()">
-        <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearPeriode()">Tout voir</button>
+        <input type="date" id="p-fin" style="font-size:12px;width:128px" onchange="loadDashboard()">
       </div>
+      <!-- Filtre rapide -->
+      <select id="dash-periode-rapide" style="font-size:12px;width:130px" onchange="setDashPeriodeRapide()">
+        <option value="">Période rapide</option>
+        <option value="today">Aujourd'hui</option>
+        <option value="week">Cette semaine</option>
+        <option value="month">Ce mois</option>
+        <option value="lastmonth">Mois dernier</option>
+        <option value="year">Cette année</option>
+      </select>
+      <!-- Filtre tag -->
+      <select id="dash-filter-tag" style="font-size:12px;width:130px" onchange="loadDashboard()">
+        <option value="">Tous les tags</option>
+      </select>
+      <!-- Filtre propriétaire -->
+      <select id="dash-filter-proprio" style="font-size:12px;width:150px" onchange="loadDashboard()">
+        <option value="">Tous propriétaires</option>
+      </select>
+      <!-- Filtre véhicule -->
+      <select id="dash-filter-veh" style="font-size:12px;width:160px" onchange="loadDashboard()">
+        <option value="">Tous les véhicules</option>
+      </select>
+      <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="clearDashFiltres()">Réinitialiser</button>
       <div id="periode-badge" style="display:none" class="pill pill-blue"></div>
     </div>
   </div>
@@ -649,7 +672,6 @@ function lancerApp() {
       {id:'depenses',label:'Dépenses'},
       {id:'rapports',label:'Rapports'},
       {id:'journal',label:'Journal'},
-      {id:'historique',label:'Historique'},
       {id:'acces',label:'Accès & Partage'},
     ],
     proprietaire:[
@@ -1358,10 +1380,51 @@ function clearPeriode(){
 }
 
 // ─── DASHBOARD PERIODE ────────────────────────────────────────
+function setDashPeriodeRapide(){
+  const val=document.getElementById('dash-periode-rapide').value;
+  if(!val)return;
+  const now=new Date();
+  let debut=new Date(),fin=new Date();
+  if(val==='today'){debut=new Date();}
+  else if(val==='week'){debut=new Date();debut.setDate(debut.getDate()-debut.getDay()+1);}
+  else if(val==='month'){debut=new Date(now.getFullYear(),now.getMonth(),1);}
+  else if(val==='lastmonth'){debut=new Date(now.getFullYear(),now.getMonth()-1,1);fin=new Date(now.getFullYear(),now.getMonth(),0);}
+  else if(val==='year'){debut=new Date(now.getFullYear(),0,1);}
+  document.getElementById('p-debut').value=debut.toISOString().split('T')[0];
+  document.getElementById('p-fin').value=fin.toISOString().split('T')[0];
+  loadDashboard();
+}
+
+function clearDashFiltres(){
+  ['p-debut','p-fin','dash-filter-tag','dash-filter-proprio','dash-filter-veh'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('dash-periode-rapide').value='';
+  document.getElementById('periode-badge').style.display='none';
+  loadDashboard();
+}
+
 async function loadDashboard(){
+  // Charger les filtres
   const per=getPeriode();
+  const filterTag=document.getElementById('dash-filter-tag')?.value||'';
+  const filterProprio=document.getElementById('dash-filter-proprio')?.value||'';
+  const filterVeh=document.getElementById('dash-filter-veh')?.value||'';
+  
+  // Remplir les selects de filtres si vides
+  if(allTags.length){
+    const dtEl=document.getElementById('dash-filter-tag');
+    if(dtEl&&dtEl.options.length<=1){
+      dtEl.innerHTML='<option value="">Tous les tags</option>'+allTags.map(t=>`<option value="${tagNom(t)}">${tagNom(t)}</option>`).join('');
+    }
+  }
+  
   let url='/dashboard';
-  if(per.active) url+=`?date_debut=${per.date_debut}&date_fin=${per.date_fin}`;
+  const params=[];
+  if(per.active){params.push(`date_debut=${per.date_debut}`);params.push(`date_fin=${per.date_fin}`);}
+  if(filterTag) params.push(`tag=${encodeURIComponent(filterTag)}`);
+  if(filterVeh) params.push(`vehicule_id=${filterVeh}`);
+  if(params.length) url+='?'+params.join('&');
   const d=await api('GET',url);
   if(d.detail)return;
   document.getElementById('k-rec').textContent=fmt(d.kpis.recettes);
@@ -1384,9 +1447,38 @@ async function loadDashboard(){
   const per2=getPeriode();
   let vurl='/vehicules',versurl='/versements',depurl='/depenses',affurl='/affectations';
   if(per2.active){versurl+=`?date_debut=${per2.date_debut}&date_fin=${per2.date_fin}`;depurl+=`?date_debut=${per2.date_debut}&date_fin=${per2.date_fin}`;}
-  const[vehs,vers,deps,affs]=await Promise.all([api('GET',vurl),api('GET',versurl),api('GET',depurl),api('GET',affurl)]);
+  let[vehs,vers,deps,affs]=await Promise.all([api('GET',vurl),api('GET',versurl),api('GET',depurl),api('GET',affurl)]);
+  
+  // Appliquer filtres locaux
+  const ft=document.getElementById('dash-filter-tag')?.value||'';
+  const fp=document.getElementById('dash-filter-proprio')?.value||'';
+  const fv=document.getElementById('dash-filter-veh')?.value||'';
+  if(ft) vehs=vehs.filter(v=>v.tag===ft);
+  if(fv) vehs=vehs.filter(v=>v.id===fv);
+  if(fp){
+    // Filtrer par propriétaire
+    const props=await api('GET','/proprietaires').catch(()=>[]);
+    const prop=props.find(p=>p.id===fp);
+    if(prop) vehs=vehs.filter(v=>prop.vehicules_ids.includes(v.id));
+  }
+  
+  // Remplir select véhicules du filtre
+  const dvEl=document.getElementById('dash-filter-veh');
+  if(dvEl&&dvEl.options.length<=1){
+    const allV=await api('GET','/vehicules');
+    dvEl.innerHTML='<option value="">Tous les véhicules</option>'+allV.map(v=>`<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('');
+  }
+  // Remplir select propriétaires (manager seulement)
+  if(ROLE==='manager'){
+    const dpEl=document.getElementById('dash-filter-proprio');
+    if(dpEl&&dpEl.options.length<=1){
+      const props=await api('GET','/proprietaires').catch(()=>[]);
+      dpEl.innerHTML='<option value="">Tous propriétaires</option>'+props.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+    }
+  }
+  
   const rentEl=document.getElementById('d-rent');
-  if(!vehs.length){rentEl.innerHTML='<div class="empty">Aucun véhicule</div>';return;}
+  if(!vehs.length){rentEl.innerHTML='<div class="empty">Aucun véhicule pour ces filtres</div>';return;}
   const rows=vehs.map(v=>{
     const rec=vers.filter(vs=>{const a=affs.find(a=>a.id===vs.affectation_id);return a&&a.vehicule_id===v.id;}).reduce((s,vs)=>s+vs.montant,0);
     const dep=deps.filter(dd=>dd.vehicule_id===v.id).reduce((s,dd)=>s+dd.montant,0);

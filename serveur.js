@@ -89,7 +89,10 @@ function handleAPI(req, res, body) {
 
   // ── DASHBOARD ─────────────────────────────────────────────
   if (p === '/api/dashboard' && method === 'GET') {
-    const vehs = vehsVisibles(db, auth);
+    let vehs = vehsVisibles(db, auth);
+    // Filtres optionnels
+    if(q.tag) vehs=vehs.filter(v=>v.tag===q.tag);
+    if(q.vehicule_id) vehs=vehs.filter(v=>v.id===q.vehicule_id);
     const vIds = vehs.map(v => v.id);
     const affIds = db.affectations.filter(a => vIds.includes(a.vehicule_id)).map(a => a.id);
     const totalRec = db.versements.filter(v => affIds.includes(v.affectation_id)).reduce((s,v)=>s+v.montant,0);
