@@ -477,6 +477,36 @@ async function handleAPI(req, res, body) {
     const f={id:uid(),...data,created_at:new Date().toISOString()};
     db.facturations.push(f);saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée'}));
   }
+  // MODIFIER une facturation
+  const facM=p.match(/^\/api\/facturations\/([^/]+)$/);
+  if(facM&&method==='PATCH'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refus\u00e9'}));}
+    const idx=db.facturations.findIndex(f=>f.id===facM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
+    if(isGest&&!auth.gest.vehicules_ids.includes(db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
+    const old=db.facturations[idx];
+    db.facturations[idx]={...old,...data,updated_at:new Date().toISOString()};
+    db.historique=(db.historique||[]);
+    const vFac=db.vehicules.find(v=>v.id===old.vehicule_id);
+    db.historique.push({id:uid(),type:'facturation_modifiee',
+      ref_nom:(vFac?vFac.immatriculation:'?')+' '+old.date+' : '+old.montant_facture+' F -> '+data.montant_facture+' F',
+      auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
+    saveDB(db);return res.end(JSON.stringify({message:'Facturation modifi\u00e9e'}));
+  }
+  // SUPPRIMER une facturation
+  if(facM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refus\u00e9'}));}
+    const fac=db.facturations.find(f=>f.id===facM[1]);
+    if(!fac){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
+    if(isGest&&!auth.gest.vehicules_ids.includes(fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
+    db.facturations=db.facturations.filter(f=>f.id!==facM[1]);
+    db.historique=(db.historique||[]);
+    const vFacD=db.vehicules.find(v=>v.id===fac.vehicule_id);
+    db.historique.push({id:uid(),type:'facturation_supprimee',
+      ref_nom:(vFacD?vFacD.immatriculation:'?')+' '+fac.date+' ('+fac.montant_facture+' F)',
+      auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
+    saveDB(db);return res.end(JSON.stringify({message:'Facturation supprim\u00e9e'}));
+  }
   // FACTURATION MULTIPLE
   if(p==='/api/facturations/multiple'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}

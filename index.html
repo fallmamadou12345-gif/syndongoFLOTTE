@@ -2474,21 +2474,48 @@ async function sauvegarderCleWave(btn){
 
 
 // ─── MODIFIER / SUPPRIMER FACTURATION ────────────────────────
-async function modifFac(id, typeActuel, montantActuel){
-  const types={complet:'Journée complète',demi_panne:'Demi-journée panne',repos:'Repos',inactif:'Inactif'};
-  const nouveauType=prompt('Type de journée (complet/demi_panne/repos/inactif) :', typeActuel);
-  if(!nouveauType) return;
-  const nouveauMontant=prompt('Nouveau montant facturé (FCFA) :', montantActuel);
-  if(nouveauMontant===null) return;
-  const r=await api('PATCH','/facturations/'+id,{type_journee:nouveauType,montant_facture:+nouveauMontant});
+let _facCourant = null;
+
+function modifFac(id, typeActuel, montantActuel){
+  _facCourant = {id, typeActuel, montantActuel};
+  document.getElementById('mfac-id').value = id;
+  document.getElementById('mfac-type').value = typeActuel || 'complet';
+  document.getElementById('mfac-montant').value = montantActuel || '';
+  // Info contextuelle
+  const el = document.getElementById('mfac-info');
+  if(el) el.textContent = 'Facturation ID: '+id.slice(0,8)+'... · Montant actuel: '+fmt(montantActuel);
+  openM('m-fac');
+}
+
+function mfacUpdateMontant(){
+  // Si panne/repos/inactif → suggérer 0
+  const type = document.getElementById('mfac-type').value;
+  const montantEl = document.getElementById('mfac-montant');
+  if(type === 'repos' || type === 'inactif'){
+    montantEl.value = 0;
+  } else if(type === 'demi_panne'){
+    if(_facCourant) montantEl.value = Math.round(_facCourant.montantActuel / 2);
+  } else if(type === 'complet'){
+    if(_facCourant) montantEl.value = _facCourant.montantActuel;
+  }
+}
+
+async function saveFac(btn){
+  const id = document.getElementById('mfac-id').value;
+  const type = document.getElementById('mfac-type').value;
+  const montant = +document.getElementById('mfac-montant').value;
+  setBtnLoading(btn, true);
+  const r = await api('PATCH', '/facturations/'+id, {type_journee: type, montant_facture: montant});
+  setBtnLoading(btn, false);
   if(r.detail){toast(r.detail,'err');return;}
-  toast('Facturation modifiée');
+  toast('Facturation modifiée — '+fmt(montant));
+  M('m-fac');
   loadFac();loadDashboard();
 }
 
 async function suppFac(id, vehicule, date){
   if(!confirm('Supprimer la facturation de '+vehicule+' du '+date+' ?')) return;
-  const r=await api('DELETE','/facturations/'+id);
+  const r = await api('DELETE', '/facturations/'+id);
   if(r.detail){toast(r.detail,'err');return;}
   toast('Facturation supprimée','info');
   loadFac();loadDashboard();
