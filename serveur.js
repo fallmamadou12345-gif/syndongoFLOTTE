@@ -454,9 +454,19 @@ function handleAPI(req, res, body) {
     const total_verse=db.versements.filter(v=>affIds.includes(v.affectation_id)).reduce((s,v)=>s+v.montant,0);
     const total_facture=db.facturations.filter(f=>f.chauffeur_id===chauffeur_id).reduce((s,f)=>s+f.montant_facture,0);
     const dette=Math.max(0,total_facture-total_verse);
-    const statut=montant>=aff_active.montant_journalier?'recu':montant>0?'partiel':'en_retard';
-    const v={id:uid(),affectation_id:aff_active.id,montant,montant_attendu:aff_active.montant_journalier,statut,mode_paiement:mode_paiement||'especes',date_versement:date_encaissement||today(),created_at:new Date().toISOString()};
-    db.versements.push(v);saveDB(db);
+    const statut=montant>=aff_active.montant_journalier?'recu':montant>0?'partiel':montant===0?'repos_panne':'en_retard';
+    const v={id:uid(),affectation_id:aff_active.id,montant,montant_attendu:aff_active.montant_journalier,statut,
+              mode_paiement:mode_paiement||'especes',reference:data.reference||'',
+              date_versement:date_encaissement||today(),created_at:new Date().toISOString()};
+    db.versements.push(v);
+    // Historique encaissement
+    db.historique=(db.historique||[]);
+    const vehEnc=db.vehicules.find(x=>x.id===aff_active.vehicule_id);
+    const chEnc=db.chauffeurs.find(x=>x.id===chauffeur_id);
+    db.historique.push({id:uid(),type:'encaissement',
+      ref_nom:(vehEnc?vehEnc.immatriculation:'?')+' — '+(chEnc?chEnc.prenom+' '+chEnc.nom:'?')+' — '+montant+' F ('+mode_paiement+')',
+      auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
+    saveDB(db);
     return res.end(JSON.stringify({message:'Encaissement enregistré',versement_id:v.id,dette_avant:dette,dette_apres:Math.max(0,dette-montant)}));
   }
 
@@ -634,6 +644,59 @@ function handleAPI(req, res, body) {
     
     saveDB(db);
     return res.end(JSON.stringify({message:'Facturation automatique créée',montant_facture,type_journee}));
+  }
+
+  // ── WEBHOOK WAVE / ORANGE MONEY ──────────────────────────────
+  // Reçoit les notifications de paiement automatiques
+  if(p==='/api/webhook/wave'&&method==='POST'){
+    // Wave envoie: { amount, phone, reference, timestamp }
+    const {amount, phone, reference, timestamp} = data;
+    if(!amount||!phone) return res.end(JSON.stringify({status:'ignored',reason:'missing fields'}));
+    
+    // Chercher l'affectation par numéro de téléphone du chauffeur
+    const chauffeur=db.chauffeurs.find(c=>c.telephone&&(c.telephone.replace(/\s/g,'')===phone.replace(/\s/g,'')||c.telephone.replace('+','').replace(/\s/g,'')===phone.replace('+','').replace(/\s/g,'')));
+    if(!chauffeur){
+      console.log('Wave webhook: chauffeur non trouvé pour', phone);
+      return res.end(JSON.stringify({status:'not_found',phone}));
+    }
+    const aff=db.affectations.find(a=>a.chauffeur_id===chauffeur.id&&!a.date_fin);
+    if(!aff) return res.end(JSON.stringify({status:'no_affectation'}));
+    
+    const montant=Number(amount);
+    const statut=montant>=aff.montant_journalier?'recu':montant>0?'partiel':'en_retard';
+    const v={id:uid(),affectation_id:aff.id,montant,montant_attendu:aff.montant_journalier,statut,
+             mode_paiement:'wave',reference:reference||'',
+             date_versement:today(),created_at:new Date().toISOString(),source:'webhook_wave'};
+    db.versements.push(v);
+    db.historique=(db.historique||[]);
+    db.historique.push({id:uid(),type:'encaissement_auto_wave',
+      ref_nom:chauffeur.prenom+' '+chauffeur.nom+' — '+montant+' F (Wave auto) ref:'+reference,
+      auteur:'Wave API',role:'system',date:new Date().toISOString()});
+    saveDB(db);
+    console.log('Wave webhook OK:', chauffeur.prenom, chauffeur.nom, montant, 'F');
+    return res.end(JSON.stringify({status:'ok',versement_id:v.id,chauffeur:chauffeur.prenom+' '+chauffeur.nom,montant,statut}));
+  }
+  
+  if(p==='/api/webhook/orange'&&method==='POST'){
+    // Orange Money envoie un format similaire
+    const {amount, msisdn, txnid} = data;
+    if(!amount||!msisdn) return res.end(JSON.stringify({status:'ignored'}));
+    const chauffeur=db.chauffeurs.find(c=>c.telephone&&c.telephone.replace(/\D/g,'').includes(msisdn.replace(/\D/g,'').slice(-8)));
+    if(!chauffeur) return res.end(JSON.stringify({status:'not_found'}));
+    const aff=db.affectations.find(a=>a.chauffeur_id===chauffeur.id&&!a.date_fin);
+    if(!aff) return res.end(JSON.stringify({status:'no_affectation'}));
+    const montant=Number(amount);
+    const statut=montant>=aff.montant_journalier?'recu':montant>0?'partiel':'en_retard';
+    const v={id:uid(),affectation_id:aff.id,montant,montant_attendu:aff.montant_journalier,statut,
+             mode_paiement:'orange_money',reference:txnid||'',
+             date_versement:today(),created_at:new Date().toISOString(),source:'webhook_orange'};
+    db.versements.push(v);
+    db.historique=(db.historique||[]);
+    db.historique.push({id:uid(),type:'encaissement_auto_orange',
+      ref_nom:chauffeur.prenom+' '+chauffeur.nom+' — '+montant+' F (Orange auto)',
+      auteur:'Orange API',role:'system',date:new Date().toISOString()});
+    saveDB(db);
+    return res.end(JSON.stringify({status:'ok',versement_id:v.id,montant,statut}));
   }
 
   // ── JOURNAL DE BORD ──────────────────────────────────────────

@@ -1054,41 +1054,207 @@ async function validerFac(btn){
   loadFac(); loadDashboard(); facAffCache=[];
 }
 
+// ─── ENCAISSEMENT INTELLIGENT ────────────────────────────────
+let _encChauffeurData = null; // Cache fiche chauffeur
+
 async function onEncChauffeur(){
   const cid=document.getElementById('ec').value;
-  if(!cid){document.getElementById('enc-dette').style.display='none';return;}
+  const statEl=document.getElementById('enc-statut-jour');
+  const bloqEl=document.getElementById('enc-bloque');
+  const zoneEl=document.getElementById('enc-zone');
+  const detteEl=document.getElementById('enc-dette');
+  const suggEl=document.getElementById('enc-suggestion');
+  const waveEl=document.getElementById('enc-wave-link');
+  
+  // Reset
+  [statEl,bloqEl,suggEl,waveEl].forEach(el=>{if(el)el.style.display='none';});
+  if(detteEl) detteEl.style.display='none';
+  if(zoneEl) zoneEl.style.display='block';
+  _encChauffeurData=null;
+  
+  if(!cid) return;
+  
+  // Charger la fiche du chauffeur
   const f=await api('GET','/chauffeurs/'+cid+'/fiche');
+  _encChauffeurData=f;
   const dette=f.manquant||0;
-  const el=document.getElementById('enc-dette');
-  el.style.display='block';
-  el.className=dette>0?'warning-banner':'info-banner';
-  el.innerHTML=dette>0?`Dette actuelle : <strong>${fmt(dette)}</strong>`:`<strong>À jour</strong> — aucun retard`;
+  
+  // Trouver le véhicule et son statut journalier
+  const aff=f.affectation;
+  if(!aff){bloqEl.style.display='block';bloqEl.textContent='Aucune affectation active — encaissement impossible';zoneEl.style.display='none';return;}
+  
+  const vehs=await api('GET','/vehicules');
+  const veh=vehs.find(v=>v.id===aff.vehicule_id);
+  const statut=veh?.statut_jour||'non_saisi';
+  const today=new Date().toISOString().split('T')[0];
+  
+  // Vérifier si c'est un dimanche
+  const isDimanche=new Date().getDay()===0;
+  
+  // Afficher le statut journalier
+  if(statEl){
+    const statColors={actif:{bg:'#EAF3DE',col:'#27500A',icon:'✅'},panne:{bg:'#FCEBEB',col:'#791F1F',icon:'🔧'},repos:{bg:'#FEF3C7',col:'#92400E',icon:'😴'},inactif:{bg:'#F1EFE8',col:'#444',icon:'⛔'},non_saisi:{bg:'#f5f4f0',col:'#6b6b67',icon:'❓'}};
+    const sc=statColors[statut]||statColors.non_saisi;
+    statEl.style.display='block';
+    statEl.style.background=sc.bg;statEl.style.color=sc.col;statEl.style.borderRadius='8px';statEl.style.padding='10px 14px';
+    statEl.innerHTML=`${sc.icon} <strong>${veh?.immatriculation||'?'}</strong> — Statut aujourd'hui : <strong>${statut.toUpperCase()}</strong>${isDimanche?' · DIMANCHE (repos habituel)':''}`;
+  }
+  
+  // BLOQUER si panne, repos, inactif, ou dimanche
+  if(statut==='panne'||statut==='repos'||statut==='inactif'){
+    bloqEl.style.display='block';
+    const msgs={panne:'🔧 Véhicule EN PANNE — Rien à encaisser (0 F)',repos:'😴 Véhicule AU REPOS — Rien à encaisser (0 F)',inactif:'⛔ Véhicule INACTIF — Rien à encaisser (0 F)'};
+    bloqEl.innerHTML=msgs[statut]+'<br><span style="font-size:11px;font-weight:400">La facturation de ce jour est automatiquement à 0 F</span>';
+    // Montant à 0 mais permettre quand même d'encaisser les dettes passées
+    document.getElementById('em').value=0;
+    zoneEl.style.display='block';
+    if(detteEl&&dette>0){
+      detteEl.style.display='block';
+      detteEl.className='warning-banner';
+      detteEl.innerHTML=`⚠️ Dette passée : <strong>${fmt(dette)}</strong> — Vous pouvez encaisser le solde dû`;
+    } else if(detteEl){
+      detteEl.style.display='block';
+      detteEl.className='info-banner';
+      detteEl.innerHTML='✓ Aucune dette — le chauffeur est à jour';
+    }
+    return;
+  }
+  
+  if(isDimanche&&statut==='non_saisi'){
+    bloqEl.style.display='block';
+    bloqEl.style.background='#FEF3C7';bloqEl.style.color='#92400E';
+    bloqEl.innerHTML='📅 DIMANCHE — Pas de travail habituel<br><span style="font-size:11px;font-weight:400">Encaissement possible uniquement pour les dettes passées</span>';
+  }
+  
+  // Afficher la dette
+  if(detteEl&&dette>0){
+    detteEl.style.display='block';
+    detteEl.className='warning-banner';
+    detteEl.innerHTML=`⚠️ Dette actuelle : <strong>${fmt(dette)}</strong>`;
+  } else if(detteEl){
+    detteEl.style.display='block';
+    detteEl.className='info-banner';
+    detteEl.innerHTML='✓ À jour — aucun retard';
+  }
+  
+  // Suggestion de montant automatique
+  const montantSuggere=aff.montant_journalier;
+  if(suggEl&&statut==='actif'){
+    suggEl.style.display='block';
+    suggEl.innerHTML=`💡 Montant suggéré : <strong style="color:#185FA5">${fmt(montantSuggere)}</strong> (tarif journalier) · Total avec dettes : <strong style="color:#A32D2D">${fmt(dette+montantSuggere)}</strong>`;
+  }
+  
+  // Pré-remplir le montant
+  if(statut==='actif') document.getElementById('em').value=montantSuggere;
+  else document.getElementById('em').value=dette>0?dette:0;
+  
+  calcFIFO();
+  onEncModeChange();
+}
+
+function emMontantAuto(){
+  if(!_encChauffeurData) return;
+  const dette=_encChauffeurData.manquant||0;
+  const aff=_encChauffeurData.affectation;
+  const montant=aff?dette+aff.montant_journalier:dette;
+  document.getElementById('em').value=montant;
+  calcFIFO();
+  toast('Montant auto : '+fmt(montant));
+}
+
+function onEncModeChange(){
+  const mode=document.getElementById('emode').value;
+  const refZone=document.getElementById('enc-ref-zone');
+  const refLabel=document.getElementById('enc-ref-label');
+  const waveEl=document.getElementById('enc-wave-link');
+  const waveUrl=document.getElementById('enc-wave-url');
+  
+  if(mode==='wave'){
+    if(refZone){refZone.style.display='block';}
+    if(refLabel) refLabel.textContent='Référence Wave *';
+    // Générer lien Wave si chauffeur sélectionné
+    if(_encChauffeurData&&waveEl&&waveUrl){
+      const montant=+document.getElementById('em').value||0;
+      const tel=_encChauffeurData.chauffeur?.telephone||'';
+      // Format Wave deeplink Sénégal
+      const waveDeepLink=`https://www.wave.com/s/send/?phone=${tel.replace('+','').replace(/\s/g,'')}&amount=${montant}&note=SyNdongo`;
+      waveUrl.href=waveDeepLink;
+      waveEl.style.display='block';
+    }
+  } else if(mode==='orange_money'){
+    if(refZone){refZone.style.display='block';}
+    if(refLabel) refLabel.textContent='Référence Orange Money *';
+    if(waveEl) waveEl.style.display='none';
+  } else {
+    if(refZone) refZone.style.display='none';
+    if(waveEl) waveEl.style.display='none';
+  }
   calcFIFO();
 }
 
 async function calcFIFO(){
   const cid=document.getElementById('ec').value;
   const montant=+document.getElementById('em').value;
-  if(!cid||!montant) return;
-  const f=await api('GET','/chauffeurs/'+cid+'/fiche');
-  const dette=f.manquant||0;
-  const el=document.getElementById('enc-fifo');
-  el.style.display='block';
-  el.innerHTML=`<strong>Répartition FIFO :</strong> ${fmt(montant)} imputé sur les journées les plus anciennes · Dette après : <strong style="color:${Math.max(0,dette-montant)>0?'#A32D2D':'#3B6D11'}">${fmt(Math.max(0,dette-montant))}</strong>`;
+  const fifoEl=document.getElementById('enc-fifo');
+  const resumeEl=document.getElementById('enc-resume');
+  if(!cid||!montant||!fifoEl){if(fifoEl)fifoEl.style.display='none';if(resumeEl)resumeEl.style.display='none';return;}
+  
+  const dette=_encChauffeurData?.manquant||0;
+  const aff=_encChauffeurData?.affectation;
+  const apres=Math.max(0,dette-montant);
+  
+  fifoEl.style.display='block';
+  fifoEl.innerHTML=`<strong>Répartition FIFO :</strong> ${fmt(montant)} imputé sur les journées les plus anciennes<br>
+    Dette avant : <strong>${fmt(dette)}</strong> → Dette après : <strong style="color:${apres>0?'#A32D2D':'#3B6D11'}">${apres>0?fmt(apres):'0 F ✓'}</strong>`;
+  
+  if(resumeEl){
+    resumeEl.style.display='block';
+    const mode=document.getElementById('emode').value;
+    const modeIcons={especes:'💵',wave:'🌊',orange_money:'🟠',virement:'🏦'};
+    resumeEl.innerHTML=`<div style="font-weight:600;margin-bottom:4px">Récapitulatif :</div>
+      <div>Montant : <strong style="color:#3B6D11">${fmt(montant)}</strong></div>
+      <div>Mode : ${modeIcons[mode]||''} <strong>${mode.replace('_',' ')}</strong></div>
+      <div>Chauffeur : <strong>${_encChauffeurData?.chauffeur?.prenom||''} ${_encChauffeurData?.chauffeur?.nom||''}</strong></div>
+      <div>Véhicule : <strong>${_encChauffeurData?.vehicule?.immatriculation||'?'}</strong></div>`;
+  }
 }
 
 async function validerEnc(btn){
-  const cid=document.getElementById('ec').value,montant=+document.getElementById('em').value,mode=document.getElementById('emode').value,imputation=document.getElementById('eimputation').value;
-  if(!cid||!montant){toast('Chauffeur et montant obligatoires','err');return;}
+  const cid=document.getElementById('ec').value;
+  const montant=+document.getElementById('em').value;
+  const mode=document.getElementById('emode').value;
+  const imputation=document.getElementById('eimputation').value;
+  const ref=document.getElementById('enc-ref')?.value||'';
+  
+  if(!cid){toast('Sélectionnez un chauffeur','err');return;}
+  if(montant<0){toast('Montant invalide','err');return;}
+  
+  // Si 0 et pas de dette — confirmer
+  if(montant===0){
+    const dette=_encChauffeurData?.manquant||0;
+    if(dette===0){toast('Rien à encaisser — chauffeur à jour','info');return;}
+  }
+  
   setBtnLoading(btn,true);
-  const r=await api('POST','/encaissements',{chauffeur_id:cid,montant_recu:montant,mode_paiement:mode,date_encaissement:new Date().toISOString().split('T')[0],mode_imputation:imputation});
+  const r=await api('POST','/encaissements',{
+    chauffeur_id:cid,montant_recu:montant,mode_paiement:mode,
+    reference:ref,date_encaissement:new Date().toISOString().split('T')[0],
+    mode_imputation:imputation
+  });
   setBtnLoading(btn,false);
   if(r.detail){toast(r.detail,'err');return;}
-  toast('Encaissement de '+fmt(montant)+' enregistré · Dette restante : '+fmt(r.dette_apres));
+  
+  const msg=montant===0?'Encaissement 0 F enregistré (panne/repos)':'Encaissement de '+fmt(montant)+' enregistré · Reste : '+fmt(r.dette_apres);
+  toast(msg,'ok');
+  
+  // Reset
   document.getElementById('em').value='';
-  document.getElementById('enc-fifo').style.display='none';
-  document.getElementById('enc-dette').style.display='none';
-  loadFac();
+  document.getElementById('ec').value='';
+  ['enc-fifo','enc-dette','enc-statut-jour','enc-bloque','enc-suggestion','enc-resume','enc-wave-link'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  _encChauffeurData=null;
+  loadFac();loadDashboard();
 }
 
 async function loadFac(){
