@@ -2551,8 +2551,42 @@ async function suppFac(id, vehicule, date){
 }
 
 // ─── MODIFIER / SUPPRIMER VERSEMENT ──────────────────────────
-// (déjà dans ouvrirModifVersement et supprimerVersement)
-// Améliorer l'affichage du tableau versements avec Wave/ref
+function ouvrirModifVersement(v){
+  document.getElementById('mversid').value=v.id;
+  document.getElementById('mversm').value=v.montant;
+  document.getElementById('mversmode').value=v.mode_paiement||'especes';
+  // Afficher info contextuelle dans le modal
+  const title=document.querySelector('#m-vers .modal-title');
+  if(title) title.innerHTML=`Modifier versement <span style="font-size:11px;font-weight:400;color:#6b6b67">${v.chauffeur||''} · ${v.date_versement||''}</span> <button class="modal-close" onclick="M('m-vers')">×</button>`;
+  openM('m-vers');
+}
+
+async function saveVers(btn){
+  const id=document.getElementById('mversid').value;
+  const montant=+document.getElementById('mversm').value;
+  const mode=document.getElementById('mversmode').value;
+  if(!montant&&montant!==0){toast('Montant invalide','err');return;}
+  setBtnLoading(btn,true);
+  const r=await api('PATCH','/versements/'+id,{montant,mode_paiement:mode});
+  setBtnLoading(btn,false);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Versement modifié — '+fmt(montant));
+  M('m-vers');loadFac();loadDashboard();
+}
+
+async function supprimerVersement(id){
+  if(!confirm('Supprimer ce versement ?')) return;
+  const r=await api('DELETE','/versements/'+id);
+  if(r.detail){toast(r.detail,'err');return;}
+  toast('Versement supprimé','info');
+  loadFac();loadDashboard();
+}
+
+// ─── CAS ENCAISSEMENT SANS FACTURATION ────────────────────────
+// Quand un chauffeur verse sans facturation existante :
+// → Le versement est enregistré comme "avance" avec affectation_id null
+// → Il réduit la dette globale via FIFO sur les prochaines facturations
+// → Visible dans l'historique avec statut "avance" 
 
 </script>
 </body>
