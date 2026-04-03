@@ -317,6 +317,19 @@ tr:hover td{background:#fafaf8;}
     </div>
     <div id="tfac"><div class="empty">Aucune facturation</div></div>
   </div>
+
+  <div class="card" style="margin-top:4px">
+    <div class="card-title">Historique encaissements
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="ve-veh" style="font-size:12px;width:160px" onchange="loadVersements()"><option value="">Tous véhicules</option></select>
+        <input type="date" id="ve-debut" style="font-size:12px;width:130px" onchange="loadVersements()">
+        <span style="font-size:12px;align-self:center;color:#6b6b67">→</span>
+        <input type="date" id="ve-fin" style="font-size:12px;width:130px" onchange="loadVersements()">
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 8px" onclick="document.getElementById('ve-debut').value='';document.getElementById('ve-fin').value='';loadVersements()">Tout</button>
+      </div>
+    </div>
+    <div id="tvers"><div class="empty">Chargement…</div></div>
+  </div>
 </div>
 
 <!-- RETARDS -->
@@ -1631,7 +1644,7 @@ function loadPage(id) {
   else if(id==='caisse'){
     const hier=new Date();hier.setDate(hier.getDate()-1);
     document.getElementById('fd').value=hier.toISOString().split('T')[0];
-    refreshSelects();loadFac();
+    refreshSelects();loadFac();loadVersements();
   }
   else if(id==='retards'){
     // Période par défaut : ce mois
@@ -2587,6 +2600,59 @@ async function supprimerVersement(id){
 // → Le versement est enregistré comme "avance" avec affectation_id null
 // → Il réduit la dette globale via FIFO sur les prochaines facturations
 // → Visible dans l'historique avec statut "avance" 
+
+
+// ─── HISTORIQUE ENCAISSEMENTS ──────────────────────────────────
+async function loadVersements(){
+  const vid=document.getElementById('ve-veh')?.value||'';
+  const debut=document.getElementById('ve-debut')?.value||'';
+  const fin=document.getElementById('ve-fin')?.value||'';
+  
+  let url='/versements';
+  const params=[];
+  if(vid) params.push('vehicule_id='+vid);
+  if(debut) params.push('date_debut='+debut);
+  if(fin) params.push('date_fin='+fin);
+  if(params.length) url+='?'+params.join('&');
+  
+  const list=await api('GET',url);
+  const el=document.getElementById('tvers');
+  if(!el) return;
+  if(!list||!list.length){el.innerHTML='<div class="empty">Aucun encaissement</div>';return;}
+  
+  const modeIcons={especes:'💵',wave:'🌊',orange_money:'🟠',virement:'🏦'};
+  const total=list.reduce((s,v)=>s+v.montant,0);
+  
+  el.innerHTML=`
+    <div style="background:#EAF3DE;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:13px">
+      <strong>Total encaissé :</strong> <span style="color:#3B6D11;font-weight:700">${fmt(total)}</span>
+      <span style="color:#6b6b67;font-size:11px;margin-left:10px">${list.length} versement${list.length>1?'s':''}</span>
+    </div>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Date</th><th>Chauffeur</th><th>Véhicule</th><th>Montant</th><th>Mode</th><th>Réf.</th><th>Statut</th><th>Actions</th>
+    </tr></thead><tbody>
+    ${list.map(v=>`<tr>
+      <td>${v.date_versement}</td>
+      <td>${v.chauffeur||'—'}</td>
+      <td><strong>${v.vehicule||'—'}</strong></td>
+      <td style="color:#3B6D11;font-weight:700">${fmt(v.montant)}</td>
+      <td>${(modeIcons[v.mode_paiement]||'')} ${v.mode_paiement||'—'} ${v.source==='wave_auto'?'<span style="font-size:9px;background:#0A85D1;color:#fff;padding:1px 5px;border-radius:99px">AUTO</span>':''}</td>
+      <td style="font-family:monospace;font-size:10px;color:#6b6b67;max-width:90px;overflow:hidden;text-overflow:ellipsis">${v.reference||'—'}</td>
+      <td>${pill(v.statut,v.statut==='recu'?'ok':v.statut==='partiel'?'warn':v.statut==='repos_panne'?'gray':'err')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVersement(${JSON.stringify(v)})'>Modif.</button>
+        <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;margin-left:3px" onclick="supprimerVersement('${v.id}')">Suppr.</button>
+      </td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+  
+  // Remplir le select véhicules si vide
+  const veVeh=document.getElementById('ve-veh');
+  if(veVeh&&veVeh.options.length<=1){
+    const vehs=await api('GET','/vehicules');
+    vehs.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.immatriculation+' · '+v.marque;veVeh.appendChild(o);});
+  }
+}
 
 </script>
 </body>
