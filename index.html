@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" translate="no">
 <head>
 <meta charset="UTF-8">
+  <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SyNdongo v8</title>
 <style>
@@ -1955,7 +1956,11 @@ async function toggleAssignGest(gid,vid,checked){
 async function loadTagsInGest(){
   const el=document.getElementById('gtag');if(!el)return;
   const cur=el.value;
-  el.innerHTML='<option value="">— Choisir un tag —</option>'+allTags.map(t=>`<option value="${t}">${t}</option>`).join('');
+  // allTags peut contenir des objets {nom,bg,color} ou des strings
+  el.innerHTML='<option value="">— Choisir un tag —</option>'+allTags.map(t=>{
+    const nom=typeof t==='object'?t.nom:t;
+    return `<option value="${nom}">${nom}</option>`;
+  }).join('');
   if(cur)el.value=cur;
 }
 
