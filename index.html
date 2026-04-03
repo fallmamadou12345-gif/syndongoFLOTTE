@@ -94,6 +94,18 @@ tr:hover td{background:#fafaf8;}
 .warning-banner{background:#FAEEDA;border:1px solid #FAC775;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#633806;}
 .danger-banner{background:#FCEBEB;border:1px solid #F7C1C1;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#791F1F;}
 @media(max-width:640px){.kpi-grid-4{grid-template-columns:1fr 1fr;}.kpi-grid-6{grid-template-columns:repeat(3,1fr);}.form-row{grid-template-columns:1fr;}.form-row-3{grid-template-columns:1fr;}.fin-grid{grid-template-columns:1fr 1fr;}}
+
+/* ── AUTOCOMPLETE VÉHICULE ───────────────────────────────── */
+.ac-wrap{position:relative;display:inline-block}
+.ac-input{width:100%;padding:6px 10px;border:1px solid #c0bfb8;border-radius:8px;font-size:12px;background:#f5f4f0;color:#1a1a18;outline:none}
+.ac-input:focus{border-color:#185FA5;background:#fff}
+.ac-dropdown{position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid #c0bfb8;border-radius:8px;max-height:200px;overflow-y:auto;z-index:500;box-shadow:0 4px 12px rgba(0,0,0,.1);display:none}
+.ac-dropdown.open{display:block}
+.ac-item{padding:7px 12px;font-size:12px;cursor:pointer;color:#1a1a18;border-bottom:1px solid #f5f4f0}
+.ac-item:hover,.ac-item.selected{background:#E6F1FB;color:#0C447C}
+.ac-item:last-child{border-bottom:none}
+.ac-item strong{color:#185FA5}
+.ac-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:#888;font-size:14px;line-height:1;display:none}
 </style>
 </head>
 <body>
@@ -313,7 +325,12 @@ tr:hover td{background:#fafaf8;}
   </div>
   <div class="card">
     <div class="card-title">Historique facturations
-      <div style="display:flex;gap:8px"><select id="ff-veh" style="font-size:12px;width:160px" onchange="loadFac()"><option value="">Tous véhicules</option></select><input type="date" id="ff-date" style="font-size:12px;width:130px" onchange="loadFac()"></div>
+      <div style="display:flex;gap:8px"><div class="ac-wrap" style="width:200px">
+          <input class="ac-input" id="ff-veh-input" placeholder="Rechercher véhicule…" oninput="acFilter('ff',this.value)" onfocus="acOpen('ff')" autocomplete="off">
+          <span class="ac-clear" id="ff-veh-clear" onclick="acClear('ff')">×</span>
+          <input type="hidden" id="ff-veh">
+          <div class="ac-dropdown" id="ff-veh-dd"></div>
+        </div><input type="date" id="ff-date" style="font-size:12px;width:130px" onchange="loadFac()"></div>
     </div>
     <div id="tfac"><div class="empty">Aucune facturation</div></div>
   </div>
@@ -321,7 +338,12 @@ tr:hover td{background:#fafaf8;}
   <div class="card" style="margin-top:4px">
     <div class="card-title">Historique encaissements
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <select id="ve-veh" style="font-size:12px;width:160px" onchange="loadVersements()"><option value="">Tous véhicules</option></select>
+        <div class="ac-wrap" style="width:200px">
+          <input class="ac-input" id="ve-veh-input" placeholder="Rechercher véhicule…" oninput="acFilter('ve',this.value)" onfocus="acOpen('ve')" autocomplete="off">
+          <span class="ac-clear" id="ve-veh-clear" onclick="acClear('ve')">×</span>
+          <input type="hidden" id="ve-veh">
+          <div class="ac-dropdown" id="ve-veh-dd"></div>
+        </div>
         <input type="date" id="ve-debut" style="font-size:12px;width:130px" onchange="loadVersements()">
         <span style="font-size:12px;align-self:center;color:#6b6b67">→</span>
         <input type="date" id="ve-fin" style="font-size:12px;width:130px" onchange="loadVersements()">
@@ -2652,6 +2674,77 @@ async function loadVersements(){
     const vehs=await api('GET','/vehicules');
     vehs.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.immatriculation+' · '+v.marque;veVeh.appendChild(o);});
   }
+}
+
+
+// ─── AUTOCOMPLETE VÉHICULE ─────────────────────────────────────
+let _acVehs = [];
+
+async function initAcVehs(){
+  if(_acVehs.length) return;
+  _acVehs = await api('GET','/vehicules');
+}
+
+function acOpen(prefix){
+  initAcVehs().then(()=>{
+    const val = document.getElementById(prefix+'-veh-input')?.value||'';
+    acFilter(prefix, val);
+    document.getElementById(prefix+'-veh-dd')?.classList.add('open');
+  });
+  // Fermer les autres dropdowns au clic extérieur
+  document.addEventListener('click', function closeAc(e){
+    if(!e.target.closest('.ac-wrap')){
+      document.querySelectorAll('.ac-dropdown').forEach(d=>d.classList.remove('open'));
+      document.removeEventListener('click', closeAc);
+    }
+  });
+}
+
+function acFilter(prefix, query){
+  const dd = document.getElementById(prefix+'-veh-dd');
+  if(!dd) return;
+  const q = query.toLowerCase().trim();
+  const filtered = q ? _acVehs.filter(v=>
+    v.immatriculation.toLowerCase().includes(q) ||
+    (v.marque||'').toLowerCase().includes(q) ||
+    (v.tag||'').toLowerCase().includes(q)
+  ) : _acVehs;
+  
+  if(!filtered.length){
+    dd.innerHTML='<div class="ac-item" style="color:#888;cursor:default">Aucun résultat</div>';
+  } else {
+    dd.innerHTML = filtered.slice(0,20).map(v=>{
+      const hi = q ? v.immatriculation.replace(new RegExp('('+q+')', 'gi'), '<strong>$1</strong>') : v.immatriculation;
+      return `<div class="ac-item" onclick="acSelect('${prefix}','${v.id}','${v.immatriculation}','${v.marque||''}')">
+        ${hi} <span style="color:#888;font-size:11px">${v.marque||''} ${v.tag?'· '+v.tag:''}</span>
+      </div>`;
+    }).join('');
+  }
+  dd.classList.add('open');
+  // Afficher/cacher le bouton clear
+  const clear = document.getElementById(prefix+'-veh-clear');
+  if(clear) clear.style.display = query ? 'block' : 'none';
+}
+
+function acSelect(prefix, id, immat, marque){
+  document.getElementById(prefix+'-veh-input').value = immat + (marque?' · '+marque:'');
+  document.getElementById(prefix+'-veh').value = id;
+  document.getElementById(prefix+'-veh-dd').classList.remove('open');
+  const clear = document.getElementById(prefix+'-veh-clear');
+  if(clear) clear.style.display = 'block';
+  // Déclencher le rechargement
+  if(prefix==='ve') loadVersements();
+  else if(prefix==='ff') loadFac();
+}
+
+function acClear(prefix){
+  document.getElementById(prefix+'-veh-input').value = '';
+  document.getElementById(prefix+'-veh').value = '';
+  document.getElementById(prefix+'-veh-dd').classList.remove('open');
+  const clear = document.getElementById(prefix+'-veh-clear');
+  if(clear) clear.style.display = 'none';
+  if(prefix==='ve') loadVersements();
+  else if(prefix==='ff') loadFac();
 }
 
 </script>
