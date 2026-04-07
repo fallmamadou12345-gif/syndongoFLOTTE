@@ -306,11 +306,31 @@ tr:hover td{background:#fafaf8;}
     <div class="card" style="border-top:3px solid #3B6D11">
       <div class="card-title">Encaissement</div>
       <div class="field" style="margin-bottom:10px"><label>Chauffeur *</label><select id="ec" onchange="onEncChauffeur()"><option value="">— choisir —</option></select></div>
-      <div id="enc-dette" style="display:none;margin-bottom:8px"></div>
-      <div class="form-row"><div class="field"><label>Montant reçu (FCFA) *</label><input id="em" type="number" placeholder="15000" oninput="calcFIFO()"></div><div class="field"><label>Mode</label><select id="emode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select></div></div>
-      <div class="field" style="margin-bottom:10px"><label>Mode imputation</label><select id="eimputation"><option value="fifo">FIFO automatique (plus ancienne d'abord)</option><option value="manuel">Manuel (journée actuelle)</option></select></div>
-      <div id="enc-fifo" style="display:none;background:#EAF3DE;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px"></div>
-      <button class="btn btn-green" style="width:100%" onclick="validerEnc(this)">Enregistrer l'encaissement</button>
+      <!-- Statut journalier du chauffeur -->
+      <div id="enc-statut-jour" style="display:none;margin-bottom:8px;font-size:12px;border-radius:8px;padding:10px 14px"></div>
+      <!-- Chauffeur bloqué (pas d'affectation) -->
+      <div id="enc-bloque" style="display:none;margin-bottom:8px;background:#FCEBEB;color:#791F1F;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600"></div>
+      <!-- Zone encaissement (cachée si bloqué) -->
+      <div id="enc-zone">
+        <div id="enc-dette" style="display:none;margin-bottom:8px"></div>
+        <div class="form-row"><div class="field"><label>Montant reçu (FCFA) *</label><input id="em" type="number" placeholder="15000" oninput="calcFIFO()"></div><div class="field"><label>Mode</label><select id="emode"><option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="virement">Virement</option></select></div></div>
+        <div class="field" style="margin-bottom:10px"><label>Mode imputation</label><select id="eimputation"><option value="fifo">FIFO automatique (plus ancienne d'abord)</option><option value="manuel">Manuel (journée actuelle)</option></select></div>
+        <div id="enc-fifo" style="display:none;background:#EAF3DE;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px"></div>
+        <!-- Suggestion montant -->
+        <div id="enc-suggestion" style="display:none;margin-bottom:8px;background:#E6F1FB;border-radius:8px;padding:8px 12px;font-size:12px;color:#0C447C"></div>
+        <!-- Lien paiement Wave -->
+        <div id="enc-wave-link" style="display:none;margin-bottom:8px"></div>
+        <!-- Zone référence Wave -->
+        <div id="enc-ref-zone" style="display:none;margin-bottom:8px">
+          <div class="form-row">
+            <div class="field"><label id="enc-ref-label">Référence Wave</label><input id="enc-ref" placeholder="Ref. transaction Wave"></div>
+            <div class="field"><label>URL Wave</label><input id="enc-wave-url" readonly style="font-size:11px;opacity:.7"></div>
+          </div>
+        </div>
+        <!-- Résumé avant validation -->
+        <div id="enc-resume" style="display:none;margin-bottom:10px;background:#f5f4f0;border-radius:8px;padding:10px 14px;font-size:12px"></div>
+        <button class="btn btn-green" style="width:100%" onclick="validerEnc(this)">Enregistrer l'encaissement</button>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -335,12 +355,20 @@ tr:hover td{background:#fafaf8;}
 </div>
 
 <!-- RETARDS -->
-<div class="section" id="p-retards">
+  <div class="section" id="p-retards">
   <div class="card">
-    <div class="card-title">Retards de versement par véhicule<button class="btn btn-red" style="font-size:11px;padding:5px 12px" onclick="exportRetardsPDF(this)">Export PDF</button></div>
+    <div class="card-title">
+      <span id="retards-titre">Retards de versement par véhicule</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="ret-debut" style="font-size:12px;width:130px" onchange="loadRetards()">
+        <span style="font-size:11px;color:#6b6b67">au</span>
+        <input type="date" id="ret-fin" style="font-size:12px;width:130px" onchange="loadRetards()">
+        <button class="btn btn-red" style="font-size:11px;padding:5px 12px" onclick="exportRetardsPDF(this)">Export PDF</button>
+      </div>
+    </div>
     <div id="tret"><div class="empty">Chargement…</div></div>
   </div>
-  <div class="card">
+  <div class="card" id="card-stats-pannes">
     <div class="card-title">Statistiques pannes — 30 derniers jours</div>
     <div id="tpannes"><div class="empty">Chargement…</div></div>
   </div>
@@ -488,6 +516,10 @@ tr:hover td{background:#fafaf8;}
 
   <!-- ACCES & PARTAGE -->
   <div class="section" id="p-acces">
+    <!-- Message de bienvenue propriétaire -->
+    <div id="proprio-welcome" style="display:none;background:#E6F1FB;border:1px solid #B5D4F4;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:#0C447C">
+      <strong>Bienvenue sur SyNdongo.</strong> Vous avez accès en lecture seule à vos véhicules. Contactez votre manager pour toute modification.
+    </div>
     <!-- Configuration Wave — visible par manager ET gestionnaire -->
     <div class="card" style="border-top:3px solid #0A85D1;margin-bottom:12px">
       <div class="card-title">
@@ -595,6 +627,18 @@ tr:hover td{background:#fafaf8;}
     <div class="card">
       <div class="card-title">Propriétaires actifs</div>
       <div id="tprop"><div class="empty">Chargement…</div></div>
+    </div>
+    <!-- Liste 2e version utilisée par loadProprietairesOnglet -->
+    <div class="card">
+      <div class="card-title">Gestion des accès propriétaires</div>
+      <div id="tprop2"><div class="empty">Chargement…</div></div>
+    </div>
+    <!-- Liste véhicules pour assignation (version 2) -->
+    <div class="card manager-only">
+      <div class="card-title">Assigner des véhicules à un propriétaire</div>
+      <div id="prop-vehs-list2" style="max-height:200px;overflow-y:auto;border:1px solid #e0dfd8;border-radius:8px;padding:8px">
+        <div class="empty" style="padding:10px">Chargement…</div>
+      </div>
     </div>
   </div>
 
