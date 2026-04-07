@@ -172,10 +172,21 @@ async function handleAPI(req, res, body) {
       if (v.km_prochain_vidange && v.km_actuel >= v.km_prochain_vidange*0.95)
         alertes.push({type:'warn', message:`Vidange due — ${v.immatriculation}`});
     });
+    // Retard CORRECT : par vehicule puis somme (evite compensation entre vehicules)
+    let retardTotal=0;
+    vehs.forEach(v=>{
+      const vAffIds=db.affectations.filter(a=>a.vehicule_id===v.id).map(a=>a.id);
+      let fv=db.facturations.filter(f=>f.vehicule_id===v.id);
+      let vv=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
+      if(date_debut&&date_fin){fv=fv.filter(f=>f.date>=date_debut&&f.date<=date_fin);vv=vv.filter(vs=>vs.date_versement>=date_debut&&vs.date_versement<=date_fin);}
+      const tf=fv.reduce((s,f)=>s+f.montant_facture,0);
+      const tv=vv.reduce((s,vs)=>s+vs.montant,0);
+      retardTotal+=Math.max(0,tf-tv);
+    });
     return res.end(JSON.stringify({
       kpis:{recettes:recPeriode,depenses:depPeriode,marge:recPeriode-depPeriode,
             taux_marge:recPeriode>0?Math.round((recPeriode-depPeriode)/recPeriode*1000)/10:0,
-            vehicules_total:vehs.length,retard_total:Math.max(0,facPeriode-recPeriode),
+            vehicules_total:vehs.length,retard_total:retardTotal,
             facture_total:facPeriode},
       stats_jour:stats, alertes, role:auth.role,
       periode:{date_debut,date_fin,active:!!(date_debut&&date_fin)}
