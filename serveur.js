@@ -142,6 +142,7 @@ async function handleAPI(req, res, body) {
 
   // ── DASHBOARD ─────────────────────────────────────────────
   if (p === '/api/dashboard' && method === 'GET') {
+    try {
     let vehs = vehsVisibles(db, auth);
     // Filtres optionnels
     if(q.tag) vehs=vehs.filter(v=>v.tag===q.tag);
@@ -200,9 +201,17 @@ async function handleAPI(req, res, body) {
         retard_total:retardTotal,     // Somme retards par véhicule
         facture_total:facPeriode      // Total facturé
       },
-      stats_jour:stats, alertes, role:auth.role,
+      stats_jour:stats, alertes:alertes||[], role:auth.role,
       periode:{date_debut,date_fin,active:!!(date_debut&&date_fin)}
     }));
+    } catch(dashErr) {
+      console.error('Dashboard error:', dashErr.message);
+      return res.end(JSON.stringify({
+        kpis:{recettes:0,depenses:0,marge:0,taux_marge:0,vehicules_total:0,retard_total:0,facture_total:0},
+        stats_jour:{actif:0,panne:0,repos:0,inactif:0,non_saisi:0},
+        alertes:[],role:auth.role,periode:{active:false}
+      }));
+    }
   }
 
   // ── TAGS ──────────────────────────────────────────────────

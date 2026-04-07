@@ -1818,16 +1818,17 @@ async function loadDashboard(){
   const filterVeh=document.getElementById('dash-filter-veh')?.value||'';
   
   // Initialiser les filtres au premier chargement
-  if(_allVehsForFilter.length===0) await initDashFilters();
+  if(_allVehsForFilter.length===0) await initDashFilters().catch(()=>{});
   
   let url='/dashboard';
   const params=[];
-  if(per.active){params.push(`date_debut=${per.date_debut}`);params.push(`date_fin=${per.date_fin}`);}
-  if(filterTag) params.push(`tag=${encodeURIComponent(filterTag)}`);
-  if(filterVeh) params.push(`vehicule_id=${filterVeh}`);
+  if(per.active){params.push('date_debut='+per.date_debut);params.push('date_fin='+per.date_fin);}
+  if(filterTag) params.push('tag='+encodeURIComponent(filterTag));
+  if(filterVeh) params.push('vehicule_id='+filterVeh);
   if(params.length) url+='?'+params.join('&');
   const d=await api('GET',url);
   if(d.detail)return;
+  if(!d.kpis){console.error('kpis manquants');return;}
   document.getElementById('k-rec').textContent=fmt(d.kpis.recettes);
   document.getElementById('k-dep').textContent=fmt(d.kpis.depenses);
   const mg=d.kpis.marge;
@@ -1845,7 +1846,8 @@ async function loadDashboard(){
   else if(pb) pb.style.display='none';
   // Alertes
   const alEl=document.getElementById('d-alertes');
-  alEl.innerHTML=d.alertes.length===0?'<div class="empty">Aucune alerte</div>':d.alertes.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f5f4f0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${a.type==='danger'?'#A32D2D':'#BA7517'};flex-shrink:0;display:inline-block"></span>${a.message}</div>`).join('');
+  if(!alEl) return;
+  alEl.innerHTML=(!d.alertes||d.alertes.length===0)?'<div class="empty">Aucune alerte</div>':d.alertes.map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f5f4f0;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${a.type==='danger'?'#A32D2D':'#BA7517'};flex-shrink:0;display:inline-block"></span>${a.message}</div>`).join('');
   // Rentabilité
   const per2=getPeriode();
   let vurl='/vehicules',versurl='/versements',depurl='/depenses',affurl='/affectations';
