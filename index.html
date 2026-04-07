@@ -2683,12 +2683,6 @@ async function loadVersements(){
     </tr>`).join('')}
     </tbody></table></div>`;
   
-  // Remplir le select véhicules si vide
-  const veVeh=document.getElementById('ve-veh');
-  if(veVeh&&veVeh.options.length<=1){
-    const vehs=await api('GET','/vehicules');
-    vehs.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.immatriculation+' · '+v.marque;veVeh.appendChild(o);});
-  }
 }
 
 
