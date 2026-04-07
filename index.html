@@ -145,11 +145,11 @@ tr:hover td{background:#fafaf8;}
 <!-- DASHBOARD -->
 <div class="section active" id="p-dashboard">
   <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:10px">
-    <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div></div>
+    <div class="kpi"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div><div style="font-size:10px;color:#6b6b67">Versements reçus</div></div>
+    <div class="kpi"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div><div style="font-size:10px;color:#6b6b67">Montant dû</div></div>
     <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
-    <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div><div id="k-pct" style="font-size:11px;color:#6b6b67"></div></div>
-    <div class="kpi"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div></div>
-    <div class="kpi kpi-danger"><div class="kpi-label">Total retards versements</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div></div>
+    <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div><div id="k-pct" style="font-size:10px;color:#6b6b67"></div></div>
+    <div class="kpi kpi-danger"><div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div><div style="font-size:10px;color:#6b6b67">Non encaissé</div></div>
   </div>
   <div class="kpi-grid kpi-grid-6" style="margin-bottom:12px">
     <div class="kpi"><div class="kpi-label">Total véhicules</div><div class="kpi-val" id="k-total">—</div></div>
@@ -1832,7 +1832,9 @@ async function loadDashboard(){
   document.getElementById('k-dep').textContent=fmt(d.kpis.depenses);
   const mg=d.kpis.marge;
   const me=document.getElementById('k-marge');me.textContent=fmt(mg);me.style.color=mg>=0?'#3B6D11':'#A32D2D';
-  document.getElementById('k-pct').textContent=d.kpis.taux_marge+'%';
+  // taux_marge = taux de recouvrement (encaissé / facturé)
+  const tauxEl=document.getElementById('k-pct');
+  if(tauxEl) tauxEl.textContent='Recouvrement : '+d.kpis.taux_marge+'%';
   const kf=document.getElementById('k-facture');if(kf)kf.textContent=fmt(d.kpis.facture_total||0);
   document.getElementById('k-total').textContent=d.kpis.vehicules_total;
   if(d.stats_jour){document.getElementById('k-actif').textContent=d.stats_jour.actif||0;document.getElementById('k-panne').textContent=d.stats_jour.panne||0;document.getElementById('k-repos').textContent=d.stats_jour.repos||0;document.getElementById('k-inact').textContent=d.stats_jour.inactif||0;document.getElementById('k-ns').textContent=d.stats_jour.non_saisi||0;}

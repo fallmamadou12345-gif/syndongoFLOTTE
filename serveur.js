@@ -183,11 +183,23 @@ async function handleAPI(req, res, body) {
       const tv=vv.reduce((s,vs)=>s+vs.montant,0);
       retardTotal+=Math.max(0,tf-tv);
     });
+    // Cohérence des KPIs :
+    // recettes = versements reçus (encaissé réel)
+    // facture_total = montant facturé (ce qui est dû)
+    // marge = encaissé - dépenses
+    // retard = par véhicule MAX(0, facturé - encaissé)
+    // taux_marge = encaissé / facturé (taux de recouvrement)
+    const tauxRecouvrement = facPeriode>0 ? Math.round(recPeriode/facPeriode*1000)/10 : 100;
     return res.end(JSON.stringify({
-      kpis:{recettes:recPeriode,depenses:depPeriode,marge:recPeriode-depPeriode,
-            taux_marge:recPeriode>0?Math.round((recPeriode-depPeriode)/recPeriode*1000)/10:0,
-            vehicules_total:vehs.length,retard_total:retardTotal,
-            facture_total:facPeriode},
+      kpis:{
+        recettes:recPeriode,          // Total encaissé
+        depenses:depPeriode,
+        marge:recPeriode-depPeriode,  // Marge = encaissé - dépenses
+        taux_marge:tauxRecouvrement,  // Taux de recouvrement
+        vehicules_total:vehs.length,
+        retard_total:retardTotal,     // Somme retards par véhicule
+        facture_total:facPeriode      // Total facturé
+      },
       stats_jour:stats, alertes, role:auth.role,
       periode:{date_debut,date_fin,active:!!(date_debut&&date_fin)}
     }));
