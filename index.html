@@ -2588,6 +2588,15 @@ async function suppFac(id, vehicule, date){
 }
 
 // ─── MODIFIER / SUPPRIMER VERSEMENT ──────────────────────────
+// Version par ID (sans passer l'objet entier dans onclick)
+let _versCache=[];
+async function ouvrirModifVersementId(id){
+  // Chercher dans le cache ou recharger
+  if(!_versCache.length) _versCache=await api('GET','/versements');
+  const v=_versCache.find(x=>x.id===id)||{id,montant:0,mode_paiement:'especes'};
+  ouvrirModifVersement(v);
+}
+
 function ouvrirModifVersement(v){
   document.getElementById('mversid').value=v.id;
   document.getElementById('mversm').value=v.montant;
@@ -2608,7 +2617,8 @@ async function saveVers(btn){
   setBtnLoading(btn,false);
   if(r.detail){toast(r.detail,'err');return;}
   toast('Versement modifié — '+fmt(montant));
-  M('m-vers');loadFac();loadDashboard();
+  _versCache=[];
+  M('m-vers');loadFac();loadVersements();loadDashboard();
 }
 
 async function supprimerVersement(id){
@@ -2616,7 +2626,8 @@ async function supprimerVersement(id){
   const r=await api('DELETE','/versements/'+id);
   if(r.detail){toast(r.detail,'err');return;}
   toast('Versement supprimé','info');
-  loadFac();loadDashboard();
+  _versCache=[];
+  loadFac();loadVersements();loadDashboard();
 }
 
 // ─── CAS ENCAISSEMENT SANS FACTURATION ────────────────────────
@@ -2664,7 +2675,7 @@ async function loadVersements(){
       <td style="font-family:monospace;font-size:10px;color:#6b6b67;max-width:90px;overflow:hidden;text-overflow:ellipsis">${v.reference||'—'}</td>
       <td>${pill(v.statut,v.statut==='recu'?'ok':v.statut==='partiel'?'warn':v.statut==='repos_panne'?'gray':'err')}</td>
       <td style="white-space:nowrap">
-        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick='ouvrirModifVersement(${JSON.stringify(v)})'>Modif.</button>
+        <button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="ouvrirModifVersementId('${v.id}')">Modif.</button>
         <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;margin-left:3px" onclick="supprimerVersement('${v.id}')">Suppr.</button>
       </td>
     </tr>`).join('')}
