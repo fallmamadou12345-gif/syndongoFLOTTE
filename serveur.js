@@ -5,6 +5,12 @@ const url = require('url');
 
 const DB_FILE = process.env.DATA_PATH || './syndongo_data.json';
 const PORT = process.env.PORT || 8000;
+
+// ── Helpers tags ──────────────────────────────────────────
+function normalizeTag(t) { return typeof t==='object' ? (t.nom||t.name||'') : String(t||''); }
+function normalizeTags(arr) { return [...new Set((arr||[]).map(normalizeTag).filter(Boolean))]; }
+
+
 const MANAGER_PASSWORD = process.env.MANAGER_PASSWORD || 'ndongo2026';
 
 // ── WAVE CONFIG ───────────────────────────────────────────────
@@ -71,6 +77,8 @@ function loadDB() {
     }, null, 2));
   }
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // Normaliser les tags (s'assurer qu'ils sont tous des strings)
+  if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   return db;
@@ -215,21 +223,47 @@ async function handleAPI(req, res, body) {
   }
 
   // ── TAGS ──────────────────────────────────────────────────
-  if (p==='/api/tags'&&method==='GET') return res.end(JSON.stringify(db.tags));
+  if (p==='/api/tags'&&method==='GET') return res.end(JSON.stringify(normalizeTags(db.tags)));
   if (p==='/api/tags'&&method==='POST') {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const tagData=data.tag;
-    if(!tagData) return res.end(JSON.stringify(db.tags));
-    const tagNom=typeof tagData==='object'?tagData.nom:tagData;
-    const existIdx=db.tags.findIndex(t=>(typeof t==='object'?t.nom:t)===tagNom);
-    if(data.update&&existIdx!==-1){db.tags[existIdx]=tagData;}
-    else if(existIdx===-1){db.tags.push(tagData);}
-    saveDB(db);return res.end(JSON.stringify(db.tags));
+    // Normaliser: toujours stocker les tags comme strings simples
+    const rawTag = data.tag;
+    const tagStr = typeof rawTag==='object' ? (rawTag.nom||rawTag.name||JSON.stringify(rawTag)) : String(rawTag||'');
+    if(!tagStr.trim()) return res.end(JSON.stringify(normalizeTags(db.tags)));
+    // Si c'est une mise à jour (ancien -> nouveau)
+    if(data.ancien) {
+      const idx = db.tags.findIndex(t => normalizeTag(t) === String(data.ancien));
+      if(idx !== -1) db.tags[idx] = tagStr.trim();
+      else db.tags.push(tagStr.trim());
+    } else {
+      const exists = db.tags.some(t => normalizeTag(t) === tagStr.trim());
+      if(!exists) db.tags.push(tagStr.trim());
+    }
+    // Normaliser tous les tags existants
+    db.tags = normalizeTags(db.tags);
+    saveDB(db);
+    return res.end(JSON.stringify(db.tags));
   }
   if (p==='/api/tags'&&method==='DELETE') {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    db.tags=db.tags.filter(t=>(typeof t==='object'?t.nom:t)!==data.tag);
+    const toDelete = String(data.tag||'');
+    db.tags = normalizeTags(db.tags).filter(t => t !== toDelete);
     saveDB(db);return res.end(JSON.stringify(db.tags));
+  }
+  // PATCH tag (renommer)
+  if (p==='/api/tags'&&method==='PATCH') {
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const ancien = String(data.ancien||'');
+    const nouveau = String(data.nouveau||'').trim();
+    if(!ancien||!nouveau) return res.end(JSON.stringify({detail:'Ancien et nouveau nom requis'}));
+    // Renommer dans les tags
+    const idx = db.tags.findIndex(t => normalizeTag(t) === ancien);
+    if(idx !== -1) db.tags[idx] = nouveau;
+    // Renommer sur tous les véhicules
+    db.vehicules.forEach(v => { if(normalizeTag(v.tag) === ancien) v.tag = nouveau; });
+    db.tags = normalizeTags(db.tags);
+    saveDB(db);
+    return res.end(JSON.stringify({ message: 'Tag renommé', tags: db.tags }));
   }
 
   // ── VEHICULES ─────────────────────────────────────────────

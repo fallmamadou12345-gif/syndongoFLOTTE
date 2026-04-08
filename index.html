@@ -132,6 +132,26 @@ tr:hover td{background:#fafaf8}
 .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px}
 .pill-ok{background:#EAF3DE;color:#27500A}.pill-warn{background:#FAEEDA;color:#633806}.pill-err{background:#FCEBEB;color:#791F1F}
 .pill-blue{background:#E6F1FB;color:#0C447C}.pill-gray{background:#F1EFE8;color:#444}.pill-purple{background:#EEEDFE;color:#3C3489}
+
+/* Tags professionnels */
+.tag-item{transition:all .15s;user-select:none}
+.tag-item:hover{background:#D4E8FB !important;border-color:#185FA5 !important;transform:translateY(-1px);box-shadow:0 2px 8px rgba(24,95,165,.15)}
+.tag-item button:hover{background:rgba(0,0,0,.06) !important;border-radius:50%}
+
+/* ── Tag chips professionnels ── */
+.tag-chip{display:inline-flex;align-items:center;gap:6px;background:#E6F1FB;border:1px solid #B5D4F4;border-radius:99px;padding:5px 6px 5px 12px;font-size:12px;font-weight:600;color:#0C447C;transition:all .15s;max-width:250px}
+.tag-chip:hover{background:#D0E8F8;border-color:#7BBEF0;box-shadow:0 2px 6px rgba(24,95,165,.12)}
+.tag-chip-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag-chip-input{font-size:12px;padding:1px 6px;border-radius:4px;border:1px solid #B5D4F4;background:#fff;color:#0C447C;width:120px;font-weight:600}
+.tag-chip-btn{width:22px;height:22px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;transition:all .15s}
+.tag-edit{background:rgba(24,95,165,.1);color:#185FA5}
+.tag-edit:hover{background:#185FA5;color:#fff}
+.tag-del{background:rgba(163,45,45,.1);color:#A32D2D}
+.tag-del:hover{background:#A32D2D;color:#fff}
+/* Bouton spinner générique */
+.btn-loading{opacity:.7;cursor:not-allowed!important}
+.btn-spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -233,10 +253,12 @@ tr:hover td{background:#fafaf8}
       </div>
       <div class="card manager-only">
         <div class="card-title">
-          Tags — Gérer les groupes
-          <button class="btn btn-blue" style="font-size:11px;padding:5px 12px" onclick="ouvrirGestionTags()">+ Nouveau tag</button>
+          Tags &amp; Groupes — Gestion complète
+          <button class="btn btn-blue" id="btn-dash-tag" style="font-size:11px;padding:5px 14px;display:flex;align-items:center;gap:5px" onclick="ajouterTagDash(this)">
+            <span>+ Nouveau tag</span>
+          </button>
         </div>
-        <div id="d-tags-list"><div class="empty">Chargement…</div></div>
+        <div id="d-tags-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:40px"><div style="color:#6b6b67;font-size:13px;padding:8px">Chargement…</div></div>
       </div>
     </div>
 
@@ -284,12 +306,21 @@ tr:hover td{background:#fafaf8}
         </div>
         <div id="t-vehicules"><div class="empty">Chargement…</div></div>
       </div>
-      <div class="card manager-only">
-        <div class="card-title">Tags / Groupes</div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input id="new-tag" placeholder="Nouveau tag…" style="flex:1" onkeypress="if(event.key==='Enter')addTag()">
-          <button class="btn btn-blue" onclick="addTag()">Ajouter</button>
+      <div class="card manager-only" id="card-tags-manager">
+        <div class="card-title">
+          Tags &amp; Groupes
+          <span id="tags-count" style="font-size:11px;font-weight:400;color:#6b6b67"></span>
         </div>
+        <!-- Ajouter un tag -->
+        <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+          <input id="new-tag" placeholder="Nom du tag (ex: Proprietaire 1, Zone Nord…)" style="flex:1" 
+                 onkeypress="if(event.key==='Enter')addTagPro(this.nextElementSibling)"
+                 oninput="document.getElementById('btn-add-tag').disabled=!this.value.trim()">
+          <button id="btn-add-tag" class="btn btn-blue" onclick="addTagPro(this)" disabled style="white-space:nowrap;min-width:100px">
+            + Ajouter
+          </button>
+        </div>
+        <!-- Liste des tags -->
         <div id="tags-list"></div>
       </div>
     </div>
@@ -937,39 +968,296 @@ async function loadDashboard() {
 // TAGS
 // ═══════════════════════════════════════════════════════
 async function loadTags() {
-  const tags = await api('GET', '/tags');
-  if (!Array.isArray(tags)) return;
-  allTags = tags;
-  ['vtag', 'ev-tag', 'v-tag'].forEach(function(id) {
-    const el = document.getElementById(id);
+  const raw = await api('GET', '/tags');
+  if (!Array.isArray(raw)) return;
+  // Normaliser : extraire uniquement les strings
+  allTags = raw.map(t => (typeof t === 'object' && t !== null) ? (t.nom || String(t)) : String(t)).filter(Boolean);
+  // Mettre à jour tous les selects
+  const selects = [
+    { id: 'vtag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'ev-tag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'v-tag', placeholder: 'Tous tags', filter: true },
+    { id: 'd-filter-tag', placeholder: 'Tous tags', filter: true },
+    { id: 'd-filter-tag2', placeholder: 'Tous tags', filter: true },
+    { id: 'ret-tag', placeholder: 'Tous tags', filter: true },
+    { id: 'gprop-tag', placeholder: '— Aucun tag —', filter: false },
+  ];
+  selects.forEach(function(s) {
+    const el = document.getElementById(s.id);
     if (!el) return;
-    const isFilter = id === 'v-tag';
     const cur = el.value;
-    el.innerHTML = (isFilter ? '<option value="">Tous tags</option>' : '<option value="">— Aucun —</option>') +
-      tags.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
-    if (cur) el.value = cur;
+    el.innerHTML = '<option value="">' + s.placeholder + '</option>' +
+      allTags.map(function(t) { return '<option value="' + esc(t) + '">' + t + '</option>'; }).join('');
+    if (cur && allTags.includes(cur)) el.value = cur;
   });
+  // Rendu liste tags dans la page Véhicules
+  renderTagsList();
+  // Rendu liste tags dans le Dashboard
+  renderTagsDash();
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function renderTagsList() {
   const tl = document.getElementById('tags-list');
-  if (tl) tl.innerHTML = tags.map(function(t) {
-    return '<span style="display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:#E6F1FB;color:#0C447C;margin:2px">' + t +
-      ' <span onclick="delTag(\'' + t + '\')" style="cursor:pointer;opacity:.6">×</span></span>';
-  }).join('');
+  const te = document.getElementById('tags-empty');
+  const tc = document.getElementById('tags-count');
+  if (!tl) return;
+  if (!allTags.length) {
+    tl.innerHTML = '';
+    if (te) te.style.display = 'block';
+    if (tc) tc.textContent = '';
+    return;
+  }
+  if (te) te.style.display = 'none';
+  if (tc) tc.textContent = allTags.length + ' groupe' + (allTags.length > 1 ? 's' : '');
+  // Construire via DOM pour éviter les problèmes de quotes
+  tl.innerHTML = '';
+  allTags.forEach(function(t) {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip';
+    chip.dataset.tag = t;
+    // Label
+    const label = document.createElement('span');
+    label.className = 'tag-chip-label';
+    label.id = 'tag-label-' + t.replace(/[^a-z0-9]/gi,'_');
+    label.textContent = t;
+    // Input
+    const input = document.createElement('input');
+    input.className = 'tag-chip-input';
+    input.id = 'tag-input-' + t.replace(/[^a-z0-9]/gi,'_');
+    input.value = t;
+    input.style.display = 'none';
+    input.addEventListener('keypress', function(e) { if(e.key==='Enter') confirmerRenomTag(t, this); });
+    input.addEventListener('blur', function() { annulerEditTag(t); });
+    // Bouton éditer
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'tag-chip-btn tag-edit';
+    btnEdit.title = 'Renommer';
+    btnEdit.textContent = '✏️';
+    btnEdit.addEventListener('click', function() { editerTag(t); });
+    // Bouton supprimer
+    const btnDel = document.createElement('button');
+    btnDel.className = 'tag-chip-btn tag-del';
+    btnDel.title = 'Supprimer';
+    btnDel.textContent = '×';
+    btnDel.addEventListener('click', function() { supprimerTag(t, btnDel); });
+    chip.appendChild(label);
+    chip.appendChild(input);
+    chip.appendChild(btnEdit);
+    chip.appendChild(btnDel);
+    tl.appendChild(chip);
+  });
+}
+function renderTagsDash() {
+  const el = document.getElementById('d-tags-list');
+  if (!el) return;
+  if (!allTags.length) {
+    el.innerHTML = '<div style="color:#6b6b67;font-size:13px;padding:8px">Aucun tag — cliquez "+ Nouveau tag" pour commencer</div>';
+    return;
+  }
+  el.innerHTML = '';
+  allTags.forEach(function(t) {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip';
+    chip.dataset.tag = t;
+    const label = document.createElement('span');
+    label.className = 'tag-chip-label';
+    label.textContent = t;
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'tag-chip-btn tag-edit';
+    btnEdit.textContent = '✏️';
+    btnEdit.addEventListener('click', function() { editerTagDash(t); });
+    const btnDel = document.createElement('button');
+    btnDel.className = 'tag-chip-btn tag-del';
+    btnDel.textContent = '×';
+    btnDel.addEventListener('click', function() { supprimerTag(t, btnDel); });
+    chip.appendChild(label);
+    chip.appendChild(btnEdit);
+    chip.appendChild(btnDel);
+    el.appendChild(chip);
+  });
 }
 
-async function addTag() {
-  const v = document.getElementById('new-tag').value.trim();
-  if (!v) return;
+function renderTagsList(tags) {
+  const tl = document.getElementById('tags-list');
+  if (!tl) return;
+  const cnt = document.getElementById('tags-count');
+  if (cnt) cnt.textContent = tags.length + ' tag(s)';
+  if (!tags.length) {
+    tl.innerHTML = '<div style="text-align:center;padding:20px;color:#6b6b67;font-size:13px;border:2px dashed #e0dfd8;border-radius:10px;margin-top:4px">Aucun tag créé.<br><small>Saisissez un nom ci-dessus et cliquez Ajouter</small></div>';
+    return;
+  }
+  // Vider et construire via DOM (pas de string concatenation complexe)
+  tl.innerHTML = '';
+  tags.forEach(function(t) {
+    const nb = Array.isArray(_vehsCache) ? _vehsCache.filter(function(v){return v.tag===t;}).length : 0;
+    const row = document.createElement('div');
+    row.id = 'tagi-' + t;
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid #e0dfd8;border-radius:10px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)';
+
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0';
+    row.appendChild(dot);
+
+    const label = document.createElement('span');
+    label.id = 'tagl-' + t;
+    label.textContent = t;
+    label.style.cssText = 'flex:1;font-size:13px;font-weight:600;color:#1a1a18';
+    row.appendChild(label);
+
+    if (nb > 0) {
+      const badge = document.createElement('span');
+      badge.textContent = nb + ' véh.';
+      badge.style.cssText = 'font-size:10px;font-weight:600;background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:99px';
+      row.appendChild(badge);
+    }
+
+    const input = document.createElement('input');
+    input.id = 'taginp-' + t;
+    input.value = t;
+    input.style.cssText = 'display:none;flex:1;font-size:13px;padding:5px 10px;border:1.5px solid #185FA5;border-radius:7px;background:#fff;outline:none';
+    input.addEventListener('keypress', function(e) { if (e.key === 'Enter') confirmerRenomTag(t, this); });
+    input.addEventListener('keydown',  function(e) { if (e.key === 'Escape') annulerRenomTag(t); });
+    row.appendChild(input);
+
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:5px';
+
+    var bEdit = document.createElement('button');
+    bEdit.id = 'tagbtn-edit-' + t;
+    bEdit.className = 'btn-sm';
+    bEdit.textContent = '✏️ Renommer';
+    bEdit.style.cssText = 'background:#f0f0f0;color:#444;padding:5px 10px;font-size:12px';
+    bEdit.addEventListener('click', function() { startEditTag(t); });
+    btns.appendChild(bEdit);
+
+    var bSave = document.createElement('button');
+    bSave.id = 'tagbtn-save-' + t;
+    bSave.className = 'btn-sm';
+    bSave.textContent = '✓ Sauver';
+    bSave.style.cssText = 'display:none;background:#185FA5;color:#fff;padding:5px 10px;font-size:12px';
+    bSave.addEventListener('click', function() { confirmerRenomTag(t, document.getElementById('taginp-' + t)); });
+    btns.appendChild(bSave);
+
+    var bCan = document.createElement('button');
+    bCan.id = 'tagbtn-cancel-' + t;
+    bCan.className = 'btn-sm';
+    bCan.textContent = '✕';
+    bCan.style.cssText = 'display:none;background:#e0dfd8;color:#444;padding:5px 10px;font-size:12px';
+    bCan.addEventListener('click', function() { annulerRenomTag(t); });
+    btns.appendChild(bCan);
+
+    var bDel = document.createElement('button');
+    bDel.className = 'btn-sm';
+    bDel.textContent = '🗑️';
+    bDel.title = 'Supprimer ce tag';
+    bDel.style.cssText = 'background:#FCEBEB;color:#A32D2D;padding:5px 10px;font-size:12px';
+    bDel.addEventListener('click', function() { delTagPro(t, bDel); });
+    btns.appendChild(bDel);
+
+    row.appendChild(btns);
+    tl.appendChild(row);
+  });
+}
+
+function startEditTag(t) {
+  const enc = encodeURIComponent(t);
+  const label = document.getElementById('tagl-'+enc);
+  const input = document.getElementById('taginp-'+enc);
+  const btnE = document.getElementById('tagbtn-edit-'+enc);
+  const btnS = document.getElementById('tagbtn-save-'+enc);
+  const btnC = document.getElementById('tagbtn-cancel-'+enc);
+  if (!input) return;
+  label.style.display='none'; input.style.display='block';
+  btnE.style.display='none'; btnS.style.display='inline-flex'; btnC.style.display='inline-flex';
+  input.focus(); input.select();
+}
+
+function annulerRenomTag(t) {
+  const enc = encodeURIComponent(t);
+  const label = document.getElementById('tagl-'+enc);
+  const input = document.getElementById('taginp-'+enc);
+  const btnE = document.getElementById('tagbtn-edit-'+enc);
+  const btnS = document.getElementById('tagbtn-save-'+enc);
+  const btnC = document.getElementById('tagbtn-cancel-'+enc);
+  if (!input) return;
+  input.value = t;
+  label.style.display='block'; input.style.display='none';
+  btnE.style.display='inline-flex'; btnS.style.display='none'; btnC.style.display='none';
+}
+
+async function confirmerRenomTag(ancien, inputEl) {
+  const nouveau = (inputEl?.value || '').trim();
+  if (!nouveau || nouveau === ancien) { annulerRenomTag(ancien); return; }
+  if (allTags.includes(nouveau)) { toast('Ce tag "'+nouveau+'" existe déjà', 'err'); return; }
+  const enc = encodeURIComponent(ancien);
+  const btn = document.getElementById('tagbtn-save-'+enc);
+  setBtnLoad(btn, true);
+  // Essayer PATCH d'abord, puis DELETE+POST si nécessaire
+  try {
+    const res = await api('PATCH', '/tags/'+encodeURIComponent(ancien), { ancien, nouveau });
+    if (res.detail) throw new Error(res.detail);
+  } catch(e) {
+    await api('DELETE', '/tags', { tag: ancien });
+    await api('POST', '/tags', { tag: nouveau });
+  }
+  toast('✅ Tag renommé : "'+ancien+'" → "'+nouveau+'"');
+  allTags = [];
+  await loadTags();
+}
+
+async function addTag(btn) {
+  const inp = document.getElementById('new-tag');
+  const v = (inp.value || '').trim();
+  if (!v) { inp.focus(); return; }
+  if (allTags.includes(v)) { toast('Ce tag existe déjà', 'err'); return; }
+  setBtnLoad(btn, true);
   await api('POST', '/tags', { tag: v });
-  document.getElementById('new-tag').value = '';
-  toast('Tag ajouté');
-  loadTags();
+  inp.value = '';
+  setBtnLoad(btn, false);
+  toast('✅ Tag "' + v + '" créé');
+  allTags = [];
+  await loadTags();
 }
 
-async function delTag(t) {
-  if (!confirm('Supprimer "' + t + '" ?')) return;
-  await api('DELETE', '/tags', { tag: t });
-  loadTags();
+
+function cancelEditTag(ancien) {
+  const enc = encodeURIComponent(ancien);
+  const label = document.getElementById('tagl-' + enc);
+  const input = document.getElementById('taginp-' + enc);
+  if (label) label.style.display = '';
+  if (input) input.style.display = 'none';
 }
+
+async function saveTagRename(ancien, nouveau) {
+  nouveau = (nouveau || '').trim();
+  if (!nouveau || nouveau === ancien) { cancelEditTag(ancien); return; }
+  if (allTags.includes(nouveau)) { toast('Ce tag existe déjà', 'err'); cancelEditTag(ancien); return; }
+  const r = await api('PATCH', '/tags', { ancien, nouveau });
+  if (r.detail) { toast(r.detail, 'err'); cancelEditTag(ancien); return; }
+  toast('✅ Tag renommé : "' + ancien + '" → "' + nouveau + '"');
+  allTags = [];
+  await loadTags();
+}
+
+async function delTagPro(tag, btn) {
+  // Vérifier combien de véhicules utilisent ce tag
+  const vehs = await api('GET', '/vehicules?tag=' + encodeURIComponent(tag));
+  const nb = Array.isArray(vehs) ? vehs.length : 0;
+  const msg = nb > 0
+    ? 'Supprimer le tag "' + tag + '" ? ' + nb + ' véhicule(s) l\'utilisent (ils ne seront plus groupés).'
+    : 'Supprimer le tag "' + tag + '" ?';
+  if (!confirm(msg)) return;
+  setBtnLoad(btn, true);
+  await api('DELETE', '/tags', { tag });
+  toast('Tag "' + tag + '" supprimé', 'info');
+  allTags = [];
+  await loadTags();
+}
+
+// Ancienne compatibilité
+async function delTag(t) { await delTagPro(t, null); }
 
 // ═══════════════════════════════════════════════════════
 // VEHICULES
@@ -2045,15 +2333,21 @@ function filtrerRent(q) {
 async function loadTagsDash() {
   const el = document.getElementById('d-tags-list');
   if (!el) return;
-  const tags = allTags.length ? allTags : await api('GET', '/tags');
-  if (!tags.length) { el.innerHTML = '<div class="empty">Aucun tag créé</div>'; return; }
-  el.innerHTML = tags.map(t => `
-    <div style="display:inline-flex;align-items:center;gap:6px;margin:4px;background:#E6F1FB;border-radius:99px;padding:4px 12px">
-      <span style="font-size:12px;font-weight:600;color:#0C447C">${t}</span>
-      <input id="tag-edit-${t.replace(/\s/g,'_')}" value="${t}" style="display:none;font-size:12px;width:100px;padding:2px 6px;border-radius:4px;border:1px solid #B5D4F4">
-      <button class="btn-sm" style="background:#EAF3DE;color:#27500A;font-size:10px" onclick="editTag('${t}')">✏️</button>
-      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;font-size:10px" onclick="delTagDash('${t}')">×</button>
-    </div>`).join('');
+  if (!allTags.length) await loadTags();
+  const tags = allTags;
+  if (!tags.length) { el.innerHTML = '<div class="empty">Aucun tag créé — cliquez "+ Nouveau tag"</div>'; return; }
+  // Même rendu que renderTagsList mais dans le dashboard
+  el.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${tags.map(t => `
+        <div class="tag-item" id="dastagi-${encodeURIComponent(t)}" style="display:inline-flex;align-items:center;gap:0;background:#E6F1FB;border:1px solid #B5D4F4;border-radius:99px;overflow:hidden">
+          <span id="dastagl-${encodeURIComponent(t)}" style="font-size:12px;font-weight:600;color:#0C447C;padding:5px 12px">${t}</span>
+          <input id="dastaginp-${encodeURIComponent(t)}" value="${t}" style="display:none;font-size:12px;width:120px;padding:4px 8px;border:none;outline:none;background:#fff">
+          <button title="Renommer" onclick="startEditTagDash('${t}')" style="background:transparent;border:none;cursor:pointer;padding:5px 6px;color:#0C447C">✏️</button>
+          <button title="Supprimer" onclick="delTagDash('${t}',this)" style="background:transparent;border:none;cursor:pointer;padding:5px 8px;color:#A32D2D;font-size:14px;font-weight:700">×</button>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:#6b6b67;margin-top:8px">Cliquez ✏️ pour renommer · × pour supprimer</div>`;
 }
 
 function ouvrirGestionTags() {
@@ -2430,6 +2724,128 @@ async function exportPDF(btn) {
 const _spinStyle = document.createElement('style');
 _spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(_spinStyle);
+
+// ── Tags Dashboard — edit inline ──────────────────────────
+function startEditTagDash(ancien) {
+  const enc = encodeURIComponent(ancien);
+  const label = document.getElementById('dastagl-' + enc);
+  const input = document.getElementById('dastaginp-' + enc);
+  if (!label || !input) return;
+  label.style.display = 'none';
+  input.style.display = 'inline';
+  input.focus(); input.select();
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') saveTagRenameDash(ancien, input.value);
+    if (e.key === 'Escape') { label.style.display=''; input.style.display='none'; }
+  };
+  input.onblur = function() { saveTagRenameDash(ancien, input.value); };
+}
+
+async function saveTagRenameDash(ancien, nouveau) {
+  nouveau = (nouveau||'').trim();
+  if (!nouveau || nouveau === ancien) {
+    const enc = encodeURIComponent(ancien);
+    const l = document.getElementById('dastagl-' + enc);
+    const i = document.getElementById('dastaginp-' + enc);
+    if (l) l.style.display = '';
+    if (i) i.style.display = 'none';
+    return;
+  }
+  if (allTags.includes(nouveau)) { toast('Ce tag existe déjà', 'err'); return; }
+  const r = await api('PATCH', '/tags', { ancien, nouveau });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('✅ "' + ancien + '" → "' + nouveau + '"');
+  allTags = [];
+  await loadTags();
+  loadTagsDash();
+}
+
+async function delTagDash(tag, btn) {
+  const vehs = await api('GET', '/vehicules?tag=' + encodeURIComponent(tag));
+  const nb = Array.isArray(vehs) ? vehs.length : 0;
+  const msg = nb > 0
+    ? 'Supprimer "' + tag + '" ? ' + nb + ' véhicule(s) l\'utilisent.'
+    : 'Supprimer le tag "' + tag + '" ?';
+  if (!confirm(msg)) return;
+  if (btn) setBtnLoad(btn, true);
+  await api('DELETE', '/tags', { tag });
+  toast('Tag supprimé', 'info');
+  allTags = [];
+  await loadTags();
+  loadTagsDash();
+}
+
+// Remplacer ouvrirGestionTags par une modale inline
+function ouvrirGestionTags() {
+  const nom = prompt('Nom du nouveau tag :');
+  if (!nom || !nom.trim()) return;
+  if (allTags.includes(nom.trim())) { alert('Ce tag existe déjà'); return; }
+  api('POST', '/tags', { tag: nom.trim() }).then(async () => {
+    toast('✅ Tag "' + nom.trim() + '" créé');
+    allTags = [];
+    await loadTags();
+    loadTagsDash();
+  });
+}
+
+// Aussi remplacer editTag (ancienne version) et delTagDash ancienne
+// pour ne pas avoir de conflits — editTag redirige vers startEditTag
+function editTag(t) { startEditTag(t); }
+
+// ─── Édition inline des tags ─────────────────────────────
+function editerTag(tag) {
+  const safeId = tag.replace(/[^a-zA-Z0-9]/g, '_');
+  const label = document.getElementById('tag-label-' + safeId);
+  const input = document.getElementById('tag-input-' + safeId);
+  if (!label || !input) return;
+  label.style.display = 'none';
+  input.style.display = 'inline';
+  input.focus();
+  input.select();
+}
+
+async function confirmerRenomTag(ancien, input) {
+  const nouveau = input.value.trim();
+  if (!nouveau || nouveau === ancien) { annulerEditTag(ancien); return; }
+  if (allTags.includes(nouveau)) { toast('Ce tag existe déjà', 'err'); return; }
+  // Mettre à jour le serveur : supprimer l'ancien, créer le nouveau
+  await api('POST', '/tags', { tag: nouveau, ancien });
+  // Mettre à jour les véhicules qui avaient l'ancien tag
+  const vehs = await api('GET', '/vehicules');
+  const promises = vehs.filter(v => v.tag === ancien).map(v => api('PATCH', '/vehicules/' + v.id, { tag: nouveau }));
+  if (promises.length) await Promise.all(promises);
+  toast('"' + ancien + '" renommé en "' + nouveau + '" (' + promises.length + ' véhicule(s) mis à jour)');
+  await loadTags();
+  loadVehicules();
+}
+
+function editerTagDash(tag) {
+  const nouveau = prompt('Renommer le tag "' + tag + '" en :', tag);
+  if (!nouveau || !nouveau.trim() || nouveau.trim() === tag) return;
+  confirmerRenomTagDirect(tag, nouveau.trim());
+}
+
+async function confirmerRenomTagDirect(ancien, nouveau) {
+  if (allTags.includes(nouveau)) { toast('Ce tag existe déjà', 'err'); return; }
+  await api('POST', '/tags', { tag: nouveau, ancien });
+  const vehs = await api('GET', '/vehicules');
+  const promises = vehs.filter(v => v.tag === ancien).map(v => api('PATCH', '/vehicules/' + v.id, { tag: nouveau }));
+  if (promises.length) await Promise.all(promises);
+  toast('"' + ancien + '" renommé en "' + nouveau + '"');
+  await loadTags();
+  loadVehicules();
+}
+
+async function ajouterTagDash(btn) {
+  const nom = prompt('Nom du nouveau tag (ex: Proprietaire 1, Zone Nord…) :');
+  if (!nom || !nom.trim()) return;
+  if (allTags.includes(nom.trim())) { toast('Ce tag existe déjà', 'err'); return; }
+  setBtnLoad(btn, true);
+  await api('POST', '/tags', { tag: nom.trim() });
+  setBtnLoad(btn, false);
+  toast('Tag "' + nom.trim() + '" créé ✓');
+  await loadTags();
+}
 </script>
 </body>
 </html>
