@@ -1462,20 +1462,11 @@ async function loadDashboard() {
 
   var marge = totFac - totDep;
 
-  // Taux de recouvrement sur la période (imputation)
+  // Taux de recouvrement sur la période (imputation FIFO)
+  // totFac = facturé période, totEnc = encaissé imputé sur période
   var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
-  // Taux global cumulé (tous les temps)
-  var totFacGlobal = Array.isArray(facs) ? facs.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0) : 0;
-  var totEncGlobal = Array.isArray(vers) ? vers.reduce(function(s,v){ return s+v.montant; }, 0) : 0;
 
-  // Recalcul du retard GLOBAL (dette réelle non payée à ce jour)
-  var allAffsList2 = Array.isArray(affs) ? affs : [];
-  vehs.forEach(function(v) {
-    var vAffIds = allAffsList2.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
-    var vFacGlob = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0) : 0;
-    var vEncGlob = Array.isArray(vers) ? vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0) : 0;
-    totRet += Math.max(0, vFacGlob - vEncGlob);
-  });
+  // totRet est déjà calculé par imputation FIFO dans le bloc ci-dessus
 
   // ── Afficher les KPIs (animation) ────────────────────────
   function setKpi(id, val, color) {
