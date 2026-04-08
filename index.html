@@ -178,6 +178,31 @@ tr:hover td{background:#fafaf8}
 .sj-btn.inactif.on{ background:#444;    color:#fff; border-color:#222;    box-shadow:0 2px 6px rgba(0,0,0,.25); }
 .sj-btn.presume   { border-style:dashed; }
 .presume-badge { font-size:9px; color:#BA7517; font-style:italic; margin-left:2px; }
+
+/* KPIs Pro */
+.kpi-link { cursor:pointer; transition:transform .15s, box-shadow .15s; }
+.kpi-link:hover { transform:translateY(-3px); box-shadow:0 6px 18px rgba(0,0,0,.12) !important; }
+.kpi-link:active { transform:translateY(0); }
+.kpi-arrow { font-size:9px; margin-left:4px; opacity:.5; }
+.kpi-sublabel { font-size:10px; color:#6b6b67; margin-top:3px; display:flex; align-items:center; gap:3px; }
+.kpi-delta { font-size:10px; font-weight:700; padding:1px 5px; border-radius:99px; }
+.kpi-delta.pos { background:#EAF3DE; color:#27500A; }
+.kpi-delta.neg { background:#FCEBEB; color:#791F1F; }
+.kpi-row-wrap { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:10px; }
+.kpi-row2-wrap { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:10px; }
+.kpi-stat { background:#fff; border:1px solid #e0dfd8; border-radius:10px; padding:10px 12px; position:relative; overflow:hidden; }
+.kpi-stat::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; }
+.kpi-stat.blue::before { background:#185FA5; }
+.kpi-stat.green::before { background:#3B6D11; }
+.kpi-stat.red::before { background:#A32D2D; }
+.kpi-stat.purple::before { background:#8B5CF6; }
+.kpi-stat.emerald::before { background:#059669; }
+.kpi-stat.crimson::before { background:#DC2626; }
+.kpi-stat.gray::before { background:#444; }
+.kpi-stat.orange::before { background:#BA7517; }
+.kpi-label { font-size:11px; color:#6b6b67; font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.3px; }
+.kpi-val { font-size:20px; font-weight:800; line-height:1.1; }
+.kpi-stat2 { background:#fff; border:1px solid #e0dfd8; border-radius:10px; padding:9px 10px; }
 </style>
 </head>
 <body>
@@ -248,40 +273,75 @@ tr:hover td{background:#fafaf8}
           </select>
         </div>
       </div>
-      <div class="kpi-row" style="grid-template-columns:repeat(6,1fr)">
-        <div class="kpi kpi-link" style="border-left:3px solid #185FA5" onclick="goPage('caisse',navEl('caisse'))" title="Voir les facturations">
-          <div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div>
-          <div style="font-size:10px;color:#6b6b67">Montant dû · cliquer pour voir →</div>
+      <!-- KPIs financiers -->
+      <div class="kpi-row-wrap">
+
+        <div class="kpi-stat blue kpi-link" onclick="kpiAction('facture')" title="Voir l'historique des facturations">
+          <div class="kpi-label">Total Facturé</div>
+          <div class="kpi-val" id="k-facture" style="color:#185FA5">—</div>
+          <div class="kpi-sublabel"><span id="k-facture-nb" style="background:#E6F1FB;color:#0C447C;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700"></span><span>→ Caisse</span></div>
         </div>
-        <div class="kpi kpi-link" style="border-left:3px solid #3B6D11" onclick="goPage('caisse',navEl('caisse'))" title="Voir les encaissements">
-          <div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div>
-          <div style="font-size:10px;color:#6b6b67">Reçu → Caisse</div>
+
+        <div class="kpi-stat green kpi-link" onclick="kpiAction('encaisse')" title="Voir les encaissements reçus">
+          <div class="kpi-label">Total Encaissé</div>
+          <div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div>
+          <div class="kpi-sublabel"><span id="k-rec-nb" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700"></span><span>→ Caisse</span></div>
         </div>
-        <div class="kpi kpi-link" style="border-left:3px solid #A32D2D" onclick="goPage('depenses',navEl('depenses'))" title="Voir les dépenses">
-          <div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div>
-          <div style="font-size:10px;color:#6b6b67">→ Dépenses</div>
+
+        <div class="kpi-stat red kpi-link" onclick="kpiAction('depenses')" title="Voir les dépenses">
+          <div class="kpi-label">Dépenses</div>
+          <div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div>
+          <div class="kpi-sublabel"><span id="k-dep-nb" style="background:#FCEBEB;color:#791F1F;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700"></span><span>→ Dépenses</span></div>
         </div>
-        <div class="kpi" style="border-left:3px solid #8B5CF6">
-          <div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div>
-          <div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div>
+
+        <div class="kpi-stat purple">
+          <div class="kpi-label">Marge nette</div>
+          <div class="kpi-val" id="k-marge">—</div>
+          <div class="kpi-sublabel" style="color:#6b6b67">Facturé − Dépenses</div>
         </div>
-        <div class="kpi kpi-link" style="border-left:3px solid #059669" onclick="goPage('rapports',navEl('rapports'))" title="Taux global = Total encaissé / Total facturé toutes périodes">
+
+        <div class="kpi-stat emerald kpi-link" onclick="kpiAction('rapports')" title="Taux global cumulé">
           <div class="kpi-label">Taux recouvrement</div>
           <div class="kpi-val" id="k-taux" style="color:#059669">—</div>
-          <div style="font-size:10px;color:#6b6b67" id="k-taux-sub">Global cumulé →</div>
+          <div class="kpi-sublabel" id="k-taux-sub" style="color:#6b6b67">Enc / Fac →</div>
         </div>
-        <div class="kpi kpi-link" style="border-left:3px solid #DC2626" onclick="goPage('retards',navEl('retards'))" title="Voir les retards">
-          <div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div>
-          <div style="font-size:10px;color:#6b6b67">Non encaissé → cliquer ↗</div>
+
+        <div class="kpi-stat crimson kpi-link" onclick="kpiAction('retards')" title="Voir les retards de versement">
+          <div class="kpi-label">Total Retards</div>
+          <div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div>
+          <div class="kpi-sublabel"><span id="k-retard-nb" style="background:#FCEBEB;color:#791F1F;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700"></span><span>→ Retards</span></div>
         </div>
+
       </div>
-      <div class="kpi-row2">
-        <div class="kpi kpi-link" onclick="goPage('vehicules',navEl('vehicules'))"><div class="kpi-label">Total véhicules</div><div class="kpi-val" id="k-total">—</div></div>
-        <div class="kpi kpi-link" style="border-left:3px solid #3B6D11" onclick="filtrerVehStatut('actif')" title="Inclut les véhicules avec affectation active (présumés actifs si pas de saisie manuelle)"><div class="kpi-label">✅ Actifs</div><div class="kpi-val" id="k-actif" style="color:#3B6D11">—</div><div style="font-size:9px;color:#6b6b67">Saisis + présumés</div></div>
-        <div class="kpi kpi-link" style="border-left:3px solid #A32D2D" onclick="filtrerVehStatut('panne')"><div class="kpi-label">🔧 En panne</div><div class="kpi-val" id="k-panne" style="color:#A32D2D">—</div></div>
-        <div class="kpi kpi-link" style="border-left:3px solid #BA7517" onclick="filtrerVehStatut('repos')"><div class="kpi-label">😴 Au repos</div><div class="kpi-val" id="k-repos" style="color:#BA7517">—</div></div>
-        <div class="kpi kpi-link" style="border-left:3px solid #444" onclick="filtrerVehStatut('inactif')"><div class="kpi-label">⛔ Inactifs</div><div class="kpi-val" id="k-inact" style="color:#444">—</div></div>
-        <div class="kpi kpi-link" onclick="filtrerVehStatut('non_saisi')" title="Véhicules sans affectation active et sans saisie aujourd'hui"><div class="kpi-label">❓ Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div><div style="font-size:9px;color:#aaa">Sans affectation</div></div>
+
+      <!-- KPIs statuts journaliers -->
+      <div class="kpi-row2-wrap">
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('vehicules')" style="border-left:3px solid #185FA5">
+          <div class="kpi-label" style="font-size:10px">Parc total</div>
+          <div class="kpi-val" id="k-total" style="font-size:18px">—</div>
+        </div>
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('actif')" style="border-left:3px solid #3B6D11" title="Cliquer → filtrer les actifs">
+          <div class="kpi-label" style="font-size:10px">✅ Actifs</div>
+          <div class="kpi-val" id="k-actif" style="color:#3B6D11;font-size:18px">—</div>
+          <div style="font-size:9px;color:#3B6D11">Saisis + présumés</div>
+        </div>
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('panne')" style="border-left:3px solid #A32D2D">
+          <div class="kpi-label" style="font-size:10px">🔧 En panne</div>
+          <div class="kpi-val" id="k-panne" style="color:#A32D2D;font-size:18px">—</div>
+        </div>
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('repos')" style="border-left:3px solid #BA7517">
+          <div class="kpi-label" style="font-size:10px">😴 Repos</div>
+          <div class="kpi-val" id="k-repos" style="color:#BA7517;font-size:18px">—</div>
+        </div>
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('inactif')" style="border-left:3px solid #444">
+          <div class="kpi-label" style="font-size:10px">⛔ Inactifs</div>
+          <div class="kpi-val" id="k-inact" style="color:#444;font-size:18px">—</div>
+        </div>
+        <div class="kpi-stat2 kpi-link" onclick="kpiAction('non_saisi')" style="border-left:3px solid #aaa">
+          <div class="kpi-label" style="font-size:10px">❓ Non saisis</div>
+          <div class="kpi-val" id="k-ns" style="color:#aaa;font-size:18px">—</div>
+          <div style="font-size:9px;color:#aaa">Sans affectation</div>
+        </div>
       </div>
       <!-- Note présomption -->
       <div id="presume-note" style="font-size:11px;color:#BA7517;background:#FFF8E6;border:1px solid #FAC775;border-radius:8px;padding:7px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
@@ -1262,6 +1322,12 @@ async function loadDashboard() {
   depsFilt = depsFilt.filter(function(d){ return vIds.includes(d.vehicule_id); });
   facsFilt = facsFilt.filter(function(f){ return vIds.includes(f.vehicule_id); });
 
+  // Stocker pour les compteurs KPI
+  window._lastFacsFilt = facsFilt;
+  window._lastVersFilt = versFilt;
+  window._lastDepsFilt = depsFilt;
+  window._lastDashData = d;
+
   // ── Calculs KPIs CORRECTS sur la période ─────────────────
   var totFac = facsFilt.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
   var totEnc = versFilt.reduce(function(s,v){ return s+v.montant; }, 0);
@@ -1298,6 +1364,17 @@ async function loadDashboard() {
   setKpi('k-dep',     fmt(totDep), '#A32D2D');
   setKpi('k-marge',   fmt(marge),  marge >= 0 ? '#3B6D11' : '#A32D2D');
   setKpi('k-retard',  fmt(totRet), totRet > 0 ? '#A32D2D' : '#3B6D11');
+  // Compteurs KPI
+  var nbFacEl = document.getElementById('k-facture-nb');
+  if (nbFacEl) { nbFacEl.textContent = facsFilt.length + ' fact.'; nbFacEl.style.display = facsFilt.length>0?'inline':'none'; }
+  var nbEncEl = document.getElementById('k-rec-nb');
+  if (nbEncEl) { nbEncEl.textContent = versFilt.length + ' vers.'; nbEncEl.style.display = versFilt.length>0?'inline':'none'; }
+  var nbDepEl = document.getElementById('k-dep-nb');
+  if (nbDepEl) { nbDepEl.textContent = depsFilt.length + ' dép.'; nbDepEl.style.display = depsFilt.length>0?'inline':'none'; }
+  // Nb véhicules en retard
+  var nbRetVehs = vehs.filter(function(v){ var vAffIds=affsFilt.filter(function(a){return a.vehicule_id===v.id;}).map(function(a){return a.id;}); var vFac=facsFilt.filter(function(f){return f.vehicule_id===v.id;}).reduce(function(s,f){return s+(f.montant_facture||0);},0); var vEnc=versFilt.filter(function(vs){return vAffIds.includes(vs.affectation_id);}).reduce(function(s,vs){return s+vs.montant;},0); return vFac>vEnc; }).length;
+  var nbRetEl = document.getElementById('k-retard-nb');
+  if (nbRetEl) { nbRetEl.textContent = nbRetVehs + ' véh.'; nbRetEl.style.display = nbRetVehs>0?'inline':'none'; }
 
   var kt = document.getElementById('k-taux');
   if (kt) {
@@ -4959,6 +5036,135 @@ loadProprietaires = async function() {
     '</div>';
   }).join('');
 };
+
+// ═══════════════════════════════════════════════════════
+// KPI ACTION INTELLIGENTE — clic sur un KPI → filtre les données concernées
+// ═══════════════════════════════════════════════════════
+
+function kpiAction(type) {
+  var per = getPeriodeDash();
+  var tag = (document.getElementById('d-filter-tag')||{}).value||'';
+
+  if (type === 'facture') {
+    // → Caisse & Facturation, filtré par période
+    goPage('caisse', navEl('caisse'));
+    setTimeout(function() {
+      if (per) {
+        var fd = document.getElementById('ff-debut'); if (fd) fd.value = per.debut;
+        var ff = document.getElementById('ff-fin');   if (ff) ff.value = per.fin;
+      }
+      if (tag) { var fv = document.getElementById('ff-veh'); } // tag n'est pas dans caisse mais on filtre via texte
+      loadFac();
+    }, 200);
+    return;
+  }
+
+  if (type === 'encaisse') {
+    // → Caisse, filtré sur encaissements
+    goPage('caisse', navEl('caisse'));
+    setTimeout(function() {
+      if (per) {
+        var fd = document.getElementById('ff-debut'); if (fd) fd.value = per.debut;
+        var ff = document.getElementById('ff-fin');   if (ff) ff.value = per.fin;
+      }
+      loadFac();
+    }, 200);
+    return;
+  }
+
+  if (type === 'depenses') {
+    // → Dépenses, filtré par période
+    goPage('depenses', navEl('depenses'));
+    setTimeout(function() {
+      if (per) {
+        var dd = document.getElementById('dep-debut'); if (dd) dd.value = per.debut;
+        var df = document.getElementById('dep-fin');   if (df) df.value = per.fin;
+      }
+      loadDepenses();
+    }, 200);
+    return;
+  }
+
+  if (type === 'retards') {
+    // → Retards, filtré par tag si actif
+    goPage('retards', navEl('retards'));
+    setTimeout(function() {
+      if (per) {
+        var rd = document.getElementById('ret-debut'); if (rd) rd.value = per.debut;
+        var rf = document.getElementById('ret-fin');   if (rf) rf.value = per.fin;
+      }
+      if (tag) { var rt = document.getElementById('ret-tag'); if (rt) rt.value = tag; }
+      loadRetards();
+    }, 200);
+    return;
+  }
+
+  if (type === 'rapports') {
+    goPage('rapports', navEl('rapports'));
+    return;
+  }
+
+  if (type === 'vehicules') {
+    goPage('vehicules', navEl('vehicules'));
+    return;
+  }
+
+  // Statuts journaliers → page véhicules filtrée
+  if (['actif','panne','repos','inactif','non_saisi'].includes(type)) {
+    filtrerVehStatut(type);
+    return;
+  }
+}
+
+// ── Mise à jour setKpi pour afficher les compteurs ────────────────────
+function setKpiAvecNb(id, val, color, nb, nbSuffix) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.style.opacity = '1';
+  if (color) el.style.color = color;
+  var nbEl = document.getElementById(id + '-nb');
+  if (nbEl && nb !== undefined) {
+    nbEl.textContent = nb + (nbSuffix || '');
+    nbEl.style.display = nb > 0 ? 'inline' : 'none';
+  }
+}
+
+// ── Surcharge setKpi dans loadDashboard ───────────────────────────────
+// Remplacer l'affichage pour inclure les compteurs
+const _origSetKpi = typeof setKpi === 'function' ? setKpi : null;
+setKpi = function(id, val, color) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.style.opacity = '1';
+  if (color) el.style.color = color;
+};
+
+// ── Enrichir loadDashboard pour mettre à jour les nb ──────────────────
+const _origLoadDashboard_kpi = loadDashboard;
+loadDashboard = async function() {
+  await _origLoadDashboard_kpi();
+  // Mettre à jour les compteurs après chargement
+  updateKpiCounters();
+};
+
+function updateKpiCounters() {
+  // Compter à partir des données en cache
+  var facNb = Array.isArray(window._lastFacsFilt) ? window._lastFacsFilt.length : '';
+  var versNb = Array.isArray(window._lastVersFilt) ? window._lastVersFilt.length : '';
+  var depNb = Array.isArray(window._lastDepsFilt) ? window._lastDepsFilt.length : '';
+  var retNb = 0; // Nombre de véhicules en retard
+
+  if (window._lastDashData) {
+    var nbFac = document.getElementById('k-facture-nb');
+    var nbEnc = document.getElementById('k-rec-nb');
+    var nbDep = document.getElementById('k-dep-nb');
+    if (nbFac && facNb) { nbFac.textContent = facNb + ' fact.'; nbFac.style.display = 'inline'; }
+    if (nbEnc && versNb) { nbEnc.textContent = versNb + ' vers.'; nbEnc.style.display = 'inline'; }
+    if (nbDep && depNb) { nbDep.textContent = depNb + ' dép.'; nbDep.style.display = 'inline'; }
+  }
+}
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
