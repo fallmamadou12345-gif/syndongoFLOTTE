@@ -162,10 +162,18 @@ async function handleAPI(req, res, body) {
     const totalFac = db.facturations.filter(f => vIds.includes(f.vehicule_id)).reduce((s,f)=>s+f.montant_facture,0);
     const tj = today();
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
+    // Véhicules avec affectation active (présumés actifs si pas de saisie)
+    const affActivesIds = new Set(db.affectations.filter(a=>!a.date_fin).map(a=>a.vehicule_id));
     vehs.forEach(v => {
       const act = db.activites.find(a => a.vehicule_id===v.id && a.date===tj);
-      if (act) stats[act.statut_jour] = (stats[act.statut_jour]||0)+1;
-      else stats.non_saisi++;
+      if (act) {
+        stats[act.statut_jour] = (stats[act.statut_jour]||0)+1;
+      } else if (affActivesIds.has(v.id)) {
+        // Pas de saisie mais affectation active → présumé actif
+        stats.actif++;
+      } else {
+        stats.non_saisi++;
+      }
     });
     // Filtre par période si demandé
     const date_debut = q.date_debut || '';
@@ -275,7 +283,10 @@ async function handleAPI(req, res, body) {
     const tj=today();
     list=list.map(v=>{
       const act=db.activites.find(a=>a.vehicule_id===v.id&&a.date===tj);
-      return{...v,statut_jour:act?act.statut_jour:'non_saisi',alerte_vidange:!!(v.km_prochain_vidange&&v.km_actuel>=v.km_prochain_vidange*0.95)};
+      // Présomption: si affectation active et pas de saisie → actif présumé
+      const hasAffActive = db.affectations.some(a=>a.vehicule_id===v.id&&!a.date_fin);
+      const statutJour = act ? act.statut_jour : (hasAffActive ? 'actif' : 'non_saisi');
+      return{...v,statut_jour:statutJour,statut_presume:!act&&hasAffActive,alerte_vidange:!!(v.km_prochain_vidange&&v.km_actuel>=v.km_prochain_vidange*0.95)};
     });
     return res.end(JSON.stringify(list));
   }
