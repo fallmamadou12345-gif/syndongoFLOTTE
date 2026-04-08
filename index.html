@@ -2091,8 +2091,7 @@ async function sauvegarderTag(ancien, nouveau) {
 }
 
 async function delTagDash(tag) {
-  if (!confirm('Supprimer le tag "' + tag + '" ?
-Les véhicules avec ce tag ne seront plus groupés.')) return;
+  if (!confirm('Supprimer le tag "' + tag + '" ? Les véhicules avec ce tag ne seront plus groupés.')) return;
   await api('DELETE', '/tags', { tag });
   toast('Tag supprimé', 'info');
   allTags = [];
