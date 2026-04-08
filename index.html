@@ -199,11 +199,12 @@ tr:hover td{background:#fafaf8}
           </select>
         </div>
       </div>
-      <div class="kpi-row">
-        <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div></div>
-        <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
-        <div class="kpi"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div></div>
-        <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">Total retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div></div>
+      <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
+        <div class="kpi" style="border-left:3px solid #185FA5"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div><div style="font-size:10px;color:#6b6b67">Montant dû</div></div>
+        <div class="kpi" style="border-left:3px solid #3B6D11"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div><div style="font-size:10px;color:#6b6b67">Reçu</div></div>
+        <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
+        <div class="kpi" style="border-left:3px solid #8B5CF6"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div><div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div></div>
+        <div class="kpi" style="border-left:3px solid #DC2626"><div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div><div style="font-size:10px;color:#6b6b67">Non encaissé</div></div>
       </div>
       <div class="kpi-row2">
         <div class="kpi"><div class="kpi-label">Total véhicules</div><div class="kpi-val" id="k-total">—</div></div>
@@ -213,8 +214,30 @@ tr:hover td{background:#fafaf8}
         <div class="kpi" style="border-left:3px solid #444"><div class="kpi-label">Inactifs</div><div class="kpi-val" id="k-inact" style="color:#444">—</div></div>
         <div class="kpi"><div class="kpi-label">Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
       </div>
-      <div class="card"><div class="card-title">Alertes<button class="btn btn-blue" style="font-size:11px;padding:5px 12px" onclick="exportPDF()">Export PDF</button></div><div id="d-alertes"><div class="empty">Chargement…</div></div></div>
-      <div class="card"><div class="card-title">Rentabilité par véhicule</div><div id="d-rent"><div class="empty">Chargement…</div></div></div>
+      <div class="card">
+        <div class="card-title">
+          Alertes &amp; Rappels
+          <button class="btn btn-blue" style="font-size:11px;padding:5px 12px" id="btn-export-pdf" onclick="exportPDF(this)">Export PDF</button>
+        </div>
+        <div id="d-alertes"><div class="empty">Chargement…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          Rentabilité par véhicule
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="d-filter-q2" placeholder="🔍 Filtrer…" style="font-size:12px;width:160px" oninput="filtrerRent(this.value)">
+            <select id="d-filter-tag2" style="font-size:12px;width:120px" onchange="filtrerRent()"><option value="">Tous tags</option></select>
+          </div>
+        </div>
+        <div id="d-rent"><div class="empty">Chargement…</div></div>
+      </div>
+      <div class="card manager-only">
+        <div class="card-title">
+          Tags — Gérer les groupes
+          <button class="btn btn-blue" style="font-size:11px;padding:5px 12px" onclick="ouvrirGestionTags()">+ Nouveau tag</button>
+        </div>
+        <div id="d-tags-list"><div class="empty">Chargement…</div></div>
+      </div>
     </div>
 
     <!-- VEHICULES -->
@@ -448,6 +471,12 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Montant (FCFA) *</label><input id="dm" type="number" placeholder="15000"></div>
           <div class="field"><label>Description</label><input id="dd" placeholder="Ex: vidange"></div>
         </div>
+        <div class="field" style="margin-bottom:10px">
+          <label>Justificatif (photo/facture) — visible par le propriétaire</label>
+          <input type="file" id="djust" accept="image/*,.pdf" style="font-size:12px;padding:6px">
+          <div style="font-size:10px;color:#6b6b67;margin-top:3px">Formats acceptés : JPG, PNG, PDF — Max 5 Mo</div>
+        </div>
+        <div id="djust-preview" style="display:none;margin-bottom:10px"></div>
         <button class="btn btn-red" onclick="addDepense(this)">Enregistrer</button>
       </div>
       <div class="card">
@@ -514,6 +543,51 @@ tr:hover td{background:#fafaf8}
         <button class="btn btn-blue" onclick="addProprietaire(this)">Créer l'accès</button>
       </div>
       <div class="card"><div class="card-title">Propriétaires</div><div id="t-prop"><div class="empty">Chargement…</div></div></div>
+    </div>
+
+
+    <!-- JOURNAL -->
+    <div class="page" id="page-journal">
+      <div class="info-box" id="journal-info-box">Le journal permet au gestionnaire de consigner toutes les informations importantes sur les véhicules. Les propriétaires peuvent le consulter en lecture seule.</div>
+      <div class="card" id="journal-write-card">
+        <div class="card-title">Nouvelle note de journal</div>
+        <div class="form-row">
+          <div class="field"><label>Véhicule concerné</label><select id="jveh"><option value="">— Tous les véhicules —</option></select></div>
+          <div class="field"><label>Catégorie</label>
+            <select id="jcat">
+              <option value="info">Information générale</option>
+              <option value="panne">Panne / Réparation</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="incident">Incident</option>
+              <option value="document">Document / Administratif</option>
+              <option value="performance">Performance / Recettes</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:10px">
+          <label>Note *</label>
+          <textarea id="jnote" rows="4" placeholder="Décrivez la situation, les actions prises, les informations importantes pour le propriétaire…" style="resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-blue" onclick="ajouterJournal(this)">Publier la note</button>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          Journal de bord
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="j-filter-veh" style="font-size:12px;width:160px" onchange="loadJournal()"><option value="">Tous les véhicules</option></select>
+            <select id="j-filter-cat" style="font-size:12px;width:140px" onchange="loadJournal()">
+              <option value="">Toutes catégories</option>
+              <option value="info">Information</option>
+              <option value="panne">Panne</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="incident">Incident</option>
+              <option value="document">Document</option>
+              <option value="performance">Performance</option>
+            </select>
+          </div>
+        </div>
+        <div id="t-journal"><div class="empty">Chargement…</div></div>
+      </div>
     </div>
 
     <!-- ACCES & GESTIONNAIRES -->
@@ -720,6 +794,7 @@ function demarrerApp() {
       { id: 'retards', label: 'Retards' },
       { id: 'depenses', label: 'Dépenses' },
       { id: 'alertes', label: 'Alertes' },
+      { id: 'journal', label: 'Journal' },
       { id: 'proprietaires', label: 'Propriétaires' },
       { id: 'acces', label: 'Accès & Gestionnaires' }
     ],
@@ -730,13 +805,15 @@ function demarrerApp() {
       { id: 'affectations', label: 'Affectations' },
       { id: 'caisse', label: 'Caisse & Facturation' },
       { id: 'retards', label: 'Retards' },
-      { id: 'depenses', label: 'Dépenses' }
+      { id: 'depenses', label: 'Dépenses' },
+      { id: 'journal', label: 'Journal' }
     ],
     proprietaire: [
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'vehicules', label: 'Mes Véhicules' },
       { id: 'chauffeurs', label: 'Mes Chauffeurs' },
-      { id: 'retards', label: 'Retards' }
+      { id: 'retards', label: 'Retards' },
+      { id: 'journal', label: 'Journal' }
     ]
   };
 
@@ -757,7 +834,8 @@ function demarrerApp() {
   document.getElementById('fd').value = hier.toISOString().split('T')[0];
 
   // Init
-  loadTags();
+  initPeriodeDash();
+  loadTags().then(function() { initFiltresTags(); });
   loadDashboard();
   refreshSelects();
 }
@@ -784,6 +862,7 @@ function loadPage(id) {
   else if (id === 'depenses') loadDepenses();
   else if (id === 'alertes') loadAlertes();
   else if (id === 'proprietaires') loadProprietaires();
+  else if (id === 'journal') { initJournal(); loadJournal(); }
   else if (id === 'acces') { loadGestionnaires(); loadProprietaires(); }
 }
 
@@ -798,7 +877,17 @@ function rechGlobal(q) {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 async function loadDashboard() {
-  const d = await api('GET', '/dashboard');
+  // Période filtrée
+  const _per = getPeriodeDash();
+  const _tag = (document.getElementById('d-filter-tag') || {}).value || '';
+  const _sj = (document.getElementById('d-filter-sj') || {}).value || '';
+  let _dashUrl = '/dashboard';
+  const _dashParams = [];
+  if (_per) { _dashParams.push('date_debut=' + _per.debut); _dashParams.push('date_fin=' + _per.fin); }
+  if (_tag) _dashParams.push('tag=' + encodeURIComponent(_tag));
+  if (_sj) _dashParams.push('statut_jour=' + _sj);
+  if (_dashParams.length) _dashUrl += '?' + _dashParams.join('&');
+  const d = await api('GET', _dashUrl);
   if (!d || !d.kpis) return;
   document.getElementById('k-rec').textContent = fmt(d.kpis.recettes);
   document.getElementById('k-dep').textContent = fmt(d.kpis.depenses);
@@ -1825,6 +1914,523 @@ function invalidateCaches() {
   _vehsCache = [];
   _chaufsCache = [];
 }
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD — KPIs corrigés + filtres + tags
+// ═══════════════════════════════════════════════════════
+
+// Données en cache pour le tableau rentabilité
+let _rentData = [];
+
+// Remplacer loadDashboard par version corrigée
+async function loadDashboard() {
+  // Période
+  const per = getPeriodeDash();
+  const tag = (document.getElementById('d-filter-tag') || {}).value || '';
+  const sj  = (document.getElementById('d-filter-sj') || {}).value || '';
+
+  // 1. Dashboard API
+  let dashUrl = '/dashboard';
+  const dp = [];
+  if (per) { dp.push('date_debut=' + per.debut); dp.push('date_fin=' + per.fin); }
+  if (tag) dp.push('tag=' + encodeURIComponent(tag));
+  if (sj)  dp.push('statut_jour=' + sj);
+  if (dp.length) dashUrl += '?' + dp.join('&');
+
+  const [d, ret, facs] = await Promise.all([
+    api('GET', dashUrl),
+    api('GET', '/retards'),
+    api('GET', '/facturations')
+  ]);
+  if (!d || !d.kpis) return;
+
+  // KPI Facturé
+  const totalFac = Array.isArray(facs) ? facs.reduce((s,f) => s + (f.montant_facture||0), 0) : 0;
+  const totalEnc = d.kpis.recettes || 0;
+  const totalDep = d.kpis.depenses || 0;
+  const marge    = totalFac - totalDep;
+  const totalRet = Array.isArray(ret) ? ret.reduce((s,r) => s + r.retard, 0) : 0;
+
+  // Afficher KPIs
+  const kf = document.getElementById('k-facture');
+  if (kf) kf.textContent = fmt(totalFac);
+  document.getElementById('k-rec').textContent = fmt(totalEnc);
+  document.getElementById('k-dep').textContent = fmt(totalDep);
+  const km = document.getElementById('k-marge');
+  km.textContent = fmt(marge);
+  km.style.color = marge >= 0 ? '#3B6D11' : '#A32D2D';
+  document.getElementById('k-retard').textContent = fmt(totalRet);
+  document.getElementById('k-total').textContent = d.kpis.vehicules_total || 0;
+
+  if (d.stats_jour) {
+    document.getElementById('k-actif').textContent = d.stats_jour.actif || 0;
+    document.getElementById('k-panne').textContent = d.stats_jour.panne || 0;
+    document.getElementById('k-repos').textContent = d.stats_jour.repos || 0;
+    document.getElementById('k-inact').textContent = d.stats_jour.inactif || 0;
+    document.getElementById('k-ns').textContent = d.stats_jour.non_saisi || 0;
+  }
+
+  // 2. Alertes enrichies (+ alertes techniques)
+  const alertes = d.alertes || [];
+  const alertesTech = await genererAlertesTechniques();
+  const toutesAlertes = [...alertesTech, ...alertes];
+  const alEl = document.getElementById('d-alertes');
+  alEl.innerHTML = !toutesAlertes.length
+    ? '<div class="empty" style="color:#3B6D11">✓ Aucune alerte — tout est en ordre</div>'
+    : toutesAlertes.map(function(a) {
+        const colors = { danger:'#A32D2D', warn:'#BA7517', info:'#185FA5', ok:'#3B6D11' };
+        const col = colors[a.type] || '#BA7517';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f4f0;font-size:12px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;display:inline-block"></span>
+          <div style="flex:1">${a.message}</div>
+          ${a.vehicule_id ? `<button class="btn-sm" style="background:#E6F1FB;color:#0C447C;flex-shrink:0" onclick="ouvrirFicheVeh('${a.vehicule_id}')">Voir</button>` : ''}
+        </div>`;
+      }).join('');
+
+  // 3. Tableau rentabilité
+  const [vehs, vers, deps, affs] = await Promise.all([
+    api('GET', '/vehicules'),
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/affectations')
+  ]);
+  if (!Array.isArray(vehs)) return;
+  _rentData = vehs.map(function(v) {
+    const vAffIds = Array.isArray(affs) ? affs.filter(a => a.vehicule_id === v.id).map(a => a.id) : [];
+    const rec = Array.isArray(vers) ? vers.filter(vs => vAffIds.includes(vs.affectation_id)).reduce((s, vs) => s + vs.montant, 0) : 0;
+    const dep = Array.isArray(deps) ? deps.filter(dd => dd.vehicule_id === v.id).reduce((s, dd) => s + dd.montant, 0) : 0;
+    const fac = Array.isArray(facs) ? facs.filter(f => f.vehicule_id === v.id).reduce((s, f) => s + (f.montant_facture||0), 0) : 0;
+    const mg = fac - dep;
+    const pct = fac > 0 ? Math.round(mg / fac * 100) : 0;
+    return { ...v, rec, dep, fac, mg, pct };
+  });
+  filtrerRent();
+
+  // 4. Tags dans le dashboard
+  loadTagsDash();
+
+  // 5. Sync filtre tag rentabilité
+  const dt2 = document.getElementById('d-filter-tag2');
+  if (dt2 && allTags.length) {
+    const cur = dt2.value;
+    dt2.innerHTML = '<option value="">Tous tags</option>' + allTags.map(t => `<option value="${t}">${t}</option>`).join('');
+    if (cur) dt2.value = cur;
+  }
+}
+
+// Filtrer le tableau rentabilité
+function filtrerRent(q) {
+  const search = (q !== undefined ? q : (document.getElementById('d-filter-q2') || {}).value || '').toLowerCase();
+  const tagF = (document.getElementById('d-filter-tag2') || {}).value || '';
+  let data = _rentData;
+  if (search) data = data.filter(v => v.immatriculation.toLowerCase().includes(search) || (v.marque||'').toLowerCase().includes(search) || (v.tag||'').toLowerCase().includes(search));
+  if (tagF) data = data.filter(v => v.tag === tagF);
+  const el = document.getElementById('d-rent');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty">Aucun résultat</div>'; return; }
+  const rows = data.map(v =>
+    `<tr onclick="ouvrirFicheVeh('${v.id}')" style="cursor:pointer">
+      <td><strong>${v.immatriculation}</strong> ${v.marque} ${v.tag ? pill(v.tag,'purple') : ''}</td>
+      <td style="color:#185FA5">${fmt(v.fac)}</td>
+      <td style="color:#3B6D11">${fmt(v.rec)}</td>
+      <td style="color:#A32D2D">${fmt(v.dep)}</td>
+      <td style="color:${v.mg >= 0 ? '#3B6D11' : '#A32D2D'}"><strong>${fmt(v.mg)}</strong></td>
+      <td>${pill(v.pct + '%', v.pct >= 70 ? 'ok' : v.pct >= 40 ? 'warn' : 'err')}</td>
+    </tr>`
+  ).join('');
+  el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th style="color:#185FA5">Facturé</th><th style="color:#3B6D11">Encaissé</th><th style="color:#A32D2D">Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// Tags dans dashboard
+async function loadTagsDash() {
+  const el = document.getElementById('d-tags-list');
+  if (!el) return;
+  const tags = allTags.length ? allTags : await api('GET', '/tags');
+  if (!tags.length) { el.innerHTML = '<div class="empty">Aucun tag créé</div>'; return; }
+  el.innerHTML = tags.map(t => `
+    <div style="display:inline-flex;align-items:center;gap:6px;margin:4px;background:#E6F1FB;border-radius:99px;padding:4px 12px">
+      <span style="font-size:12px;font-weight:600;color:#0C447C">${t}</span>
+      <input id="tag-edit-${t.replace(/\s/g,'_')}" value="${t}" style="display:none;font-size:12px;width:100px;padding:2px 6px;border-radius:4px;border:1px solid #B5D4F4">
+      <button class="btn-sm" style="background:#EAF3DE;color:#27500A;font-size:10px" onclick="editTag('${t}')">✏️</button>
+      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;font-size:10px" onclick="delTagDash('${t}')">×</button>
+    </div>`).join('');
+}
+
+function ouvrirGestionTags() {
+  const v = prompt('Nom du nouveau tag (ex: Proprietaire 1, Zone Nord…) :');
+  if (!v || !v.trim()) return;
+  api('POST', '/tags', { tag: v.trim() }).then(() => {
+    toast('Tag "' + v.trim() + '" créé');
+    loadTags().then(() => { loadTagsDash(); });
+  });
+}
+
+function editTag(ancien) {
+  const inputId = 'tag-edit-' + ancien.replace(/\s/g, '_');
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.style.display === 'none') {
+    input.style.display = 'inline';
+    input.focus();
+    input.onkeypress = function(e) {
+      if (e.key === 'Enter') sauvegarderTag(ancien, input.value);
+    };
+  } else {
+    sauvegarderTag(ancien, input.value);
+  }
+}
+
+async function sauvegarderTag(ancien, nouveau) {
+  if (!nouveau.trim() || nouveau.trim() === ancien) { loadTagsDash(); return; }
+  // Supprimer l'ancien, créer le nouveau
+  await api('DELETE', '/tags', { tag: ancien });
+  await api('POST', '/tags', { tag: nouveau.trim() });
+  toast('Tag renommé en "' + nouveau.trim() + '"');
+  allTags = [];
+  loadTags().then(() => { loadTagsDash(); initFiltresTags(); });
+}
+
+async function delTagDash(tag) {
+  if (!confirm('Supprimer le tag "' + tag + '" ?
+Les véhicules avec ce tag ne seront plus groupés.')) return;
+  await api('DELETE', '/tags', { tag });
+  toast('Tag supprimé', 'info');
+  allTags = [];
+  loadTags().then(() => { loadTagsDash(); initFiltresTags(); });
+}
+
+// Boutons réactifs — spinner générique
+function setBtnLoad(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite"></span>';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.orig || 'OK';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ALERTES TECHNIQUES (vidange, assurance, visite tech)
+// ═══════════════════════════════════════════════════════
+async function genererAlertesTechniques() {
+  const vehs = await api('GET', '/vehicules');
+  if (!Array.isArray(vehs)) return [];
+  const alertes = [];
+  const today = new Date();
+
+  vehs.forEach(v => {
+    // Alerte vidange (déjà dans serveur mais on l'enrichit)
+    if (v.alerte_vidange) {
+      alertes.push({ type:'warn', vehicule_id:v.id, message:`🔧 Vidange due — <strong>${v.immatriculation}</strong> (${(v.km_actuel||0).toLocaleString('fr-FR')} km / seuil ${(v.km_prochain_vidange||0).toLocaleString('fr-FR')} km)` });
+    }
+    // Alerte assurance
+    if (v.date_expiration_assurance) {
+      const exp = new Date(v.date_expiration_assurance);
+      const joursRestants = Math.ceil((exp - today) / (1000*60*60*24));
+      if (joursRestants <= 30 && joursRestants >= 0) {
+        alertes.push({ type:'danger', vehicule_id:v.id, message:`🛡️ Assurance expire dans <strong>${joursRestants} jour(s)</strong> — ${v.immatriculation} (${v.date_expiration_assurance})` });
+      } else if (joursRestants < 0) {
+        alertes.push({ type:'danger', vehicule_id:v.id, message:`🛡️ Assurance EXPIRÉE — <strong>${v.immatriculation}</strong> depuis le ${v.date_expiration_assurance}` });
+      }
+    }
+    // Alerte visite technique
+    if (v.date_visite_technique) {
+      const exp = new Date(v.date_visite_technique);
+      const joursRestants = Math.ceil((exp - today) / (1000*60*60*24));
+      if (joursRestants <= 30 && joursRestants >= 0) {
+        alertes.push({ type:'warn', vehicule_id:v.id, message:`🔍 Visite technique dans <strong>${joursRestants} jour(s)</strong> — ${v.immatriculation}` });
+      } else if (joursRestants < 0) {
+        alertes.push({ type:'danger', vehicule_id:v.id, message:`🔍 Visite technique EXPIRÉE — <strong>${v.immatriculation}</strong>` });
+      }
+    }
+  });
+
+  // Alerte dépenses fréquentes (même véhicule > 3 dépenses ce mois)
+  const deps = await api('GET', '/depenses');
+  if (Array.isArray(deps)) {
+    const mois = today.toISOString().slice(0,7);
+    const compteur = {};
+    deps.filter(d => d.date_depense && d.date_depense.startsWith(mois)).forEach(d => {
+      compteur[d.vehicule_id] = (compteur[d.vehicule_id] || 0) + 1;
+    });
+    Object.entries(compteur).forEach(([vid, nb]) => {
+      if (nb >= 3) {
+        const v = vehs.find(x => x.id === vid);
+        if (v) alertes.push({ type:'warn', vehicule_id:vid, message:`⚠️ Dépenses fréquentes — <strong>${v.immatriculation}</strong> a eu ${nb} dépenses ce mois` });
+      }
+    });
+  }
+  return alertes;
+}
+
+// ═══════════════════════════════════════════════════════
+// JOURNAL DE BORD
+// ═══════════════════════════════════════════════════════
+function initJournal() {
+  // Cacher la zone d'écriture pour les propriétaires
+  const writeCard = document.getElementById('journal-write-card');
+  if (writeCard) writeCard.style.display = ROLE === 'proprietaire' ? 'none' : 'block';
+  const infoBox = document.getElementById('journal-info-box');
+  if (infoBox) infoBox.textContent = ROLE === 'proprietaire'
+    ? 'Voici les notes publiées par votre gestionnaire concernant vos véhicules.'
+    : 'Le journal permet de consigner toutes les informations importantes. Les propriétaires peuvent le consulter.';
+  // Charger véhicules dans le select
+  refreshJournalSelects();
+}
+
+async function refreshJournalSelects() {
+  const vehs = await api('GET', '/vehicules');
+  ['jveh', 'j-filter-veh'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isFilter = id === 'j-filter-veh';
+    const cur = el.value;
+    el.innerHTML = (isFilter ? '<option value="">Tous les véhicules</option>' : '<option value="">— Tous les véhicules —</option>') +
+      (Array.isArray(vehs) ? vehs.map(v => `<option value="${v.id}">${v.immatriculation} · ${v.marque}</option>`).join('') : '');
+    if (cur) el.value = cur;
+  });
+}
+
+async function loadJournal() {
+  const vehId = (document.getElementById('j-filter-veh') || {}).value || '';
+  const cat = (document.getElementById('j-filter-cat') || {}).value || '';
+  let url = '/journal';
+  const params = [];
+  if (vehId) params.push('vehicule_id=' + vehId);
+  if (cat) params.push('categorie=' + cat);
+  if (params.length) url += '?' + params.join('&');
+  const list = await api('GET', url);
+  const el = document.getElementById('t-journal');
+  if (!el) return;
+  if (!Array.isArray(list) || !list.length) {
+    el.innerHTML = '<div class="empty">Aucune note dans le journal</div>';
+    return;
+  }
+  const catColors = { info:'blue', panne:'err', maintenance:'warn', incident:'err', document:'gray', performance:'ok' };
+  const catLabels = { info:'Info', panne:'Panne', maintenance:'Maintenance', incident:'Incident', document:'Document', performance:'Performance' };
+  el.innerHTML = list.map(j => `
+    <div style="border:1px solid #e0dfd8;border-left:3px solid ${j.categorie === 'panne' || j.categorie === 'incident' ? '#A32D2D' : j.categorie === 'performance' ? '#3B6D11' : '#185FA5'};border-radius:8px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${pill(catLabels[j.categorie] || j.categorie, catColors[j.categorie] || 'blue')}
+          ${j.vehicule ? `<span style="font-size:11px;font-weight:600;color:#0C447C;background:#E6F1FB;padding:2px 8px;border-radius:99px">${j.vehicule}</span>` : ''}
+          <span style="font-size:11px;color:#6b6b67">${j.created_at ? j.created_at.slice(0,16).replace('T',' ') : ''}</span>
+          <span style="font-size:11px;color:#6b6b67">· par ${j.auteur || 'Manager'}</span>
+        </div>
+        ${ROLE !== 'proprietaire' ? `<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;flex-shrink:0" onclick="delJournal('${j.id}')">×</button>` : ''}
+      </div>
+      <div style="font-size:13px;color:#1a1a18;white-space:pre-wrap">${j.note}</div>
+    </div>`).join('');
+}
+
+async function ajouterJournal(btn) {
+  const note = (document.getElementById('jnote') || {}).value?.trim();
+  if (!note) { toast('La note ne peut pas être vide', 'err'); return; }
+  setBtnLoad(btn, true);
+  const r = await api('POST', '/journal', {
+    vehicule_id: (document.getElementById('jveh') || {}).value || null,
+    categorie: (document.getElementById('jcat') || {}).value || 'info',
+    note
+  });
+  setBtnLoad(btn, false);
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Note publiée dans le journal');
+  document.getElementById('jnote').value = '';
+  loadJournal();
+}
+
+async function delJournal(id) {
+  if (!confirm('Supprimer cette note ?')) return;
+  await api('DELETE', '/journal/' + id);
+  toast('Note supprimée', 'info');
+  loadJournal();
+}
+
+// ═══════════════════════════════════════════════════════
+// DEPENSES — justificatif en base64
+// ═══════════════════════════════════════════════════════
+// Prévisualisation du justificatif
+document.addEventListener('change', function(e) {
+  if (e.target.id !== 'djust') return;
+  const file = e.target.files[0];
+  const prev = document.getElementById('djust-preview');
+  if (!file || !prev) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Fichier trop lourd (max 5 Mo)', 'err'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    prev.style.display = 'block';
+    if (file.type.startsWith('image/')) {
+      prev.innerHTML = `<img src="${ev.target.result}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e0dfd8">`;
+    } else {
+      prev.innerHTML = `<div style="background:#E6F1FB;padding:8px 12px;border-radius:8px;font-size:12px;color:#0C447C">📄 PDF sélectionné : ${file.name}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+// Surcharge addDepense pour inclure le justificatif
+const _origAddDepense = typeof addDepense === 'function' ? addDepense : null;
+addDepense = async function(btn) {
+  const vid = (document.getElementById('dv') || {}).value;
+  const montant = (document.getElementById('dm') || {}).value;
+  if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
+  setBtnLoad(btn, true);
+  // Lire le justificatif si présent
+  const fileInput = document.getElementById('djust');
+  let justificatif = null;
+  if (fileInput && fileInput.files[0]) {
+    justificatif = await new Promise(resolve => {
+      const r = new FileReader();
+      r.onload = ev => resolve({ data: ev.target.result, nom: fileInput.files[0].name, type: fileInput.files[0].type });
+      r.readAsDataURL(fileInput.files[0]);
+    });
+  }
+  const res = await api('POST', '/depenses', {
+    vehicule_id: vid,
+    categorie: (document.getElementById('dc') || {}).value || 'autre',
+    montant: +montant,
+    description: (document.getElementById('dd') || {}).value || '',
+    justificatif
+  });
+  setBtnLoad(btn, false);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Dépense de ' + fmt(+montant) + ' enregistrée');
+  document.getElementById('dm').value = '';
+  document.getElementById('dd').value = '';
+  if (fileInput) fileInput.value = '';
+  const prev = document.getElementById('djust-preview');
+  if (prev) { prev.style.display = 'none'; prev.innerHTML = ''; }
+  loadDepenses();
+};
+
+// Afficher justificatif dans la liste des dépenses
+const _origLoadDepenses_render = loadDepenses;
+
+// Surcharge partielle pour afficher justificatif
+async function renderDepenseItem(d) {
+  const hasJust = d.justificatif && d.justificatif.data;
+  return `<tr>
+    <td>${d.date_depense}</td>
+    <td>${pill(d.categorie, 'gray')}</td>
+    <td style="color:#A32D2D;font-weight:700">${fmt(d.montant)}</td>
+    <td>${d.description || '—'}</td>
+    <td>${hasJust ? `<button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="voirJustificatif('${d.id}')">📎 Voir</button>` : '—'}</td>
+    ${ROLE !== 'proprietaire' ? `<td style="display:flex;gap:3px">
+      <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delDep('${d.id}')">Suppr.</button>
+    </td>` : '<td></td>'}
+  </tr>`;
+}
+
+// Cache des dépenses pour voirJustificatif
+let _depsCache = [];
+async function loadDepenses() {
+  let list = await api('GET', '/depenses');
+  if (!Array.isArray(list)) list = [];
+  _depsCache = list;
+  // Filtres
+  const depDebut = (document.getElementById('dep-debut') || {}).value || '';
+  const depFin   = (document.getElementById('dep-fin')   || {}).value || '';
+  const depCat   = (document.getElementById('dep-cat')   || {}).value || '';
+  const depQ     = ((document.getElementById('dep-q')    || {}).value || '').toLowerCase();
+  if (depDebut) list = list.filter(d => d.date_depense >= depDebut);
+  if (depFin)   list = list.filter(d => d.date_depense <= depFin);
+  if (depCat)   list = list.filter(d => d.categorie === depCat);
+  if (depQ)     list = list.filter(d => (d.description||'').toLowerCase().includes(depQ));
+  const el = document.getElementById('t-dep');
+  if (!el) return;
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune dépense</div>'; return; }
+  const rows = await Promise.all(list.map(renderDepenseItem));
+  el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Justificatif</th><th>Action</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+}
+
+function voirJustificatif(depId) {
+  const dep = _depsCache.find(d => d.id === depId);
+  if (!dep || !dep.justificatif) { toast('Justificatif non disponible', 'err'); return; }
+  const j = dep.justificatif;
+  const w = window.open('', '_blank');
+  if (j.type && j.type.startsWith('image/')) {
+    w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${j.data}" style="max-width:100%;max-height:100vh;object-fit:contain"></body></html>`);
+  } else {
+    w.document.write(`<html><body style="margin:0"><embed src="${j.data}" type="application/pdf" width="100%" height="100%"></body></html>`);
+  }
+  w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════
+// VEHICULES — ajouter champs assurance/visite technique
+// ═══════════════════════════════════════════════════════
+// Surcharge de la fiche véhicule pour afficher alertes
+function enrichirFicheVeh(v) {
+  const today = new Date();
+  const warnings = [];
+  if (v.date_expiration_assurance) {
+    const exp = new Date(v.date_expiration_assurance);
+    const j = Math.ceil((exp - today) / 86400000);
+    warnings.push({ icon: '🛡️', label: 'Assurance', val: v.date_expiration_assurance, urgent: j <= 30 });
+  }
+  if (v.date_visite_technique) {
+    const exp = new Date(v.date_visite_technique);
+    const j = Math.ceil((exp - today) / 86400000);
+    warnings.push({ icon: '🔍', label: 'Visite technique', val: v.date_visite_technique, urgent: j <= 30 });
+  }
+  return warnings.map(w =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px">
+      <span>${w.icon}</span><span class="fiche-label">${w.label}</span>
+      <span class="fiche-val" style="color:${w.urgent ? '#A32D2D' : '#1a1a18'}">${w.val} ${w.urgent ? pill('⚠️ Bientôt', 'err') : ''}</span>
+    </div>`
+  ).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT PDF corrigé avec bouton réactif
+// ═══════════════════════════════════════════════════════
+async function exportPDF(btn) {
+  setBtnLoad(btn, true);
+  const [rapport, ret] = await Promise.all([
+    api('GET', '/rapport'),
+    api('GET', '/retards')
+  ]);
+  setBtnLoad(btn, false);
+  const totalF = rapport.reduce((s,v) => s+(v.facture||0), 0);
+  const totalR = rapport.reduce((s,v) => s+v.recettes, 0);
+  const totalD = rapport.reduce((s,v) => s+v.depenses, 0);
+  const totalRet = ret.reduce((s,r) => s+r.retard, 0);
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport SyNdongo</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a18}h1{color:#185FA5}
+  table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f5f4f0;padding:8px;text-align:left;border:1px solid #ddd;font-size:12px}
+  td{padding:8px;border:1px solid #ddd;font-size:12px}.total{font-weight:bold;background:#EAF3DE}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
+  .kpi{background:#f5f4f0;padding:12px;border-radius:6px;border-left:3px solid #185FA5}
+  .kval{font-size:18px;font-weight:bold}.klabel{font-size:11px;color:#666;margin-top:3px}</style></head>
+  <body>
+  <h1>SyNdongo — Rapport de flotte</h1>
+  <div style="font-size:13px;color:#666;margin-bottom:16px">Transport Ndongo Fall · ${new Date().toLocaleDateString('fr-FR')}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="kval" style="color:#185FA5">${totalF.toLocaleString('fr-FR')} F</div><div class="klabel">Total Facturé</div></div>
+    <div class="kpi"><div class="kval" style="color:#3B6D11">${totalR.toLocaleString('fr-FR')} F</div><div class="klabel">Total Encaissé</div></div>
+    <div class="kpi"><div class="kval" style="color:#A32D2D">${totalD.toLocaleString('fr-FR')} F</div><div class="klabel">Dépenses</div></div>
+    <div class="kpi"><div class="kval" style="color:#A32D2D">${totalRet.toLocaleString('fr-FR')} F</div><div class="klabel">Total Retards</div></div>
+  </div>
+  <table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th></tr></thead>
+  <tbody>${rapport.map(v => `<tr><td><strong>${v.immatriculation}</strong> ${v.marque}</td><td>${v.tag||'—'}</td><td>${v.chauffeur}</td>
+    <td style="color:#185FA5">${(v.facture||0).toLocaleString('fr-FR')} F</td>
+    <td style="color:#3B6D11">${v.recettes.toLocaleString('fr-FR')} F</td>
+    <td style="color:#A32D2D">${v.depenses.toLocaleString('fr-FR')} F</td>
+    <td style="color:${v.recettes-v.depenses>=0?'#3B6D11':'#A32D2D'};font-weight:bold">${(v.recettes-v.depenses).toLocaleString('fr-FR')} F</td></tr>`).join('')}
+  <tr class="total"><td colspan="3">TOTAL</td><td style="color:#185FA5">${totalF.toLocaleString('fr-FR')} F</td><td style="color:#3B6D11">${totalR.toLocaleString('fr-FR')} F</td><td style="color:#A32D2D">${totalD.toLocaleString('fr-FR')} F</td><td>${(totalR-totalD).toLocaleString('fr-FR')} F</td></tr>
+  </tbody></table></body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 500);
+}
+
+// Spin CSS pour boutons
+const _spinStyle = document.createElement('style');
+_spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+document.head.appendChild(_spinStyle);
 </script>
 </body>
 </html>

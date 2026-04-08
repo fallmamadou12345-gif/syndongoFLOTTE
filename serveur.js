@@ -481,7 +481,7 @@ async function handleAPI(req, res, body) {
   if(p==='/api/depenses'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
-    const d={id:uid(),...data,montant:Number(data.montant),date_depense:today(),created_at:new Date().toISOString()};
+    const d={id:uid(),...data,montant:Number(data.montant),justificatif:data.justificatif||null,date_depense:today(),created_at:new Date().toISOString()};
     db.depenses.push(d);saveDB(db);return res.end(JSON.stringify({id:d.id,message:'Dépense enregistrée'}));
   }
   const dM=p.match(/^\/api\/depenses\/([^/]+)$/);
@@ -917,12 +917,13 @@ async function handleAPI(req, res, body) {
     // Filtrer par véhicules visibles
     list=list.filter(j=>myVehs.includes(j.vehicule_id));
     if(q.vehicule_id) list=list.filter(j=>j.vehicule_id===q.vehicule_id);
+    if(q.categorie) list=list.filter(j=>j.categorie===q.categorie);
     if(q.date_debut) list=list.filter(j=>j.date>=q.date_debut);
     if(q.date_fin) list=list.filter(j=>j.date<=q.date_fin);
     // Enrichir avec immat
     list=list.slice(-200).reverse().map(j=>{
       const v=db.vehicules.find(x=>x.id===j.vehicule_id);
-      return{...j,vehicule_immat:v?v.immatriculation:'?'};
+      return{...j,vehicule:v?v.immatriculation+' · '+v.marque:'Tous véhicules'};
     });
     return res.end(JSON.stringify(list));
   }
@@ -932,8 +933,10 @@ async function handleAPI(req, res, body) {
       res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
     }
     if(!db.journal) db.journal=[];
-    const j={id:uid(),vehicule_id:data.vehicule_id,texte:data.texte,
-              type:data.type||'note',date:data.date||today(),
+    const j={id:uid(),vehicule_id:data.vehicule_id,
+              note:data.note||data.texte||'',
+              categorie:data.categorie||data.type||'info',
+              date:data.date||today(),
               auteur:isGest?auth.gest.nom:'Manager',role:auth.role,
               created_at:new Date().toISOString()};
     db.journal.push(j);saveDB(db);
