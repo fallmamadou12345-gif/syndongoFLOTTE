@@ -152,6 +152,10 @@ tr:hover td{background:#fafaf8}
 .btn-loading{opacity:.7;cursor:not-allowed!important}
 .btn-spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+.kpi-link { cursor:pointer; transition:all .15s; }
+.kpi-link:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.1); border-color:#185FA5 !important; }
+.kpi-link:active { transform:translateY(0); }
 </style>
 </head>
 <body>
@@ -220,19 +224,34 @@ tr:hover td{background:#fafaf8}
         </div>
       </div>
       <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
-        <div class="kpi" style="border-left:3px solid #185FA5"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div><div style="font-size:10px;color:#6b6b67">Montant dû</div></div>
-        <div class="kpi" style="border-left:3px solid #3B6D11"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div><div style="font-size:10px;color:#6b6b67">Reçu</div></div>
-        <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
-        <div class="kpi" style="border-left:3px solid #8B5CF6"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div><div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div></div>
-        <div class="kpi" style="border-left:3px solid #DC2626"><div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div><div style="font-size:10px;color:#6b6b67">Non encaissé</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #185FA5" onclick="goPage('caisse',navEl('caisse'))" title="Voir les facturations">
+          <div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div>
+          <div style="font-size:10px;color:#6b6b67">Montant dû · cliquer pour voir →</div>
+        </div>
+        <div class="kpi kpi-link" style="border-left:3px solid #3B6D11" onclick="goPage('caisse',navEl('caisse'))" title="Voir les encaissements">
+          <div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div>
+          <div style="font-size:10px;color:#6b6b67">Reçu → Caisse</div>
+        </div>
+        <div class="kpi kpi-link" style="border-left:3px solid #A32D2D" onclick="goPage('depenses',navEl('depenses'))" title="Voir les dépenses">
+          <div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div>
+          <div style="font-size:10px;color:#6b6b67">→ Dépenses</div>
+        </div>
+        <div class="kpi" style="border-left:3px solid #8B5CF6">
+          <div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div>
+          <div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div>
+        </div>
+        <div class="kpi kpi-link" style="border-left:3px solid #DC2626" onclick="goPage('retards',navEl('retards'))" title="Voir les retards">
+          <div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div>
+          <div style="font-size:10px;color:#6b6b67">Non encaissé → cliquer ↗</div>
+        </div>
       </div>
       <div class="kpi-row2">
-        <div class="kpi"><div class="kpi-label">Total véhicules</div><div class="kpi-val" id="k-total">—</div></div>
-        <div class="kpi" style="border-left:3px solid #3B6D11"><div class="kpi-label">Actifs</div><div class="kpi-val" id="k-actif" style="color:#3B6D11">—</div></div>
-        <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">En panne</div><div class="kpi-val" id="k-panne" style="color:#A32D2D">—</div></div>
-        <div class="kpi" style="border-left:3px solid #BA7517"><div class="kpi-label">Au repos</div><div class="kpi-val" id="k-repos" style="color:#BA7517">—</div></div>
-        <div class="kpi" style="border-left:3px solid #444"><div class="kpi-label">Inactifs</div><div class="kpi-val" id="k-inact" style="color:#444">—</div></div>
-        <div class="kpi"><div class="kpi-label">Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
+        <div class="kpi kpi-link" onclick="goPage('vehicules',navEl('vehicules'))"><div class="kpi-label">Total véhicules</div><div class="kpi-val" id="k-total">—</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #3B6D11" onclick="filtrerVehStatut('actif')"><div class="kpi-label">✅ Actifs</div><div class="kpi-val" id="k-actif" style="color:#3B6D11">—</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #A32D2D" onclick="filtrerVehStatut('panne')"><div class="kpi-label">🔧 En panne</div><div class="kpi-val" id="k-panne" style="color:#A32D2D">—</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #BA7517" onclick="filtrerVehStatut('repos')"><div class="kpi-label">😴 Au repos</div><div class="kpi-val" id="k-repos" style="color:#BA7517">—</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #444" onclick="filtrerVehStatut('inactif')"><div class="kpi-label">⛔ Inactifs</div><div class="kpi-val" id="k-inact" style="color:#444">—</div></div>
+        <div class="kpi kpi-link" onclick="filtrerVehStatut('non_saisi')"><div class="kpi-label">❓ Non saisis</div><div class="kpi-val" id="k-ns" style="color:#aaa">—</div></div>
       </div>
       <div class="card">
         <div class="card-title">
@@ -577,6 +596,79 @@ tr:hover td{background:#fafaf8}
     </div>
 
 
+
+    <!-- RAPPORTS -->
+    <div class="page" id="page-rapports">
+      <!-- Filtres rapports -->
+      <div class="filter-bar" style="margin-bottom:12px">
+        <label>Période :</label>
+        <div class="periode-row">
+          <button class="periode-btn active" id="rpbtn-mois" onclick="setRapportPeriode('mois')">Ce mois</button>
+          <button class="periode-btn" id="rpbtn-3m" onclick="setRapportPeriode('3m')">3 mois</button>
+          <button class="periode-btn" id="rpbtn-6m" onclick="setRapportPeriode('6m')">6 mois</button>
+          <button class="periode-btn" id="rpbtn-annee" onclick="setRapportPeriode('annee')">Cette année</button>
+          <button class="periode-btn" id="rpbtn-libre" onclick="setRapportPeriode('libre')">Libre</button>
+          <div id="rp-periode-libre" style="display:none;gap:6px;align-items:center">
+            <input type="date" id="rp-debut" onchange="loadRapports()">
+            <span style="font-size:11px;color:#6b6b67">→</span>
+            <input type="date" id="rp-fin" onchange="loadRapports()">
+          </div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <select id="rp-tag" style="font-size:12px;width:130px" onchange="loadRapports()"><option value="">Tous tags</option></select>
+          <button class="btn btn-blue" style="font-size:11px;padding:5px 14px" id="btn-rp-pdf" onclick="exportRapportPDF(this)">📥 Export PDF</button>
+        </div>
+      </div>
+
+      <!-- KPIs rapports -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+        <div class="kpi" style="border-left:3px solid #185FA5"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="rp-k-fac" style="color:#185FA5">—</div></div>
+        <div class="kpi" style="border-left:3px solid #3B6D11"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="rp-k-enc" style="color:#3B6D11">—</div></div>
+        <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">Dépenses</div><div class="kpi-val" id="rp-k-dep" style="color:#A32D2D">—</div></div>
+        <div class="kpi" style="border-left:3px solid #8B5CF6"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="rp-k-marge">—</div></div>
+      </div>
+
+      <!-- Rapport par véhicule -->
+      <div class="card">
+        <div class="card-title">
+          Rapport par véhicule
+          <input id="rp-q" placeholder="🔍 Filtrer…" style="font-size:12px;width:160px" oninput="filtrerRapport()">
+        </div>
+        <div id="rp-table"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <!-- Rapport par chauffeur -->
+      <div class="card">
+        <div class="card-title">Rapport par chauffeur</div>
+        <div id="rp-chauf-table"><div class="empty">Chargement…</div></div>
+      </div>
+    </div>
+
+    <!-- HISTORIQUE DES MODIFICATIONS -->
+    <div class="page" id="page-historique">
+      <div class="card">
+        <div class="card-title">
+          Historique des modifications
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="hist-type" style="font-size:12px;width:150px" onchange="loadHistorique()">
+              <option value="">Tous les types</option>
+              <option value="vehicule">Véhicules</option>
+              <option value="chauffeur">Chauffeurs</option>
+              <option value="affectation">Affectations</option>
+              <option value="versement">Versements</option>
+              <option value="depense">Dépenses</option>
+              <option value="facturation">Facturations</option>
+            </select>
+            <select id="hist-auteur" style="font-size:12px;width:140px" onchange="loadHistorique()">
+              <option value="">Tous les auteurs</option>
+            </select>
+            <input type="date" id="hist-debut" style="font-size:12px;width:130px" onchange="loadHistorique()">
+          </div>
+        </div>
+        <div id="t-historique"><div class="empty">Chargement…</div></div>
+      </div>
+    </div>
+
     <!-- JOURNAL -->
     <div class="page" id="page-journal">
       <div class="info-box" id="journal-info-box">Le journal permet au gestionnaire de consigner toutes les informations importantes sur les véhicules. Les propriétaires peuvent le consulter en lecture seule.</div>
@@ -825,6 +917,8 @@ function demarrerApp() {
       { id: 'retards', label: 'Retards' },
       { id: 'depenses', label: 'Dépenses' },
       { id: 'alertes', label: 'Alertes' },
+      { id: 'rapports', label: 'Rapports' },
+      { id: 'historique', label: 'Historique' },
       { id: 'journal', label: 'Journal' },
       { id: 'proprietaires', label: 'Propriétaires' },
       { id: 'acces', label: 'Accès & Gestionnaires' }
@@ -837,6 +931,8 @@ function demarrerApp() {
       { id: 'caisse', label: 'Caisse & Facturation' },
       { id: 'retards', label: 'Retards' },
       { id: 'depenses', label: 'Dépenses' },
+      { id: 'rapports', label: 'Rapports' },
+      { id: 'historique', label: 'Historique' },
       { id: 'journal', label: 'Journal' }
     ],
     proprietaire: [
@@ -2846,6 +2942,344 @@ async function ajouterTagDash(btn) {
   toast('Tag "' + nom.trim() + '" créé ✓');
   await loadTags();
 }
+
+// ═══════════════════════════════════════════════════════
+// NAVIGATION UTILITAIRES
+// ═══════════════════════════════════════════════════════
+
+// Trouver l'élément nav correspondant à un id
+function navEl(id) {
+  return Array.from(document.querySelectorAll('.nav-item')).find(function(el) {
+    return el.getAttribute('onclick') && el.getAttribute('onclick').includes("'" + id + "'");
+  });
+}
+
+// Filtrer véhicules par statut journalier depuis le dashboard
+function filtrerVehStatut(sj) {
+  // Activer le chip correspondant
+  _activeChips.clear();
+  _activeChips.add(sj);
+  ['actif','panne','repos','inactif','non_saisi'].forEach(function(s) {
+    const c = document.getElementById('chip-' + s);
+    if (c) {
+      const colors = { actif:'active-ok', panne:'active-err', repos:'active-warn', inactif:'active-gray', non_saisi:'active-blue' };
+      c.className = 'chip ' + (s === sj ? colors[s] : 'inactive');
+    }
+  });
+  const el = navEl('vehicules');
+  goPage('vehicules', el);
+}
+
+// ═══════════════════════════════════════════════════════
+// RAPPORTS PAR VÉHICULE ET PAR CHAUFFEUR
+// ═══════════════════════════════════════════════════════
+
+let _rapportData = [];
+let _rapportPeriode = 'mois';
+
+function setRapportPeriode(mode) {
+  _rapportPeriode = mode;
+  document.querySelectorAll('[id^="rpbtn-"]').forEach(function(b) { b.classList.remove('active'); });
+  const btn = document.getElementById('rpbtn-' + mode);
+  if (btn) btn.classList.add('active');
+  const libreDiv = document.getElementById('rp-periode-libre');
+  if (libreDiv) libreDiv.style.display = mode === 'libre' ? 'flex' : 'none';
+  if (mode !== 'libre') {
+    const today = new Date();
+    let debut = new Date();
+    if (mode === 'mois') debut = new Date(today.getFullYear(), today.getMonth(), 1);
+    else if (mode === '3m') { debut = new Date(); debut.setMonth(debut.getMonth() - 3); }
+    else if (mode === '6m') { debut = new Date(); debut.setMonth(debut.getMonth() - 6); }
+    else if (mode === 'annee') debut = new Date(today.getFullYear(), 0, 1);
+    const fmt = function(d) { return d.toISOString().split('T')[0]; };
+    const dd = document.getElementById('rp-debut');
+    const df = document.getElementById('rp-fin');
+    if (dd) dd.value = fmt(debut);
+    if (df) df.value = fmt(today);
+  }
+  loadRapports();
+}
+
+function getRapportPeriode() {
+  const dd = (document.getElementById('rp-debut') || {}).value || '';
+  const df = (document.getElementById('rp-fin') || {}).value || '';
+  return dd && df ? { debut: dd, fin: df } : null;
+}
+
+async function loadRapports() {
+  const per = getRapportPeriode();
+  const tag = (document.getElementById('rp-tag') || {}).value || '';
+
+  // Charger toutes les données
+  const [vehs, affs, vers, deps, facs] = await Promise.all([
+    api('GET', '/vehicules' + (tag ? '?tag=' + encodeURIComponent(tag) : '')),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/facturations')
+  ]);
+
+  if (!Array.isArray(vehs)) return;
+
+  // Filtrer par période
+  function filtrerPar(arr, champ) {
+    if (!per || !Array.isArray(arr)) return arr || [];
+    return arr.filter(function(x) {
+      const d = x[champ] || x.date || x.created_at || '';
+      return d >= per.debut && d <= per.fin;
+    });
+  }
+  const versFilt = filtrerPar(vers, 'date_versement');
+  const depsFilt = filtrerPar(deps, 'date_depense');
+  const facsFilt = filtrerPar(facs, 'date');
+
+  // Calculer par véhicule
+  _rapportData = vehs.map(function(v) {
+    const vAffs = Array.isArray(affs) ? affs.filter(function(a) { return a.vehicule_id === v.id; }) : [];
+    const vAffIds = vAffs.map(function(a) { return a.id; });
+    const aff = vAffs.find(function(a) { return !a.date_fin; });
+    const chauffeur = aff ? aff.chauffeur : 'Non affecté';
+    const fac = facsFilt.filter(function(f) { return f.vehicule_id === v.id; }).reduce(function(s, f) { return s + (f.montant_facture || 0); }, 0);
+    const enc = versFilt.filter(function(vs) { return vAffIds.includes(vs.affectation_id); }).reduce(function(s, vs) { return s + vs.montant; }, 0);
+    const dep = depsFilt.filter(function(d) { return d.vehicule_id === v.id; }).reduce(function(s, d) { return s + d.montant; }, 0);
+    const ret = Math.max(0, fac - enc);
+    const marge = enc - dep;
+    const taux = fac > 0 ? Math.round(enc / fac * 100) : 0;
+    return { id: v.id, immatriculation: v.immatriculation, marque: v.marque, tag: v.tag || '', chauffeur, fac, enc, dep, ret, marge, taux };
+  });
+
+  // KPIs
+  const totFac = _rapportData.reduce(function(s, r) { return s + r.fac; }, 0);
+  const totEnc = _rapportData.reduce(function(s, r) { return s + r.enc; }, 0);
+  const totDep = _rapportData.reduce(function(s, r) { return s + r.dep; }, 0);
+  const totMarge = totEnc - totDep;
+  const kf = document.getElementById('rp-k-fac');
+  if (kf) kf.textContent = fmt(totFac);
+  const ke = document.getElementById('rp-k-enc');
+  if (ke) ke.textContent = fmt(totEnc);
+  const kd = document.getElementById('rp-k-dep');
+  if (kd) kd.textContent = fmt(totDep);
+  const km = document.getElementById('rp-k-marge');
+  if (km) { km.textContent = fmt(totMarge); km.style.color = totMarge >= 0 ? '#3B6D11' : '#A32D2D'; }
+
+  // Remplir le select tag
+  const rpTag = document.getElementById('rp-tag');
+  if (rpTag && allTags.length) {
+    const cur = rpTag.value;
+    rpTag.innerHTML = '<option value="">Tous tags</option>' + allTags.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+    if (cur) rpTag.value = cur;
+  }
+
+  filtrerRapport();
+  loadRapportChauf(versFilt, depsFilt, facsFilt, affs, vehs);
+}
+
+function filtrerRapport() {
+  const q = ((document.getElementById('rp-q') || {}).value || '').toLowerCase();
+  let data = _rapportData;
+  if (q) data = data.filter(function(r) {
+    return r.immatriculation.toLowerCase().includes(q) || r.marque.toLowerCase().includes(q) || r.tag.toLowerCase().includes(q) || r.chauffeur.toLowerCase().includes(q);
+  });
+
+  const el = document.getElementById('rp-table');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty">Aucun résultat</div>'; return; }
+
+  const rows = data.map(function(r) {
+    return '<tr onclick="ouvrirFicheVeh(\'' + r.id + '\')" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">' + r.immatriculation + '</strong> <span style="color:#6b6b67">' + r.marque + '</span> ' + (r.tag ? pill(r.tag, 'purple') : '') + '</td>' +
+      '<td>' + (r.chauffeur !== 'Non affecté' ? r.chauffeur : '<span style="color:#aaa">' + r.chauffeur + '</span>') + '</td>' +
+      '<td style="color:#185FA5;font-weight:600">' + fmt(r.fac) + '</td>' +
+      '<td style="color:#3B6D11;font-weight:600">' + fmt(r.enc) + '</td>' +
+      '<td style="color:#A32D2D">' + fmt(r.dep) + '</td>' +
+      '<td style="color:' + (r.ret > 0 ? '#A32D2D' : '#3B6D11') + ';font-weight:' + (r.ret > 0 ? '700' : '400') + '">' + (r.ret > 0 ? fmt(r.ret) : '✓ À jour') + '</td>' +
+      '<td style="color:' + (r.marge >= 0 ? '#3B6D11' : '#A32D2D') + ';font-weight:600">' + fmt(r.marge) + '</td>' +
+      '<td>' + pill(r.taux + '%', r.taux >= 90 ? 'ok' : r.taux >= 70 ? 'warn' : 'err') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr><th>Véhicule</th><th>Chauffeur</th>' +
+    '<th style="color:#185FA5">Facturé</th><th style="color:#3B6D11">Encaissé</th>' +
+    '<th style="color:#A32D2D">Dépenses</th><th style="color:#A32D2D">Retard</th>' +
+    '<th>Marge</th><th>Taux</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
+}
+
+async function loadRapportChauf(versFilt, depsFilt, facsFilt, affs, vehs) {
+  const el = document.getElementById('rp-chauf-table');
+  if (!el) return;
+
+  const chaufs = await api('GET', '/chauffeurs');
+  if (!Array.isArray(chaufs)) return;
+
+  const data = chaufs.map(function(c) {
+    const cAffs = Array.isArray(affs) ? affs.filter(function(a) { return a.chauffeur_id === c.id; }) : [];
+    const cAffIds = cAffs.map(function(a) { return a.id; });
+    const aff = cAffs.find(function(a) { return !a.date_fin; });
+    const veh = aff ? (Array.isArray(vehs) ? vehs.find(function(v) { return v.id === aff.vehicule_id; }) : null) : null;
+    const fac = facsFilt.filter(function(f) { return f.chauffeur_id === c.id; }).reduce(function(s, f) { return s + (f.montant_facture || 0); }, 0);
+    const enc = versFilt.filter(function(vs) { return cAffIds.includes(vs.affectation_id); }).reduce(function(s, vs) { return s + vs.montant; }, 0);
+    const ret = Math.max(0, fac - enc);
+    const taux = fac > 0 ? Math.round(enc / fac * 100) : 0;
+    if (fac === 0 && enc === 0) return null;
+    return { id: c.id, nom: c.prenom + ' ' + c.nom, tel: c.telephone, vehicule: veh ? veh.immatriculation : 'Non affecté', fac, enc, ret, taux };
+  }).filter(Boolean).sort(function(a, b) { return b.ret - a.ret; });
+
+  if (!data.length) { el.innerHTML = '<div class="empty">Aucune donnée pour cette période</div>'; return; }
+
+  const rows = data.map(function(r) {
+    return '<tr onclick="ouvrirFicheChauf(\'' + r.id + '\')" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">' + r.nom + '</strong></td>' +
+      '<td>' + pill(r.vehicule, 'blue') + '</td>' +
+      '<td style="color:#185FA5;font-weight:600">' + fmt(r.fac) + '</td>' +
+      '<td style="color:#3B6D11;font-weight:600">' + fmt(r.enc) + '</td>' +
+      '<td style="color:' + (r.ret > 0 ? '#A32D2D' : '#3B6D11') + ';font-weight:' + (r.ret > 0 ? '700' : '400') + '">' + (r.ret > 0 ? fmt(r.ret) : '✓ À jour') + '</td>' +
+      '<td>' + pill(r.taux + '%', r.taux >= 90 ? 'ok' : r.taux >= 70 ? 'warn' : 'err') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr><th>Chauffeur</th><th>Véhicule</th>' +
+    '<th style="color:#185FA5">Facturé</th><th style="color:#3B6D11">Encaissé</th>' +
+    '<th style="color:#A32D2D">Retard</th><th>Taux</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
+}
+
+async function exportRapportPDF(btn) {
+  setBtnLoad(btn, true);
+  const per = getRapportPeriode();
+  const data = _rapportData;
+  setBtnLoad(btn, false);
+  if (!data.length) { toast('Aucune donnée à exporter', 'err'); return; }
+
+  const totFac = data.reduce(function(s,r){return s+r.fac;},0);
+  const totEnc = data.reduce(function(s,r){return s+r.enc;},0);
+  const totDep = data.reduce(function(s,r){return s+r.dep;},0);
+  const totRet = data.reduce(function(s,r){return s+r.ret;},0);
+
+  const w = window.open('', '_blank');
+  const periode = per ? per.debut + ' au ' + per.fin : 'Toute la période';
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport SyNdongo</title><style>' +
+    'body{font-family:Arial,sans-serif;padding:30px;color:#1a1a18;font-size:12px}' +
+    'h1{color:#185FA5;margin-bottom:4px}h2{font-size:13px;color:#444;margin:20px 0 8px}' +
+    'table{width:100%;border-collapse:collapse;margin-bottom:20px}' +
+    'th{background:#f5f4f0;padding:7px 10px;text-align:left;border:1px solid #ddd;font-size:11px}' +
+    'td{padding:7px 10px;border:1px solid #ddd}' +
+    '.total{font-weight:bold;background:#EAF3DE}' +
+    '.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}' +
+    '.kpi{background:#f5f4f0;padding:12px;border-radius:6px}' +
+    '.kval{font-size:17px;font-weight:bold}.klabel{font-size:10px;color:#666;margin-top:3px}' +
+    '</style></head><body>' +
+    '<h1>SyNdongo — Rapport de flotte</h1>' +
+    '<div style="font-size:12px;color:#666;margin-bottom:16px">Transport Ndongo Fall · Période : ' + periode + ' · Généré le ' + new Date().toLocaleDateString('fr-FR') + '</div>' +
+    '<div class="kpis">' +
+      '<div class="kpi"><div class="kval" style="color:#185FA5">' + fmt(totFac) + '</div><div class="klabel">Total Facturé</div></div>' +
+      '<div class="kpi"><div class="kval" style="color:#3B6D11">' + fmt(totEnc) + '</div><div class="klabel">Total Encaissé</div></div>' +
+      '<div class="kpi"><div class="kval" style="color:#A32D2D">' + fmt(totDep) + '</div><div class="klabel">Dépenses</div></div>' +
+      '<div class="kpi"><div class="kval" style="color:#A32D2D">' + fmt(totRet) + '</div><div class="klabel">Total Retards</div></div>' +
+    '</div>' +
+    '<h2>Détail par véhicule</h2>' +
+    '<table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Retard</th><th>Marge</th><th>Taux</th></tr></thead><tbody>' +
+    data.map(function(r) {
+      return '<tr><td><strong>' + r.immatriculation + '</strong> ' + r.marque + '</td><td>' + (r.tag||'—') + '</td><td>' + r.chauffeur + '</td>' +
+        '<td style="color:#185FA5">' + fmt(r.fac) + '</td>' +
+        '<td style="color:#3B6D11">' + fmt(r.enc) + '</td>' +
+        '<td style="color:#A32D2D">' + fmt(r.dep) + '</td>' +
+        '<td style="color:' + (r.ret>0?'#A32D2D':'#3B6D11') + ';font-weight:' + (r.ret>0?'bold':'normal') + '">' + (r.ret>0?fmt(r.ret):'✓') + '</td>' +
+        '<td style="color:' + (r.marge>=0?'#3B6D11':'#A32D2D') + '">' + fmt(r.marge) + '</td>' +
+        '<td>' + r.taux + '%</td></tr>';
+    }).join('') +
+    '<tr class="total"><td colspan="3">TOTAL</td><td style="color:#185FA5">' + fmt(totFac) + '</td><td style="color:#3B6D11">' + fmt(totEnc) + '</td><td style="color:#A32D2D">' + fmt(totDep) + '</td><td style="color:#A32D2D">' + fmt(totRet) + '</td><td>' + fmt(totEnc-totDep) + '</td><td></td></tr>' +
+    '</tbody></table></body></html>');
+  w.document.close();
+  setTimeout(function() { w.print(); }, 500);
+}
+
+// ═══════════════════════════════════════════════════════
+// HISTORIQUE DES MODIFICATIONS
+// ═══════════════════════════════════════════════════════
+
+async function loadHistorique() {
+  const type = (document.getElementById('hist-type') || {}).value || '';
+  const auteur = (document.getElementById('hist-auteur') || {}).value || '';
+  const debut = (document.getElementById('hist-debut') || {}).value || '';
+
+  let url = '/historique?limit=200';
+  const r = await api('GET', url);
+  const el = document.getElementById('t-historique');
+  if (!el) return;
+
+  let list = Array.isArray(r) ? r : [];
+
+  // Filtres locaux
+  if (type) list = list.filter(function(h) { return (h.entite || h.type || '').toLowerCase().includes(type); });
+  if (auteur) list = list.filter(function(h) { return (h.auteur || '').toLowerCase().includes(auteur.toLowerCase()); });
+  if (debut) list = list.filter(function(h) { return (h.date || (h.created_at||'').slice(0,10)) >= debut; });
+
+  // Remplir select auteurs
+  const auteurs = [...new Set(list.map(function(h) { return h.auteur || 'Manager'; }).filter(Boolean))];
+  const selAuteur = document.getElementById('hist-auteur');
+  if (selAuteur) {
+    const cur = selAuteur.value;
+    selAuteur.innerHTML = '<option value="">Tous les auteurs</option>' +
+      auteurs.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+    if (cur) selAuteur.value = cur;
+  }
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">Aucune modification enregistrée</div>';
+    return;
+  }
+
+  const typeColors = {
+    vehicule:'blue', chauffeur:'purple', affectation:'ok',
+    versement:'ok', depense:'err', facturation:'blue', journal:'gray'
+  };
+  const typeLabels = {
+    vehicule:'Véhicule', chauffeur:'Chauffeur', affectation:'Affectation',
+    versement:'Versement', depense:'Dépense', facturation:'Facturation', journal:'Journal'
+  };
+
+  const rows = list.map(function(h) {
+    const entite = h.entite || h.type || 'modification';
+    const label = typeLabels[entite] || entite;
+    const color = typeColors[entite] || 'gray';
+    const date = h.created_at ? h.created_at.slice(0,16).replace('T',' ') : (h.date || '—');
+    const auteurH = h.auteur || 'Manager';
+    const action = h.action || h.message || 'Modification';
+    const details = h.details || h.texte || '';
+
+    return '<tr>' +
+      '<td style="white-space:nowrap;color:#6b6b67;font-size:11px">' + date + '</td>' +
+      '<td>' + pill(label, color) + '</td>' +
+      '<td style="font-weight:600">' + auteurH + '</td>' +
+      '<td>' + action + (details ? ' <span style="color:#6b6b67;font-size:11px">· ' + details.slice(0,60) + (details.length>60?'…':'') + '</span>' : '') + '</td>' +
+      (h.vehicule_id ? '<td><button class="btn-sm" style="background:#E6F1FB;color:#0C447C;font-size:10px" data-id="' + h.vehicule_id + '" onclick="ouvrirFicheVeh(this.dataset.id)">Voir</button></td>' : '<td></td>') +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr><th>Date</th><th>Type</th><th>Auteur</th><th>Action</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
+}
+
+// ═══════════════════════════════════════════════════════
+// MISE À JOUR loadPage pour nouvelles pages
+// ═══════════════════════════════════════════════════════
+// Surcharge loadPage pour ajouter rapports et historique
+const _origLoadPage = loadPage;
+loadPage = function(id) {
+  if (id === 'rapports') {
+    setRapportPeriode(_rapportPeriode || 'mois');
+    return;
+  }
+  if (id === 'historique') {
+    loadHistorique();
+    return;
+  }
+  _origLoadPage(id);
+};
 </script>
 </body>
 </html>
