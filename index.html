@@ -99,6 +99,39 @@ tr:hover td{background:#fafaf8}
   .form-row3{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:1fr 1fr}
 }
+
+/* ── Filtres & Autocomplete ── */
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;background:#f5f4f0;border-radius:10px;padding:10px 12px}
+.filter-bar label{font-size:11px;color:#6b6b67;font-weight:600;white-space:nowrap}
+.ac-wrap{position:relative;flex:1;min-width:160px}
+.ac-wrap input{background:#fff}
+.ac-drop{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #c0bfb8;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:200;max-height:220px;overflow-y:auto;margin-top:3px}
+.ac-drop.open{display:block}
+.ac-item{padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f5f4f0}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover,.ac-item.selected{background:#E6F1FB}
+.ac-item-main{font-weight:600}
+.ac-item-sub{font-size:11px;color:#6b6b67}
+.filter-tag{display:inline-flex;align-items:center;gap:4px;background:#185FA5;color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;cursor:pointer}
+.filter-tag .x{opacity:.7;margin-left:2px}
+.filter-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.filter-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent}
+.chip.active-ok{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
+.chip.active-warn{background:#FAEEDA;color:#633806;border-color:#FAC775}
+.chip.active-err{background:#FCEBEB;color:#791F1F;border-color:#F7C1C1}
+.chip.active-blue{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.chip.active-gray{background:#F1EFE8;color:#444;border-color:#c0bfb8}
+.chip.inactive{background:#fff;color:#6b6b67;border-color:#e0dfd8}
+.chip:hover{opacity:.85}
+.periode-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.periode-row input[type=date]{width:130px;font-size:12px}
+.periode-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;background:#fff;cursor:pointer;color:#6b6b67}
+.periode-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
+.empty{text-align:center;color:#6b6b67;font-size:13px;padding:24px}
+.pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px}
+.pill-ok{background:#EAF3DE;color:#27500A}.pill-warn{background:#FAEEDA;color:#633806}.pill-err{background:#FCEBEB;color:#791F1F}
+.pill-blue{background:#E6F1FB;color:#0C447C}.pill-gray{background:#F1EFE8;color:#444}.pill-purple{background:#EEEDFE;color:#3C3489}
 </style>
 </head>
 <body>
@@ -136,6 +169,36 @@ tr:hover td{background:#fafaf8}
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
+      <!-- Filtres dashboard -->
+      <div class="filter-bar" style="margin-bottom:12px">
+        <label>Période :</label>
+        <div class="periode-row">
+          <button class="periode-btn active" id="pbtn-mois" onclick="setPeriode('mois')">Ce mois</button>
+          <button class="periode-btn" id="pbtn-7j" onclick="setPeriode('7j')">7 jours</button>
+          <button class="periode-btn" id="pbtn-30j" onclick="setPeriode('30j')">30 jours</button>
+          <button class="periode-btn" id="pbtn-libre" onclick="setPeriode('libre')">Libre</button>
+          <div id="periode-libre" style="display:none;display:flex;gap:6px;align-items:center">
+            <input type="date" id="d-debut" onchange="loadDashboard()">
+            <span style="font-size:11px;color:#6b6b67">→</span>
+            <input type="date" id="d-fin" onchange="loadDashboard()">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap">
+          <div class="ac-wrap" style="min-width:140px">
+            <input id="d-filter-q" placeholder="🔍 Véhicule / Tag…" oninput="filterDashboard()" style="font-size:12px">
+            <div class="ac-drop" id="d-filter-drop"></div>
+          </div>
+          <select id="d-filter-tag" style="font-size:12px;width:130px" onchange="loadDashboard()"><option value="">Tous tags</option></select>
+          <select id="d-filter-sj" style="font-size:12px;width:130px" onchange="loadDashboard()">
+            <option value="">Tous statuts</option>
+            <option value="actif">Actifs aujourd'hui</option>
+            <option value="panne">En panne</option>
+            <option value="repos">Au repos</option>
+            <option value="inactif">Inactifs</option>
+            <option value="non_saisi">Non saisis</option>
+          </select>
+        </div>
+      </div>
       <div class="kpi-row">
         <div class="kpi"><div class="kpi-label">Recettes totales</div><div class="kpi-val" id="k-rec" style="color:#3B6D11">—</div></div>
         <div class="kpi"><div class="kpi-label">Dépenses totales</div><div class="kpi-val" id="k-dep" style="color:#A32D2D">—</div></div>
@@ -180,17 +243,20 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">
           Parc automobile
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <input type="text" id="v-q" placeholder="Rechercher…" style="width:140px;font-size:12px" oninput="loadVehicules()">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="ac-wrap" style="min-width:200px">
+              <input id="v-q" placeholder="🔍 Immat., marque, tag, propriétaire…" style="font-size:12px" oninput="acVehicules(this.value)" onfocus="acVehicules(this.value)">
+              <div class="ac-drop" id="v-ac-drop"></div>
+            </div>
             <select id="v-tag" style="font-size:12px;width:120px" onchange="loadVehicules()"><option value="">Tous tags</option></select>
-            <select id="v-sj" style="font-size:12px;width:120px" onchange="loadVehicules()">
-              <option value="">Tous statuts</option>
-              <option value="actif">Actifs</option>
-              <option value="panne">En panne</option>
-              <option value="repos">Au repos</option>
-              <option value="inactif">Inactifs</option>
-              <option value="non_saisi">Non saisis</option>
-            </select>
+            <div class="filter-chips">
+              <span class="chip inactive" id="chip-actif" onclick="toggleChipSJ('actif')">✅ Actifs</span>
+              <span class="chip inactive" id="chip-panne" onclick="toggleChipSJ('panne')">🔧 Panne</span>
+              <span class="chip inactive" id="chip-repos" onclick="toggleChipSJ('repos')">😴 Repos</span>
+              <span class="chip inactive" id="chip-inactif" onclick="toggleChipSJ('inactif')">⛔ Inactif</span>
+              <span class="chip inactive" id="chip-non_saisi" onclick="toggleChipSJ('non_saisi')">❓ Non saisi</span>
+            </div>
+            <button class="btn btn-gray" style="font-size:11px;padding:4px 10px" onclick="resetFiltresVeh()">Tout voir</button>
           </div>
         </div>
         <div id="t-vehicules"><div class="empty">Chargement…</div></div>
@@ -226,7 +292,17 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">
           Chauffeurs
-          <input type="text" id="c-q" placeholder="Rechercher…" style="width:180px;font-size:12px" oninput="loadChauffeurs()">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div class="ac-wrap" style="min-width:220px">
+              <input id="c-q" placeholder="🔍 Nom, téléphone, véhicule, permis…" style="font-size:12px" oninput="acChauffeurs(this.value)" onfocus="acChauffeurs(this.value)">
+              <div class="ac-drop" id="c-ac-drop"></div>
+            </div>
+            <select id="c-filter-aff" style="font-size:12px;width:150px" onchange="loadChauffeurs()">
+              <option value="">Tous les chauffeurs</option>
+              <option value="affecte">Affectés</option>
+              <option value="libre">Libres</option>
+            </select>
+          </div>
         </div>
         <div id="t-chauffeurs"><div class="empty">Chargement…</div></div>
       </div>
@@ -307,9 +383,21 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">
           Historique facturations
-          <div style="display:flex;gap:8px">
-            <select id="ff-veh" style="font-size:12px;width:160px" onchange="loadFac()"><option value="">Tous véhicules</option></select>
-            <input type="date" id="ff-date" style="font-size:12px;width:130px" onchange="loadFac()">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="ac-wrap" style="min-width:180px">
+              <input id="ff-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px" oninput="loadFac()">
+            </div>
+            <select id="ff-veh" style="font-size:12px;width:150px" onchange="loadFac()"><option value="">Tous véhicules</option></select>
+            <input type="date" id="ff-debut" style="font-size:12px;width:130px" onchange="loadFac()">
+            <span style="font-size:11px;color:#6b6b67">au</span>
+            <input type="date" id="ff-fin" style="font-size:12px;width:130px" onchange="loadFac()">
+            <select id="ff-type" style="font-size:12px;width:130px" onchange="loadFac()">
+              <option value="">Tous types</option>
+              <option value="complet">Complète</option>
+              <option value="demi_panne">Demi-panne</option>
+              <option value="repos">Repos</option>
+              <option value="inactif">Inactif</option>
+            </select>
           </div>
         </div>
         <div id="t-fac"><div class="empty">Aucune facturation</div></div>
@@ -325,6 +413,10 @@ tr:hover td{background:#fafaf8}
             <input type="date" id="ret-debut" style="font-size:12px;width:130px" onchange="loadRetards()">
             <span style="font-size:11px;color:#6b6b67">au</span>
             <input type="date" id="ret-fin" style="font-size:12px;width:130px" onchange="loadRetards()">
+            <select id="ret-tag" style="font-size:12px;width:120px" onchange="loadRetards()"><option value="">Tous tags</option></select>
+            <div class="ac-wrap" style="min-width:160px">
+              <input id="ret-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px" oninput="loadRetards()">
+            </div>
             <button class="btn btn-red" style="font-size:11px;padding:5px 12px" onclick="exportRetardsPDF(this)">Export PDF</button>
           </div>
         </div>
@@ -358,7 +450,28 @@ tr:hover td{background:#fafaf8}
         </div>
         <button class="btn btn-red" onclick="addDepense(this)">Enregistrer</button>
       </div>
-      <div class="card"><div class="card-title">Historique dépenses</div><div id="t-dep"><div class="empty">Aucune dépense</div></div></div>
+      <div class="card">
+        <div class="card-title">
+          Historique dépenses
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="date" id="dep-debut" style="font-size:12px;width:130px" onchange="loadDepenses()">
+            <span style="font-size:11px;color:#6b6b67">au</span>
+            <input type="date" id="dep-fin" style="font-size:12px;width:130px" onchange="loadDepenses()">
+            <select id="dep-cat" style="font-size:12px;width:150px" onchange="loadDepenses()">
+              <option value="">Toutes catégories</option>
+              <option value="carburant">Carburant</option>
+              <option value="reparation">Réparation</option>
+              <option value="commission_yango">Commission Yango</option>
+              <option value="administratif">Administratif</option>
+              <option value="autre">Autre</option>
+            </select>
+            <div class="ac-wrap" style="min-width:140px">
+              <input id="dep-q" placeholder="🔍 Véhicule…" style="font-size:12px" oninput="loadDepenses()">
+            </div>
+          </div>
+        </div>
+        <div id="t-dep"><div class="empty">Aucune dépense</div></div>
+      </div>
     </div>
 
     <!-- ALERTES -->
@@ -775,10 +888,13 @@ async function delTag(t) {
 async function loadVehicules() {
   const q = (document.getElementById('v-q') || {}).value || '';
   const tag = (document.getElementById('v-tag') || {}).value || '';
-  const sj = (document.getElementById('v-sj') || {}).value || '';
   let list = await api('GET', '/vehicules?q=' + encodeURIComponent(q) + '&tag=' + encodeURIComponent(tag));
   if (!Array.isArray(list)) list = [];
-  if (sj) list = list.filter(function(v) { return v.statut_jour === sj; });
+  // Filtrer par chips actifs (nouveaux filtres intelligents)
+  if (typeof _activeChips !== 'undefined' && _activeChips.size > 0) {
+    list = list.filter(function(v) { return _activeChips.has(v.statut_jour || 'non_saisi'); });
+  }
+  _vehsCache = list;
   const el = document.getElementById('t-vehicules');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
   const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
@@ -927,8 +1043,12 @@ async function ouvrirFicheVeh(id) {
 // ═══════════════════════════════════════════════════════
 async function loadChauffeurs() {
   const q = (document.getElementById('c-q') || {}).value || '';
+  const filterAff = (document.getElementById('c-filter-aff') || {}).value || '';
   let list = await api('GET', '/chauffeurs?q=' + encodeURIComponent(q));
   if (!Array.isArray(list)) list = [];
+  if (filterAff === 'affecte') list = list.filter(function(c) { return c.vehicule_actuel; });
+  else if (filterAff === 'libre') list = list.filter(function(c) { return !c.vehicule_actuel; });
+  _chaufsCache = list;
   const el = document.getElementById('t-chauffeurs');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
   const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
@@ -1102,10 +1222,19 @@ async function validerEnc(btn) {
 
 async function loadFac() {
   const vid = (document.getElementById('ff-veh') || {}).value || '';
+  const ffQ = ((document.getElementById('ff-q') || {}).value || '').toLowerCase();
+  const ffDebut = (document.getElementById('ff-debut') || {}).value || '';
+  const ffFin = (document.getElementById('ff-fin') || {}).value || '';
+  const ffType = (document.getElementById('ff-type') || {}).value || '';
   const date = (document.getElementById('ff-date') || {}).value || '';
   let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
   if (!Array.isArray(list)) list = [];
   if (date) list = list.filter(function(f) { return f.date === date; });
+  // Nouveaux filtres intelligents
+  if (ffQ) list = list.filter(function(f) { return (f.vehicule || '').toLowerCase().includes(ffQ) || (f.chauffeur || '').toLowerCase().includes(ffQ); });
+  if (ffDebut) list = list.filter(function(f) { return f.date >= ffDebut; });
+  if (ffFin) list = list.filter(function(f) { return f.date <= ffFin; });
+  if (ffType) list = list.filter(function(f) { return f.type_journee === ffType; });
   const el = document.getElementById('t-fac');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation</div>'; return; }
   const labels = { complet: 'Complète', demi_panne: 'Demi-panne', repos: 'Repos', inactif: 'Inactif' };
@@ -1130,6 +1259,8 @@ function initRetardsDates() {
 async function loadRetards() {
   const debut = (document.getElementById('ret-debut') || {}).value || '';
   const fin = (document.getElementById('ret-fin') || {}).value || '';
+  const retTag = (document.getElementById('ret-tag') || {}).value || '';
+  const retQ = ((document.getElementById('ret-q') || {}).value || '').toLowerCase();
   let url = '/retards';
   if (debut && fin) url += '?date_debut=' + debut + '&date_fin=' + fin;
   let ret = await api('GET', url);
@@ -1185,6 +1316,15 @@ async function exportRetardsPDF(btn) {
 async function loadDepenses() {
   let list = await api('GET', '/depenses');
   if (!Array.isArray(list)) list = [];
+  // Filtres intelligents
+  const depDebut = (document.getElementById('dep-debut') || {}).value || '';
+  const depFin = (document.getElementById('dep-fin') || {}).value || '';
+  const depCat = (document.getElementById('dep-cat') || {}).value || '';
+  const depQ = ((document.getElementById('dep-q') || {}).value || '').toLowerCase();
+  if (depDebut) list = list.filter(function(d) { return d.date_depense >= depDebut; });
+  if (depFin) list = list.filter(function(d) { return d.date_depense <= depFin; });
+  if (depCat) list = list.filter(function(d) { return d.categorie === depCat; });
+  if (depQ) list = list.filter(function(d) { return (d.description || '').toLowerCase().includes(depQ); });
   const el = document.getElementById('t-dep');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucune dépense</div>'; return; }
   el.innerHTML = '<table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Actions</th></tr></thead><tbody>' +
@@ -1478,6 +1618,212 @@ async function refreshSelects() {
     vtEl.innerHTML = '<option value="">Tous tags</option>' + allTags.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
     if (cur) vtEl.value = cur;
   }
+}
+
+// ═══════════════════════════════════════════════════════
+// FILTRES INTELLIGENTS & AUTOCOMPLETE
+// ═══════════════════════════════════════════════════════
+
+// ── Période dashboard ────────────────────────────────────
+let _periodeMode = 'mois';
+
+function setPeriode(mode) {
+  _periodeMode = mode;
+  document.querySelectorAll('.periode-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('pbtn-' + mode);
+  if (btn) btn.classList.add('active');
+  const libreDiv = document.getElementById('periode-libre');
+  if (libreDiv) libreDiv.style.display = mode === 'libre' ? 'flex' : 'none';
+  if (mode !== 'libre') {
+    const today = new Date();
+    let debut = new Date();
+    if (mode === 'mois') debut = new Date(today.getFullYear(), today.getMonth(), 1);
+    else if (mode === '7j') { debut = new Date(); debut.setDate(debut.getDate() - 7); }
+    else if (mode === '30j') { debut = new Date(); debut.setDate(debut.getDate() - 30); }
+    const fmt = d => d.toISOString().split('T')[0];
+    const dd = document.getElementById('d-debut');
+    const df = document.getElementById('d-fin');
+    if (dd) dd.value = fmt(debut);
+    if (df) df.value = fmt(today);
+  }
+  loadDashboard();
+}
+
+function getPeriodeDash() {
+  const dd = document.getElementById('d-debut')?.value || '';
+  const df = document.getElementById('d-fin')?.value || '';
+  return dd && df ? { debut: dd, fin: df } : null;
+}
+
+// Initialiser la période au chargement
+function initPeriodeDash() {
+  const today = new Date();
+  const debut = new Date(today.getFullYear(), today.getMonth(), 1);
+  const fmt = d => d.toISOString().split('T')[0];
+  const dd = document.getElementById('d-debut');
+  const df = document.getElementById('d-fin');
+  if (dd && !dd.value) dd.value = fmt(debut);
+  if (df && !df.value) df.value = fmt(today);
+}
+
+// ── Autocomplete générique ────────────────────────────────
+function showAcDrop(dropId, items) {
+  const drop = document.getElementById(dropId);
+  if (!drop) return;
+  if (!items.length) { drop.classList.remove('open'); return; }
+  drop.innerHTML = items.map(item => `
+    <div class="ac-item" onclick="${item.onclick}">
+      <div style="flex:1"><div class="ac-item-main">${item.main}</div>${item.sub ? `<div class="ac-item-sub">${item.sub}</div>` : ''}</div>
+      ${item.badge ? `<span class="pill pill-${item.badge.type}">${item.badge.text}</span>` : ''}
+    </div>`).join('');
+  drop.classList.add('open');
+}
+
+function hideAcDrop(dropId) {
+  setTimeout(() => {
+    const d = document.getElementById(dropId);
+    if (d) d.classList.remove('open');
+  }, 200);
+}
+
+// Fermer tous les drops au clic extérieur
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ac-wrap')) {
+    document.querySelectorAll('.ac-drop').forEach(d => d.classList.remove('open'));
+  }
+});
+
+// ── Autocomplete Véhicules ─────────────────────────────────
+let _vehsCache = [];
+async function acVehicules(q) {
+  if (!_vehsCache.length) _vehsCache = await api('GET', '/vehicules');
+  const sq = (q || '').toLowerCase().trim();
+  if (!sq) { hideAcDrop('v-ac-drop'); loadVehicules(); return; }
+  const filtered = _vehsCache.filter(v =>
+    v.immatriculation.toLowerCase().includes(sq) ||
+    (v.marque || '').toLowerCase().includes(sq) ||
+    (v.modele || '').toLowerCase().includes(sq) ||
+    (v.tag || '').toLowerCase().includes(sq) ||
+    (v.proprio || '').toLowerCase().includes(sq)
+  ).slice(0, 8);
+  const items = filtered.map(v => ({
+    main: v.immatriculation,
+    sub: `${v.marque} ${v.modele || ''} ${v.tag ? '· ' + v.tag : ''}`,
+    badge: v.statut_jour ? { text: v.statut_jour, type: v.statut_jour === 'actif' ? 'ok' : v.statut_jour === 'panne' ? 'err' : 'gray' } : null,
+    onclick: `selectAcVeh('${v.id}', '${v.immatriculation}')`
+  }));
+  showAcDrop('v-ac-drop', items);
+  loadVehicules();
+}
+
+function selectAcVeh(id, immat) {
+  document.getElementById('v-q').value = immat;
+  hideAcDrop('v-ac-drop');
+  // Ouvrir directement la fiche
+  voirFicheVeh(id);
+}
+
+// ── Chips statut journalier véhicules ─────────────────────
+let _activeChips = new Set();
+function toggleChipSJ(sj) {
+  if (_activeChips.has(sj)) _activeChips.delete(sj);
+  else _activeChips.add(sj);
+  // Mettre à jour l'apparence des chips
+  const chipColors = { actif: 'active-ok', panne: 'active-err', repos: 'active-warn', inactif: 'active-gray', non_saisi: 'active-blue' };
+  ['actif', 'panne', 'repos', 'inactif', 'non_saisi'].forEach(s => {
+    const chip = document.getElementById('chip-' + s);
+    if (!chip) return;
+    chip.className = 'chip ' + (_activeChips.has(s) ? chipColors[s] : 'inactive');
+  });
+  loadVehicules();
+}
+
+function resetFiltresVeh() {
+  _activeChips.clear();
+  document.getElementById('v-q').value = '';
+  document.getElementById('v-tag').value = '';
+  ['actif', 'panne', 'repos', 'inactif', 'non_saisi'].forEach(s => {
+    const chip = document.getElementById('chip-' + s);
+    if (chip) chip.className = 'chip inactive';
+  });
+  _vehsCache = [];
+  loadVehicules();
+}
+
+// ── Autocomplete Chauffeurs ────────────────────────────────
+let _chaufsCache = [];
+async function acChauffeurs(q) {
+  if (!_chaufsCache.length) _chaufsCache = await api('GET', '/chauffeurs');
+  const sq = (q || '').toLowerCase().trim();
+  if (!sq) { hideAcDrop('c-ac-drop'); loadChauffeurs(); return; }
+  const filtered = _chaufsCache.filter(c =>
+    (c.prenom || '').toLowerCase().includes(sq) ||
+    (c.nom || '').toLowerCase().includes(sq) ||
+    (c.telephone || '').includes(sq) ||
+    (c.numero_permis || '').toLowerCase().includes(sq) ||
+    (c.vehicule_actuel || '').toLowerCase().includes(sq)
+  ).slice(0, 8);
+  const items = filtered.map(c => ({
+    main: c.prenom + ' ' + c.nom,
+    sub: c.telephone + (c.vehicule_actuel ? ' · ' + c.vehicule_actuel.split('·')[0].trim() : ' · Non affecté'),
+    badge: c.vehicule_actuel ? { text: 'Affecté', type: 'ok' } : { text: 'Libre', type: 'gray' },
+    onclick: `selectAcChauf('${c.id}', '${(c.prenom + ' ' + c.nom).replace(/'/g, '')}')`
+  }));
+  showAcDrop('c-ac-drop', items);
+  loadChauffeurs();
+}
+
+function selectAcChauf(id, nom) {
+  document.getElementById('c-q').value = nom;
+  hideAcDrop('c-ac-drop');
+  voirFicheChauf(id);
+}
+
+// ── Filtre dashboard avec autocomplete ────────────────────
+async function filterDashboard() {
+  const q = document.getElementById('d-filter-q')?.value || '';
+  if (!_vehsCache.length) _vehsCache = await api('GET', '/vehicules');
+  const sq = q.toLowerCase().trim();
+  if (!sq) { hideAcDrop('d-filter-drop'); return; }
+  const filtered = _vehsCache.filter(v =>
+    v.immatriculation.toLowerCase().includes(sq) ||
+    (v.tag || '').toLowerCase().includes(sq) ||
+    (v.marque || '').toLowerCase().includes(sq)
+  ).slice(0, 6);
+  const items = filtered.map(v => ({
+    main: v.immatriculation,
+    sub: `${v.marque} ${v.tag ? '· ' + v.tag : ''}`,
+    onclick: `voirFicheVeh('${v.id}')`
+  }));
+  showAcDrop('d-filter-drop', items);
+}
+
+
+
+
+
+
+// ── Initialiser les tags dans les filtres ─────────────────
+async function initFiltresTags() {
+  const tags = await api('GET', '/tags');
+  ['d-filter-tag', 'v-tag', 'ret-tag'].forEach(selId => {
+    const el = document.getElementById(selId);
+    if (!el) return;
+    const cur = el.value;
+    const isFilter = true;
+    el.innerHTML = '<option value="">Tous tags</option>' + tags.map(t => `<option value="${t}">${t}</option>`).join('');
+    if (cur) el.value = cur;
+  });
+}
+
+// Appeler initFiltresTags au chargement
+const _origInitTags = typeof loadTags === 'function' ? loadTags : null;
+const _origInitFiltresTags = initFiltresTags;
+
+// ── Watcher global pour invalider caches ─────────────────
+function invalidateCaches() {
+  _vehsCache = [];
+  _chaufsCache = [];
 }
 </script>
 </body>
