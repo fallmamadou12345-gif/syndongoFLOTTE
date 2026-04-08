@@ -265,10 +265,10 @@ tr:hover td{background:#fafaf8}
           <div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div>
           <div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div>
         </div>
-        <div class="kpi kpi-link" style="border-left:3px solid #059669" onclick="goPage('rapports',navEl('rapports'))" title="Voir le rapport détaillé">
+        <div class="kpi kpi-link" style="border-left:3px solid #059669" onclick="goPage('rapports',navEl('rapports'))" title="Taux global = Total encaissé / Total facturé toutes périodes">
           <div class="kpi-label">Taux recouvrement</div>
           <div class="kpi-val" id="k-taux" style="color:#059669">—</div>
-          <div style="font-size:10px;color:#6b6b67">Encaissé / Facturé →</div>
+          <div style="font-size:10px;color:#6b6b67" id="k-taux-sub">Global cumulé →</div>
         </div>
         <div class="kpi kpi-link" style="border-left:3px solid #DC2626" onclick="goPage('retards',navEl('retards'))" title="Voir les retards">
           <div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div>
@@ -1197,15 +1197,21 @@ async function loadDashboard() {
   var totEnc = versFilt.reduce(function(s,v){ return s+v.montant; }, 0);
   var totDep = depsFilt.reduce(function(s,d){ return s+d.montant; }, 0);
   var marge  = totFac - totDep;
-  var taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
-  // Retard = Σ MAX(0, Facturé_veh - Encaissé_veh) — calcul par véhicule
+  // Taux de recouvrement GLOBAL (toutes périodes confondues)
+  // = Encaissé total / Facturé total cumulé (pas filtré par période)
+  var totFacGlobal = Array.isArray(facs) ? facs.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0) : 0;
+  var totEncGlobal = Array.isArray(vers) ? vers.reduce(function(s,v){ return s+v.montant; }, 0) : 0;
+  var taux = totFacGlobal > 0 ? Math.round(totEncGlobal/totFacGlobal*100) : 0;
+
+  // Retard GLOBAL par véhicule (dette réelle = ce qui n'a jamais été payé)
   var totRet = 0;
+  var allAffs = Array.isArray(affs) ? affs : [];
   vehs.forEach(function(v) {
-    var vAffIds = affsFilt.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
-    var vFac = facsFilt.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-    var vEnc = versFilt.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
-    totRet += Math.max(0, vFac - vEnc);
+    var vAffIds = allAffs.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
+    var vFacGlob = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0) : 0;
+    var vEncGlob = Array.isArray(vers) ? vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0) : 0;
+    totRet += Math.max(0, vFacGlob - vEncGlob);
   });
 
   // ── Afficher les KPIs (animation) ────────────────────────
@@ -1228,6 +1234,13 @@ async function loadDashboard() {
     kt.textContent = taux + '%';
     kt.style.color = taux >= 90 ? '#059669' : taux >= 70 ? '#BA7517' : '#A32D2D';
     kt.style.opacity = '1';
+  }
+  // Sous-label du taux : préciser que c'est global
+  var ktSub = document.getElementById('k-taux-sub');
+  if (ktSub) {
+    ktSub.textContent = totFac > 0
+      ? 'Période : Enc ' + Math.round(totEnc/totFac*100) + '% / Fac'
+      : '';
   }
 
   // ── Stats journalières (toujours basées sur aujourd'hui) ──
@@ -3392,7 +3405,9 @@ async function loadRapports() {
     const dep = depsFilt.filter(function(d) { return d.vehicule_id === v.id; }).reduce(function(s, d) { return s + d.montant; }, 0);
     const ret = Math.max(0, fac - enc);
     const marge = enc - dep;
-    const taux = fac > 0 ? Math.round(enc / fac * 100) : 0;
+      // Taux = Encaissé / Facturé sur la période (peut dépasser 100% si rattrapage)
+    // On le plafonne à 100% pour l'affichage sauf si sur-versé intentionnellement
+    const taux = fac > 0 ? Math.min(Math.round(enc / fac * 100), 999) : 0;
     return { id: v.id, immatriculation: v.immatriculation, marque: v.marque, tag: v.tag || '', chauffeur, fac, enc, dep, ret, marge, taux };
   });
 
@@ -4025,11 +4040,15 @@ loadRapports = async function() {
   await _origLoadRapports2();
   var totFac = _rapportData.reduce(function(s,r){return s+r.fac;},0);
   var totEnc = _rapportData.reduce(function(s,r){return s+r.enc;},0);
-  var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
+  // Taux global (pas sur la période) pour éviter le >100%
+  var totFacGlob2 = _rapportData.reduce(function(s,r){return s+r.fac;},0);
+  var totEncGlob2 = _rapportData.reduce(function(s,r){return s+r.enc;},0);
+  var taux = totFacGlob2 > 0 ? Math.round(totEncGlob2/totFacGlob2*100) : 0;
   var el = document.getElementById('rp-k-taux');
   if (el) {
-    el.textContent = 'Taux recouvrement : ' + taux + '%';
-    el.style.color = taux >= 90 ? '#3B6D11' : taux >= 70 ? '#BA7517' : '#A32D2D';
+    var couleurTaux = taux > 100 ? '#BA7517' : taux >= 90 ? '#3B6D11' : taux >= 70 ? '#BA7517' : '#A32D2D';
+    el.textContent = 'Taux recouvrement période : ' + taux + '%' + (taux > 100 ? ' ⚠️ (rattrapage)' : '');
+    el.style.color = couleurTaux;
   }
   // Mettre à jour le label période
   var lbl = document.getElementById('rp-periode-label');
