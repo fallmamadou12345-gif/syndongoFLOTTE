@@ -318,7 +318,7 @@ tr:hover td{background:#fafaf8}
 
     <!-- VEHICULES -->
     <div class="page" id="page-vehicules">
-      <div class="card manager-only">
+      <div class="card" id="veh-form-card">
         <div class="card-title">Ajouter un véhicule</div>
         <div class="form-row">
           <div class="field"><label>Immatriculation *</label><input id="vi" placeholder="AA-0000-A"></div>
@@ -331,7 +331,7 @@ tr:hover td{background:#fafaf8}
         </div>
         <div class="form-row">
           <div class="field"><label>Km prochain vidange</label><input id="vvid" type="number" placeholder="85000"></div>
-          <div class="field"><label>Tag / Groupe</label><select id="vtag"><option value="">— Aucun —</option></select></div>
+          <div class="field"><label>Tag / Groupe</label><select id="vtag"><option value="">— Aucun —</option></select><div id="vtag-gest-note" style="display:none;font-size:10px;color:#3C3489;margin-top:3px">🏷️ Tag de votre groupe pré-sélectionné</div></div>
         </div>
         <div class="form-row">
           <div class="field"><label>Propriétaire lié</label><select id="vprop"><option value="">— Aucun —</option></select></div>
@@ -382,7 +382,7 @@ tr:hover td{background:#fafaf8}
 
     <!-- CHAUFFEURS -->
     <div class="page" id="page-chauffeurs">
-      <div class="card manager-only">
+      <div class="card" id="chauf-form-card">
         <div class="card-title">Ajouter un chauffeur</div>
         <div class="form-row">
           <div class="field"><label>Prénom *</label><input id="cp" placeholder="Ibrahima"></div>
@@ -639,8 +639,8 @@ tr:hover td{background:#fafaf8}
     <!-- PROPRIETAIRES -->
     <div class="page" id="page-proprietaires">
       <div class="info-box">Chaque propriétaire se connecte avec son mot de passe et ne voit QUE ses véhicules.</div>
-      <div class="card manager-only">
-        <div class="card-title">Ajouter un propriétaire</div>
+      <div class="card" id="prop-form-card">
+        <div class="card-title">Donner accès à un propriétaire</div>
         <div class="form-row">
           <div class="field"><label>Nom *</label><input id="pnom" placeholder="Moussa Diallo"></div>
           <div class="field"><label>Téléphone</label><input id="ptel" placeholder="+221771234567"></div>
@@ -649,7 +649,11 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Email</label><input id="pemail" placeholder="moussa@email.com"></div>
           <div class="field"><label>Mot de passe accès *</label><input id="ppwd" placeholder="Ex: moussa2026"></div>
         </div>
-        <button class="btn btn-blue" onclick="addProprietaire(this)">Créer l'accès</button>
+        <div id="prop-veh-select-gest" style="display:none;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">VÉHICULES À PARTAGER <span style="font-weight:400">(laisser vide = tous vos véhicules)</span></div>
+          <div id="prop-veh-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#f5f4f0;border-radius:8px;border:1px solid #e0dfd8;max-height:140px;overflow-y:auto"></div>
+        </div>
+        <button class="btn btn-blue" onclick="addProprietaire(this)">Créer l'accès propriétaire</button>
       </div>
       <div class="card"><div class="card-title">Propriétaires</div><div id="t-prop"><div class="empty">Chargement…</div></div></div>
     </div>
@@ -1085,7 +1089,8 @@ function demarrerApp() {
       { id: 'depenses', label: 'Dépenses' },
       { id: 'rapports', label: 'Rapports' },
       { id: 'historique', label: 'Historique' },
-      { id: 'journal', label: 'Journal' }
+      { id: 'journal', label: 'Journal' },
+      { id: 'proprietaires', label: 'Mes Propriétaires' }
     ],
     proprietaire: [
       { id: 'dashboard', label: 'Dashboard' },
@@ -1103,8 +1108,29 @@ function demarrerApp() {
   }).join('');
 
   // Cacher manager-only pour les autres
-  if (ROLE !== 'manager') {
+  if (ROLE === 'proprietaire') {
     document.querySelectorAll('.manager-only').forEach(function(el) { el.style.display = 'none'; });
+    // Propriétaire : cacher aussi les formulaires d'ajout
+    ['veh-form-card','chauf-form-card','prop-form-card','card-tags-manager'].forEach(function(id){
+      var e = document.getElementById(id); if (e) e.style.display = 'none';
+    });
+  } else if (ROLE === 'gestionnaire') {
+    // Gestionnaire : cacher les cartes manager-only SAUF ses formulaires
+    document.querySelectorAll('.manager-only').forEach(function(el) { el.style.display = 'none'; });
+    // Mais afficher ses propres formulaires d'ajout
+    ['veh-form-card','chauf-form-card','prop-form-card'].forEach(function(id){
+      var e = document.getElementById(id); if (e) e.style.display = 'block';
+    });
+    // Pré-sélectionner son tag dans le formulaire véhicule
+    setTimeout(function() {
+      var myTag = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags[0] : GEST_INFO.tag;
+      if (myTag) {
+        var vtag = document.getElementById('vtag');
+        if (vtag) { vtag.value = myTag; }
+        var note = document.getElementById('vtag-gest-note');
+        if (note) note.style.display = 'block';
+      }
+    }, 600);
   }
 
   // Dates par défaut
@@ -1148,7 +1174,15 @@ function loadPage(id) {
   else if (id === 'retards') { initRetardsDates(); loadRetards(); }
   else if (id === 'depenses') loadDepenses();
   else if (id === 'alertes') loadAlertes();
-  else if (id === 'proprietaires') loadProprietaires();
+  else if (id === 'proprietaires') {
+    loadProprietaires();
+    if (ROLE === 'gestionnaire') {
+      // Afficher la sélection des véhicules
+      var pvg = document.getElementById('prop-veh-select-gest');
+      if (pvg) pvg.style.display = 'block';
+      initPropVehCheckboxes();
+    }
+  }
   else if (id === 'journal') { initJournal(); loadJournal(); }
   else if (id === 'acces') { loadGestionnaires(); loadProprietaires(); setTimeout(function(){ initGtagsCheckboxes(); }, 300); }
 }
@@ -2394,7 +2428,8 @@ async function envoyerAlerte(btn) {
 // PROPRIETAIRES
 // ═══════════════════════════════════════════════════════
 async function loadProprietaires() {
-  if (ROLE !== 'manager') return;
+  // Gestionnaire : peut voir et gérer les propriétaires de ses véhicules
+  if (ROLE === 'proprietaire') return;
   let list = await api('GET', '/proprietaires');
   if (!Array.isArray(list)) list = [];
   let vehs = await api('GET', '/vehicules');
@@ -2416,15 +2451,39 @@ async function loadProprietaires() {
 }
 
 async function addProprietaire(btn) {
-  const nom = document.getElementById('pnom').value.trim(), pwd = document.getElementById('ppwd').value.trim();
+  const nom = document.getElementById('pnom').value.trim();
+  const pwd = document.getElementById('ppwd').value.trim();
   if (!nom || !pwd) { toast('Nom et mot de passe obligatoires', 'err'); return; }
+
+  // Véhicules sélectionnés (gestionnaire peut choisir)
+  var vehicules_ids = [];
+  if (ROLE === 'gestionnaire') {
+    var checked = document.querySelectorAll('#prop-veh-checkboxes input:checked');
+    if (checked.length) {
+      vehicules_ids = Array.from(checked).map(function(cb){ return cb.value; });
+    } else {
+      // Tous ses véhicules par défaut
+      var myVehs = await api('GET', '/vehicules');
+      vehicules_ids = Array.isArray(myVehs) ? myVehs.map(function(v){ return v.id; }) : [];
+    }
+  }
+
   setBtnLoad(btn, true);
-  const r = await api('POST', '/proprietaires', { nom: nom, email: document.getElementById('pemail').value, telephone: document.getElementById('ptel').value, password: pwd });
+  const r = await api('POST', '/proprietaires', {
+    nom: nom,
+    email: (document.getElementById('pemail') || {}).value || '',
+    telephone: (document.getElementById('ptel') || {}).value || '',
+    password: pwd,
+    vehicules_ids: vehicules_ids
+  });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
-  toast('Accès créé — mot de passe : ' + pwd);
-  ['pnom', 'pemail', 'ptel', 'ppwd'].forEach(function(id) { document.getElementById(id).value = ''; });
-  loadProprietaires(); refreshPropSelect('vprop'); refreshPropSelect('gprop');
+
+  var msg = '✅ Accès créé pour ' + nom + ' — Mot de passe : ' + r.password;
+  toast(msg);
+  try { navigator.clipboard.writeText(r.password); toast('📋 Mot de passe copié dans le presse-papier', 'info'); } catch(e) {}
+  ['pnom','ptel','pemail','ppwd'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  loadProprietaires();
 }
 
 async function delProp(id, nom) { if (!confirm('Supprimer accès de ' + nom + ' ?')) return; await api('DELETE', '/proprietaires/' + id); toast('Supprimé', 'info'); loadProprietaires(); }
@@ -4829,6 +4888,77 @@ async function initGtagsCheckboxes() {
       '</label>';
   }).join('');
 }
+
+// ─── GESTIONNAIRE : initialiser les checkboxes véhicules pour un proprio ───
+async function initPropVehCheckboxes() {
+  var el = document.getElementById('prop-veh-checkboxes');
+  if (!el) return;
+  var vehs = await api('GET', '/vehicules');
+  if (!Array.isArray(vehs) || !vehs.length) {
+    el.innerHTML = '<div style="font-size:12px;color:#aaa">Aucun véhicule dans votre parc</div>';
+    return;
+  }
+  el.innerHTML = vehs.map(function(v) {
+    return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#fff;border:1px solid #e0dfd8;border-radius:99px;cursor:pointer;font-size:12px">' +
+      '<input type="checkbox" value="' + v.id + '" checked style="width:13px;height:13px">' +
+      '<span><strong>' + v.immatriculation + '</strong> ' + (v.tag ? pill(v.tag,'purple') : '') + '</span>' +
+      '</label>';
+  }).join('');
+}
+
+// ─── GESTIONNAIRE : afficher proprement ses propriétaires ─────────────────
+// Surcharger le rendu de la liste propriétaires pour les gestionnaires
+const _origLoadProprietaires = loadProprietaires;
+loadProprietaires = async function() {
+  if (ROLE === 'proprietaire') return;
+  let list = await api('GET', '/proprietaires');
+  if (!Array.isArray(list)) list = [];
+  let vehs = await api('GET', '/vehicules');
+  if (!Array.isArray(vehs)) vehs = [];
+  const el = document.getElementById('t-prop');
+  if (!el) return;
+
+  // Pour gestionnaire : filtrer seulement les propriétaires de ses véhicules
+  if (ROLE === 'gestionnaire') {
+    var myVehIds = vehs.map(function(v){ return v.id; });
+    list = list.filter(function(p){
+      return (p.vehicules_ids||[]).some(function(vid){ return myVehIds.includes(vid); }) ||
+             p.cree_par === GEST_INFO.gest_id;
+    });
+  }
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">' + (ROLE === 'gestionnaire' ? 'Aucun propriétaire pour vos véhicules. Créez-en un ci-dessus.' : 'Aucun propriétaire') + '</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(p) {
+    var pVehs = vehs.filter(function(v){ return (p.vehicules_ids||[]).includes(v.id); });
+    var canEdit = ROLE === 'manager' || p.cree_par === GEST_INFO.gest_id;
+    return '<div style="border:1px solid #e0dfd8;border-left:3px solid #0C447C;border-radius:10px;padding:14px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+        '<div style="flex:1">' +
+          '<div style="font-weight:700;font-size:14px">' + p.nom + ' ' + pill('Propriétaire','blue') + '</div>' +
+          (p.telephone ? '<div style="font-size:12px;color:#6b6b67;margin-top:3px">' + p.telephone + '</div>' : '') +
+          '<div style="margin-top:8px"><div style="font-size:10px;font-weight:600;color:#6b6b67;margin-bottom:4px">VÉHICULES ASSIGNÉS (' + pVehs.length + ')</div>' +
+            (pVehs.length ?
+              '<div style="display:flex;flex-wrap:wrap;gap:3px">' + pVehs.map(function(v){ return '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:#E6F1FB;color:#0C447C">' + v.immatriculation + '</span>'; }).join('') + '</div>'
+              : '<span style="font-size:12px;color:#aaa">Aucun</span>') +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+          '<div style="font-size:10px;color:#6b6b67">Mot de passe</div>' +
+          '<div onclick="try{navigator.clipboard.writeText(\'' + (p.password||'') + '\').then(function(){toast(\'📋 Copié !\');})}catch(e){}" style="font-family:monospace;font-size:13px;background:#f5f4f0;padding:5px 12px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer" title="Cliquer pour copier">' + (p.password||'—') + ' 📋</div>' +
+          (canEdit ?
+            '<div style="display:flex;gap:5px;margin-top:4px">' +
+              '<button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="assignerVehProp(\'' + p.id + '\',\'' + p.nom + '\')">Véhicules</button>' +
+              '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delProp(\'' + p.id + '\',\'' + p.nom + '\')">Suppr.</button>' +
+            '</div>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+};
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
