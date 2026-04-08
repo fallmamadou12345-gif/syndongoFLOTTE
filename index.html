@@ -245,7 +245,7 @@ tr:hover td{background:#fafaf8}
           </select>
         </div>
       </div>
-      <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi-row" style="grid-template-columns:repeat(6,1fr)">
         <div class="kpi kpi-link" style="border-left:3px solid #185FA5" onclick="goPage('caisse',navEl('caisse'))" title="Voir les facturations">
           <div class="kpi-label">Total Facturé</div><div class="kpi-val" id="k-facture" style="color:#185FA5">—</div>
           <div style="font-size:10px;color:#6b6b67">Montant dû · cliquer pour voir →</div>
@@ -261,6 +261,11 @@ tr:hover td{background:#fafaf8}
         <div class="kpi" style="border-left:3px solid #8B5CF6">
           <div class="kpi-label">Marge nette</div><div class="kpi-val" id="k-marge">—</div>
           <div style="font-size:10px;color:#6b6b67">Facturé − Dépenses</div>
+        </div>
+        <div class="kpi kpi-link" style="border-left:3px solid #059669" onclick="goPage('rapports',navEl('rapports'))" title="Voir le rapport détaillé">
+          <div class="kpi-label">Taux recouvrement</div>
+          <div class="kpi-val" id="k-taux" style="color:#059669">—</div>
+          <div style="font-size:10px;color:#6b6b67">Encaissé / Facturé →</div>
         </div>
         <div class="kpi kpi-link" style="border-left:3px solid #DC2626" onclick="goPage('retards',navEl('retards'))" title="Voir les retards">
           <div class="kpi-label">Total Retards</div><div class="kpi-val" id="k-retard" style="color:#A32D2D">—</div>
@@ -428,6 +433,29 @@ tr:hover td{background:#fafaf8}
 
     <!-- CAISSE & FACTURATION -->
     <div class="page" id="page-caisse">
+      <!-- Saisie multiple rapide -->
+      <div class="card" style="border-top:3px solid #8B5CF6;margin-bottom:12px">
+        <div class="card-title">
+          ⚡ Saisie rapide multiple
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="sm-type" style="font-size:12px;width:160px" onchange="calcSaisieMultiple()">
+              <option value="complet">Journée complète</option>
+              <option value="demi_panne">Demi-journée (panne)</option>
+              <option value="repos">Repos (0 F)</option>
+            </select>
+            <input type="date" id="sm-date" style="font-size:12px;width:130px">
+            <button class="btn-sm" style="background:#E6F1FB;color:#0C447C;padding:5px 10px" onclick="selectionnerTousVehs()">Tout sélectionner</button>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444;padding:5px 10px" onclick="deselectionnerTousVehs()">Désélectionner</button>
+          </div>
+        </div>
+        <div id="sm-total" style="font-size:13px;color:#6b6b67;margin-bottom:8px">Sélectionnez des véhicules pour voir le total</div>
+        <div id="sm-liste" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;max-height:220px;overflow-y:auto;margin-bottom:10px">
+          <div class="empty">Chargement…</div>
+        </div>
+        <button class="btn btn-blue" style="min-width:180px" id="btn-sm-valider" onclick="validerSaisieMultiple(this)" disabled>
+          Valider la saisie multiple
+        </button>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card" style="border-top:3px solid #185FA5">
           <div class="card-title">Facturation J-1</div>
@@ -1109,11 +1137,25 @@ async function loadDashboard() {
   if (_dashParams.length) _dashUrl += '?' + _dashParams.join('&');
   const d = await api('GET', _dashUrl);
   if (!d || !d.kpis) return;
+  // Facturé
+  const kf = document.getElementById('k-facture');
+  if (kf) kf.textContent = fmt(d.kpis.facture_total || d.kpis.recettes);
+  // Encaissé
   document.getElementById('k-rec').textContent = fmt(d.kpis.recettes);
+  // Dépenses
   document.getElementById('k-dep').textContent = fmt(d.kpis.depenses);
-  const mg = d.kpis.marge;
+  // Marge nette = Facturé - Dépenses
+  const totFacD = d.kpis.facture_total || d.kpis.recettes;
+  const margeNette = totFacD - d.kpis.depenses;
   const me = document.getElementById('k-marge');
-  me.textContent = fmt(mg); me.style.color = mg >= 0 ? '#3B6D11' : '#A32D2D';
+  me.textContent = fmt(margeNette); me.style.color = margeNette >= 0 ? '#3B6D11' : '#A32D2D';
+  // Taux de recouvrement
+  const taux = totFacD > 0 ? Math.round(d.kpis.recettes / totFacD * 100) : 0;
+  const kt = document.getElementById('k-taux');
+  if (kt) {
+    kt.textContent = taux + '%';
+    kt.style.color = taux >= 90 ? '#059669' : taux >= 70 ? '#BA7517' : '#A32D2D';
+  }
   document.getElementById('k-total').textContent = d.kpis.vehicules_total;
   if (d.stats_jour) {
     document.getElementById('k-actif').textContent = d.stats_jour.actif || 0;
@@ -1151,6 +1193,8 @@ async function loadDashboard() {
       '<td>' + pill(pct + '%', pct >= 70 ? 'ok' : pct >= 40 ? 'warn' : 'err') + '</td></tr>';
   }).join('');
   document.getElementById('d-rent').innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  // Charger le graphique
+  renderGraph();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4370,6 +4414,255 @@ renderRapportChauf = function(data) {
       }
     });
   }
+};
+
+// ═══════════════════════════════════════════════════════
+// GRAPHIQUE ÉVOLUTION MENSUELLE (SVG natif)
+// ═══════════════════════════════════════════════════════
+
+async function renderGraph() {
+  var el = document.getElementById('d-graph');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">Chargement…</div>';
+
+  var type  = (document.getElementById('graph-type')  || {}).value || 'recettes';
+  var nbMois = parseInt((document.getElementById('graph-mois') || {}).value || '6');
+
+  // Générer les étiquettes de mois
+  var moisLabels = [];
+  var today = new Date();
+  for (var i = nbMois - 1; i >= 0; i--) {
+    var d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    moisLabels.push({
+      label: d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
+      debut: d.toISOString().slice(0,7) + '-01',
+      fin: new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10)
+    });
+  }
+
+  // Charger les données
+  var [vers, deps, facs] = await Promise.all([
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/facturations')
+  ]);
+  if (!Array.isArray(vers)) vers = [];
+  if (!Array.isArray(deps)) deps = [];
+  if (!Array.isArray(facs)) facs = [];
+
+  // Calculer les valeurs par mois
+  var values = moisLabels.map(function(m) {
+    if (type === 'recettes') {
+      return vers.filter(function(v){ return v.date_versement >= m.debut && v.date_versement <= m.fin; }).reduce(function(s,v){ return s+v.montant; }, 0);
+    } else if (type === 'facture') {
+      return facs.filter(function(f){ return f.date >= m.debut && f.date <= m.fin; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    } else if (type === 'depenses') {
+      return deps.filter(function(d){ return d.date_depense >= m.debut && d.date_depense <= m.fin; }).reduce(function(s,d){ return s+d.montant; }, 0);
+    } else { // retards
+      // Retards = facturé - encaissé pour le mois
+      var facM = facs.filter(function(f){ return f.date >= m.debut && f.date <= m.fin; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+      var encM = vers.filter(function(v){ return v.date_versement >= m.debut && v.date_versement <= m.fin; }).reduce(function(s,v){ return s+v.montant; }, 0);
+      return Math.max(0, facM - encM);
+    }
+  });
+
+  var maxVal = Math.max.apply(null, values.concat([1]));
+  var typeColors = { recettes:'#3B6D11', facture:'#185FA5', depenses:'#A32D2D', retards:'#DC2626' };
+  var color = typeColors[type] || '#185FA5';
+
+  // SVG simple sans librairie
+  var W = el.offsetWidth || 600;
+  var H = 160;
+  var padL = 60, padR = 20, padT = 20, padB = 40;
+  var chartW = W - padL - padR;
+  var chartH = H - padT - padB;
+  var barW = Math.max(8, Math.floor(chartW / values.length) - 4);
+
+  var svg = '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">';
+
+  // Lignes de grille
+  for (var gi = 0; gi <= 4; gi++) {
+    var gy = padT + chartH * (1 - gi/4);
+    var gv = Math.round(maxVal * gi/4);
+    svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W-padR) + '" y2="' + gy + '" stroke="#f0efeb" stroke-width="1"/>';
+    svg += '<text x="' + (padL-6) + '" y="' + (gy+4) + '" text-anchor="end" font-size="9" fill="#aaa">' + (gv >= 1000000 ? Math.round(gv/1000000)+'M' : gv >= 1000 ? Math.round(gv/1000)+'k' : gv) + '</text>';
+  }
+
+  // Barres et étiquettes
+  values.forEach(function(val, i) {
+    var bh = chartH * (val / maxVal);
+    var bx = padL + (i / values.length) * chartW + (chartW/values.length - barW) / 2;
+    var by = padT + chartH - bh;
+    var cx = bx + barW/2;
+
+    // Barre
+    svg += '<rect x="' + bx + '" y="' + by + '" width="' + barW + '" height="' + bh + '" fill="' + color + '" rx="3" opacity="0.85">' +
+      '<title>' + moisLabels[i].label + ' : ' + val.toLocaleString('fr-FR') + ' F</title></rect>';
+
+    // Valeur au-dessus si assez grande
+    if (bh > 20 && val > 0) {
+      var vLabel = val >= 1000000 ? Math.round(val/1000000*10)/10 + 'M' : val >= 1000 ? Math.round(val/1000) + 'k' : val;
+      svg += '<text x="' + cx + '" y="' + (by-4) + '" text-anchor="middle" font-size="9" fill="' + color + '" font-weight="600">' + vLabel + '</text>';
+    }
+
+    // Label mois
+    var lbl = moisLabels[i].label;
+    svg += '<text x="' + cx + '" y="' + (padT+chartH+14) + '" text-anchor="middle" font-size="9" fill="#6b6b67">' + lbl + '</text>';
+    svg += '<text x="' + cx + '" y="' + (padT+chartH+24) + '" text-anchor="middle" font-size="8" fill="#aaa">' + '' + '</text>';
+  });
+
+  // Total dans le coin
+  var totalVal = values.reduce(function(s,v){ return s+v; }, 0);
+  var typeLabels2 = { recettes:'Encaissé', facture:'Facturé', depenses:'Dépenses', retards:'Retards' };
+  svg += '<text x="' + (W-padR) + '" y="' + (padT-6) + '" text-anchor="end" font-size="10" fill="' + color + '" font-weight="600">Total : ' + totalVal.toLocaleString('fr-FR') + ' F</text>';
+
+  svg += '</svg>';
+  el.innerHTML = svg;
+}
+
+// ═══════════════════════════════════════════════════════
+// SAISIE MULTIPLE RAPIDE
+// ═══════════════════════════════════════════════════════
+
+var _smVehsSelected = new Set();
+var _smAffs = [];
+
+async function initSaisieMultiple() {
+  var hier = new Date(); hier.setDate(hier.getDate()-1);
+  var smDate = document.getElementById('sm-date');
+  if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
+
+  var [vehs, affs] = await Promise.all([api('GET', '/vehicules'), api('GET', '/affectations')]);
+  _smAffs = Array.isArray(affs) ? affs : [];
+
+  // Seulement les véhicules avec affectation active
+  var vehsActifs = Array.isArray(vehs) ? vehs.filter(function(v){
+    return _smAffs.some(function(a){ return a.vehicule_id===v.id && !a.date_fin; });
+  }) : [];
+
+  var el = document.getElementById('sm-liste');
+  if (!el) return;
+  if (!vehsActifs.length) { el.innerHTML = '<div class="empty">Aucun véhicule avec affectation active</div>'; return; }
+
+  el.innerHTML = vehsActifs.map(function(v) {
+    var aff = _smAffs.find(function(a){ return a.vehicule_id===v.id && !a.date_fin; });
+    var montant = aff ? aff.montant_journalier : 0;
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f9f9f9;border:1px solid #e0dfd8;border-radius:8px;cursor:pointer;user-select:none" id="sm-card-' + v.id + '">' +
+      '<input type="checkbox" class="sm-cb" data-id="' + v.id + '" data-montant="' + montant + '" onchange="onSmCheck(this)" style="width:15px;height:15px;cursor:pointer">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + v.immatriculation + '</div>' +
+        '<div style="font-size:10px;color:#6b6b67">' + (aff?aff.chauffeur:'?') + ' · ' + montant.toLocaleString('fr-FR') + ' F/j</div>' +
+      '</div>' +
+      '</label>';
+  }).join('');
+}
+
+function onSmCheck(cb) {
+  var id = cb.dataset.id;
+  var card = document.getElementById('sm-card-' + id);
+  if (cb.checked) {
+    _smVehsSelected.add(id);
+    if (card) card.style.background = '#EAF3DE';
+    if (card) card.style.borderColor = '#3B6D11';
+  } else {
+    _smVehsSelected.delete(id);
+    if (card) card.style.background = '#f9f9f9';
+    if (card) card.style.borderColor = '#e0dfd8';
+  }
+  calcSaisieMultiple();
+}
+
+function selectionnerTousVehs() {
+  document.querySelectorAll('.sm-cb').forEach(function(cb){
+    cb.checked = true; onSmCheck(cb);
+  });
+}
+
+function deselectionnerTousVehs() {
+  _smVehsSelected.clear();
+  document.querySelectorAll('.sm-cb').forEach(function(cb){
+    cb.checked = false;
+    var card = document.getElementById('sm-card-' + cb.dataset.id);
+    if (card) { card.style.background = '#f9f9f9'; card.style.borderColor = '#e0dfd8'; }
+  });
+  calcSaisieMultiple();
+}
+
+function calcSaisieMultiple() {
+  var type = (document.getElementById('sm-type')||{}).value || 'complet';
+  var total = 0;
+  var nb = 0;
+  document.querySelectorAll('.sm-cb:checked').forEach(function(cb) {
+    var m = parseInt(cb.dataset.montant) || 0;
+    var montant = type==='complet' ? m : type==='demi_panne' ? Math.round(m/2) : 0;
+    total += montant;
+    nb++;
+  });
+  var totalEl = document.getElementById('sm-total');
+  var btnSm = document.getElementById('btn-sm-valider');
+  if (totalEl) {
+    totalEl.innerHTML = nb > 0
+      ? '<span style="font-weight:600;color:#1a1a18">' + nb + ' véhicule(s) sélectionné(s)</span> · Total à facturer : <span style="font-weight:700;color:#185FA5">' + total.toLocaleString('fr-FR') + ' F</span>'
+      : 'Sélectionnez des véhicules pour voir le total';
+  }
+  if (btnSm) btnSm.disabled = nb === 0;
+}
+
+async function validerSaisieMultiple(btn) {
+  var type = (document.getElementById('sm-type')||{}).value || 'complet';
+  var date = (document.getElementById('sm-date')||{}).value || new Date().toISOString().split('T')[0];
+  var selected = Array.from(_smVehsSelected);
+
+  if (!selected.length) { toast('Sélectionnez au moins un véhicule', 'err'); return; }
+
+  setBtnLoad(btn, true);
+
+  var results = await Promise.all(selected.map(async function(vid) {
+    var aff = _smAffs.find(function(a){ return a.vehicule_id===vid && !a.date_fin; });
+    if (!aff) return null;
+    var base = aff.montant_journalier;
+    var montant = type==='complet' ? base : type==='demi_panne' ? Math.round(base/2) : 0;
+    // Facturation
+    await api('POST', '/facturations', {
+      vehicule_id: vid,
+      chauffeur_id: aff.chauffeur_id,
+      date: date,
+      type_journee: type,
+      montant_facture: montant,
+      montant_base: base
+    });
+    // Statut journalier
+    var sjMap = { complet:'actif', demi_panne:'panne', repos:'repos' };
+    await api('POST', '/activites', { vehicule_id: vid, statut_jour: sjMap[type]||'repos' });
+    return { vid, montant };
+  }));
+
+  setBtnLoad(btn, false);
+
+  var nbOk = results.filter(Boolean).length;
+  var totalFac = results.filter(Boolean).reduce(function(s,r){ return s + r.montant; }, 0);
+
+  toast('✅ ' + nbOk + ' véhicule(s) facturé(s) — Total : ' + totalFac.toLocaleString('fr-FR') + ' F');
+
+  // Réinitialiser la sélection
+  deselectionnerTousVehs();
+  loadFac();
+  loadDashboard();
+}
+
+// Initialiser la saisie multiple à l'ouverture de la page caisse
+var _origLoadPage2 = loadPage;
+loadPage = function(id) {
+  if (id === 'caisse') {
+    var hier = new Date(); hier.setDate(hier.getDate()-1);
+    var fd = document.getElementById('fd'); if (fd && !fd.value) fd.value = hier.toISOString().split('T')[0];
+    var smDate = document.getElementById('sm-date'); if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
+    refreshSelects();
+    loadFac();
+    initSaisieMultiple();
+    return;
+  }
+  _origLoadPage2(id);
 };
 </script>
 
