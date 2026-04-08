@@ -1005,7 +1005,7 @@ tr:hover td{background:#fafaf8}
 </div>
 
 <!-- MODALES -->
-<div class="modal-bg" id="m-fiche-veh">
+<div class="modal-bg" id="m-fiche-veh" style="display:none">
   <div class="modal" style="max-width:700px">
     <div class="modal-head" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1027,7 +1027,7 @@ tr:hover td{background:#fafaf8}
   </div>
 </div>
 
-<div class="modal-bg" id="m-fiche-chauf">
+<div class="modal-bg" id="m-fiche-chauf" style="display:none">
   <div class="modal" style="max-width:700px">
     <div class="modal-head" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1195,8 +1195,8 @@ function setBtnLoad(btn, loading) {
 }
 
 // Modales
-function ouvrir(id) { document.getElementById(id).classList.add('open'); }
-function fermer(id) { document.getElementById(id).classList.remove('open'); }
+function ouvrir(id) { var el=document.getElementById(id); if(el){ el.style.display='flex'; el.classList.add('open'); } }
+function fermer(id) { var el=document.getElementById(id); if(el){ el.classList.remove('open'); el.style.display='none'; } }
 document.addEventListener('click', function(e) {
   if (e.target.classList.contains('modal-bg')) e.target.classList.remove('open');
 });
@@ -6532,48 +6532,7 @@ function exportAnomaliesCSV() {
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
-<div class="modal-overlay" id="m-rp-veh" style="z-index:1100">
-  <div class="modal-box" style="max-width:720px">
-    <div class="modal-title">
-      <div style="display:flex;align-items:center;gap:12px;flex:1">
-        <div>
-          <div id="mrv-titre" style="font-size:17px;font-weight:700"></div>
-          <div id="mrv-sous-titre" style="font-size:12px;color:#6b6b67;font-weight:400;margin-top:2px"></div>
-        </div>
-        <div style="margin-left:auto;display:flex;gap:6px">
-          <button class="periode-btn active" id="mrv-btn-semaine" onclick="setFicheVehPeriode('semaine')">Cette semaine</button>
-          <button class="periode-btn" id="mrv-btn-semaine_prev" onclick="setFicheVehPeriode('semaine_prev')">Sem. passée</button>
-          <button class="periode-btn" id="mrv-btn-mois" onclick="setFicheVehPeriode('mois')">Ce mois</button>
-          <button class="periode-btn" id="mrv-btn-mois_prev" onclick="setFicheVehPeriode('mois_prev')">Mois passé</button>
-        </div>
-      </div>
-      <button class="modal-close" onclick="fermerModal('m-rp-veh')">×</button>
-    </div>
-    <div id="mrv-body"><div class="empty">Chargement…</div></div>
-  </div>
-</div>
 
-<!-- MODALE FICHE CHAUFFEUR RAPPORT -->
-<div class="modal-overlay" id="m-rp-chauf" style="z-index:1100">
-  <div class="modal-box" style="max-width:720px">
-    <div class="modal-title">
-      <div style="display:flex;align-items:center;gap:12px;flex:1">
-        <div>
-          <div id="mrc-titre" style="font-size:17px;font-weight:700"></div>
-          <div id="mrc-sous-titre" style="font-size:12px;color:#6b6b67;font-weight:400;margin-top:2px"></div>
-        </div>
-        <div style="margin-left:auto;display:flex;gap:6px">
-          <button class="periode-btn active" id="mrc-btn-semaine" onclick="setFicheChaufPeriode('semaine')">Cette semaine</button>
-          <button class="periode-btn" id="mrc-btn-semaine_prev" onclick="setFicheChaufPeriode('semaine_prev')">Sem. passée</button>
-          <button class="periode-btn" id="mrc-btn-mois" onclick="setFicheChaufPeriode('mois')">Ce mois</button>
-          <button class="periode-btn" id="mrc-btn-mois_prev" onclick="setFicheChaufPeriode('mois_prev')">Mois passé</button>
-        </div>
-      </div>
-      <button class="modal-close" onclick="fermerModal('m-rp-chauf')">×</button>
-    </div>
-    <div id="mrc-body"><div class="empty">Chargement…</div></div>
-  </div>
-</div>
 
 </body>
 </html>
