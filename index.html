@@ -805,22 +805,46 @@ tr:hover td{background:#fafaf8}
 
 <!-- MODALES -->
 <div class="modal-bg" id="m-fiche-veh">
-  <div class="modal">
-    <div class="modal-head">
-      <select id="fv-nav" class="modal-title" style="border:none;background:transparent;cursor:pointer;font-size:16px;font-weight:700;max-width:280px" onchange="ouvrirFicheVeh(this.value)"></select>
-      <button class="modal-close" onclick="fermer('m-fiche-veh')">×</button>
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <select id="fv-nav" style="border:none;background:transparent;cursor:pointer;font-size:16px;font-weight:700;flex:1;max-width:320px" onchange="ouvrirFicheVeh(this.value)"></select>
+        <button class="modal-close" onclick="fermer('m-fiche-veh')">×</button>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="periode-btn" id="fvbtn-semaine" onclick="setFicheVehPer('semaine')">Cette semaine</button>
+        <button class="periode-btn" id="fvbtn-semaine_prev" onclick="setFicheVehPer('semaine_prev')">Sem. passée</button>
+        <button class="periode-btn active" id="fvbtn-mois" onclick="setFicheVehPer('mois')">Ce mois</button>
+        <button class="periode-btn" id="fvbtn-mois_prev" onclick="setFicheVehPer('mois_prev')">Mois passé</button>
+        <button class="periode-btn" id="fvbtn-3m" onclick="setFicheVehPer('3m')">3 mois</button>
+        <button class="periode-btn" id="fvbtn-annee" onclick="setFicheVehPer('annee')">Année</button>
+        <button class="periode-btn" id="fvbtn-tout" onclick="setFicheVehPer('tout')">Tout</button>
+        <span id="fv-per-label" style="font-size:10px;color:#6b6b67;align-self:center;margin-left:4px"></span>
+      </div>
     </div>
-    <div id="fv-body"></div>
+    <div id="fv-body" style="overflow-y:auto;max-height:70vh"></div>
   </div>
 </div>
 
 <div class="modal-bg" id="m-fiche-chauf">
-  <div class="modal">
-    <div class="modal-head">
-      <div class="modal-title">Fiche chauffeur</div>
-      <button class="modal-close" onclick="fermer('m-fiche-chauf')">×</button>
+  <div class="modal" style="max-width:700px">
+    <div class="modal-head" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div id="fc-titre" class="modal-title">Fiche chauffeur</div>
+        <button class="modal-close" onclick="fermer('m-fiche-chauf')">×</button>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="periode-btn" id="fcbtn-semaine" onclick="setFicheChaufPer('semaine')">Cette semaine</button>
+        <button class="periode-btn" id="fcbtn-semaine_prev" onclick="setFicheChaufPer('semaine_prev')">Sem. passée</button>
+        <button class="periode-btn active" id="fcbtn-mois" onclick="setFicheChaufPer('mois')">Ce mois</button>
+        <button class="periode-btn" id="fcbtn-mois_prev" onclick="setFicheChaufPer('mois_prev')">Mois passé</button>
+        <button class="periode-btn" id="fcbtn-3m" onclick="setFicheChaufPer('3m')">3 mois</button>
+        <button class="periode-btn" id="fcbtn-annee" onclick="setFicheChaufPer('annee')">Année</button>
+        <button class="periode-btn" id="fcbtn-tout" onclick="setFicheChaufPer('tout')">Tout</button>
+        <span id="fc-per-label" style="font-size:10px;color:#6b6b67;align-self:center;margin-left:4px"></span>
+      </div>
     </div>
-    <div id="fc-body"></div>
+    <div id="fc-body" style="overflow-y:auto;max-height:70vh"></div>
   </div>
 </div>
 
@@ -1550,43 +1574,179 @@ async function saveVeh(btn) {
   toast('Mis à jour'); fermer('m-edit-veh'); loadVehicules();
 }
 
+// ─── FICHE VÉHICULE AVEC PÉRIODE ────────────────────────────────────────
+var _ficheVehIdCur = null;
+var _ficheVehPerCur = 'mois';
+
 async function ouvrirFicheVeh(id) {
-  const f = await api('GET', '/vehicules/' + id + '/fiche');
-  if (!f || !f.vehicule) { toast('Impossible de charger la fiche', 'err'); return; }
-  const v = f.vehicule;
+  _ficheVehIdCur = id;
+  // Sync bouton période
+  document.querySelectorAll('[id^="fvbtn-"]').forEach(function(b){ b.classList.remove('active'); });
+  var btn = document.getElementById('fvbtn-' + _ficheVehPerCur);
+  if (btn) btn.classList.add('active');
+  // Charger le nav des véhicules
   const vehs = await api('GET', '/vehicules');
   const nav = document.getElementById('fv-nav');
-  if (Array.isArray(vehs)) {
-    nav.innerHTML = vehs.map(function(vv) { return '<option value="' + vv.id + '"' + (vv.id === id ? ' selected' : '') + '>' + vv.immatriculation + ' · ' + vv.marque + '</option>'; }).join('');
+  if (Array.isArray(vehs) && nav) {
+    nav.innerHTML = vehs.map(function(vv) {
+      return '<option value="' + vv.id + '"' + (vv.id === id ? ' selected' : '') + '>' + vv.immatriculation + ' · ' + vv.marque + '</option>';
+    }).join('');
   }
-  const histo7 = (f.historique || []).slice(0, 7).reverse();
-  const histoHtml = '<div class="histo">' + histo7.map(function(h) {
-    return '<div class="histo-day ' + (h.statut || 'non_saisi') + '" title="' + h.date + '">' + h.date.slice(5) + '</div>';
-  }).join('') + '</div>' +
-    '<div style="display:flex;gap:10px;font-size:10px;margin-top:4px">' +
-    '<span style="color:#27500A">■ Actif</span><span style="color:#791F1F">■ Panne</span><span style="color:#633806">■ Repos</span><span style="color:#555">■ Inactif</span><span style="color:#bbb">■ Non saisi</span></div>';
-  const fin = '<div class="stat-grid">' +
-    '<div class="stat-box"><div class="stat-val" style="color:#185FA5">' + fmt(f.total_facture) + '</div><div class="stat-label">Facturé</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#3B6D11">' + fmt(f.total_verse) + '</div><div class="stat-label">Encaissé</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:' + (f.manquant > 0 ? '#A32D2D' : '#3B6D11') + '">' + fmt(f.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#A32D2D">' + fmt(f.total_depenses) + '</div><div class="stat-label">Dépenses</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:' + (f.recette_nette >= 0 ? '#3B6D11' : '#A32D2D') + '">' + fmt(f.recette_nette) + '</div><div class="stat-label">Recette nette</div></div>' +
-    '<div class="stat-box"><div class="stat-val">' + ((v.km_actuel || 0)).toLocaleString() + '</div><div class="stat-label">Km actuel</div></div>' +
-    '</div>';
-  const versHtml = Array.isArray(f.versements) && f.versements.length ?
-    '<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">Derniers versements</div><table><thead><tr><th>Date</th><th>Montant</th><th>Statut</th></tr></thead><tbody>' +
-    f.versements.slice(0, 10).map(function(vs) { return '<tr><td>' + vs.date_versement + '</td><td style="color:#3B6D11;font-weight:600">' + fmt(vs.montant) + '</td><td>' + pill(vs.statut, vs.statut === 'recu' ? 'ok' : vs.statut === 'partiel' ? 'warn' : 'err') + '</td></tr>'; }).join('') +
-    '</tbody></table></div>' : '';
-  document.getElementById('fv-body').innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-    '<div style="font-size:13px;color:#6b6b67">' + v.marque + ' ' + (v.modele || '') + ' ' + (v.annee || '') + (v.tag ? ' · ' + v.tag : '') + '</div>' +
-    pill(v.statut, v.statut === 'actif' ? 'ok' : 'err') + '</div>' +
-    '<div style="font-size:12px;font-weight:600;color:#6b6b67;margin-bottom:4px">7 derniers jours</div>' +
-    histoHtml +
-    '<div style="font-size:12px;font-weight:600;color:#6b6b67;margin:12px 0 4px">État financier</div>' + fin +
-    '<div style="font-size:12px;margin-top:8px"><strong>Chauffeur : </strong>' + (f.chauffeur ? f.chauffeur.prenom + ' ' + f.chauffeur.nom : 'Non affecté') + '</div>' +
-    versHtml;
+  await renderFicheVeh();
   ouvrir('m-fiche-veh');
+}
+
+function setFicheVehPer(mode) {
+  _ficheVehPerCur = mode;
+  document.querySelectorAll('[id^="fvbtn-"]').forEach(function(b){ b.classList.remove('active'); });
+  var btn = document.getElementById('fvbtn-' + mode);
+  if (btn) btn.classList.add('active');
+  renderFicheVeh();
+}
+
+async function renderFicheVeh() {
+  const body = document.getElementById('fv-body');
+  if (!body || !_ficheVehIdCur) return;
+  body.innerHTML = '<div class="empty">Chargement…</div>';
+
+  // Calculer la période
+  var per = _ficheVehPerCur === 'tout' ? null : calcPeriode(_ficheVehPerCur);
+  var perLabel = document.getElementById('fv-per-label');
+  if (perLabel) perLabel.textContent = per ? per.debut + ' → ' + per.fin : 'Toute la période';
+
+  // Charger toutes les données
+  const [f, affs, vers, deps, facs] = await Promise.all([
+    api('GET', '/vehicules/' + _ficheVehIdCur + '/fiche'),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur)
+  ]);
+
+  if (!f || !f.vehicule) { body.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }
+  const v = f.vehicule;
+
+  // Filtrer par période
+  const affVeh = Array.isArray(affs) ? affs.filter(function(a){ return a.vehicule_id === _ficheVehIdCur; }) : [];
+  const affIds = affVeh.map(function(a){ return a.id; });
+
+  const versFilt = per
+    ? (Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id) && vs.date_versement >= per.debut && vs.date_versement <= per.fin; }) : [])
+    : (Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id); }) : []);
+
+  const depsFilt = per
+    ? (Array.isArray(deps) ? deps.filter(function(d){ return d.vehicule_id === _ficheVehIdCur && d.date_depense >= per.debut && d.date_depense <= per.fin; }) : [])
+    : (Array.isArray(deps) ? deps.filter(function(d){ return d.vehicule_id === _ficheVehIdCur; }) : []);
+
+  const facsFilt = per
+    ? (Array.isArray(facs) ? facs.filter(function(fc){ return fc.date >= per.debut && fc.date <= per.fin; }) : [])
+    : (Array.isArray(facs) ? facs : []);
+
+  // Calculs CORRECTS
+  const totFac = facsFilt.reduce(function(s,fc){ return s + (fc.montant_facture||0); }, 0);
+  const totEnc = versFilt.reduce(function(s,vs){ return s + vs.montant; }, 0);
+  const totDep = depsFilt.reduce(function(s,d){ return s + d.montant; }, 0);
+  const retard = Math.max(0, totFac - totEnc);          // Manquant = Facturé - Encaissé
+  const marge  = totEnc - totDep;                        // Marge = Encaissé - Dépenses
+  const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
+
+  // KPIs
+  const kpiHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">' +
+    '<div class="stat-box"><div class="stat-val" style="color:#185FA5">' + fmt(totFac) + '</div><div class="stat-label">Facturé</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#3B6D11">' + fmt(totEnc) + '</div><div class="stat-label">Encaissé</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (retard>0?'#A32D2D':'#3B6D11') + '">' + (retard>0?fmt(retard):'✓ À jour') + '</div><div class="stat-label">Retard</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#A32D2D">' + fmt(totDep) + '</div><div class="stat-label">Dépenses</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (marge>=0?'#3B6D11':'#A32D2D') + '">' + fmt(marge) + '</div><div class="stat-label">Marge nette</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (taux>=90?'#3B6D11':taux>=70?'#BA7517':'#A32D2D') + '">' + taux + '%</div><div class="stat-label">Taux</div></div>' +
+    '</div>';
+
+  // Heatmap calendrier
+  var calHTML = '';
+  if (per) {
+    var calColors = { actif:'#3B6D11', panne:'#A32D2D', repos:'#BA7517', inactif:'#555', non_saisi:'#e0dfd8' };
+    var nbA=0,nbP=0,nbR=0,nbI=0,nbN=0;
+    var days = [];
+    for (var d=new Date(per.debut); d<=new Date(per.fin); d.setDate(d.getDate()+1)) {
+      var ds = d.toISOString().split('T')[0];
+      var h = Array.isArray(f.historique) ? f.historique.find(function(x){ return x.date===ds; }) : null;
+      var st = h ? h.statut : 'non_saisi';
+      if (st==='actif') nbA++; else if (st==='panne') nbP++;
+      else if (st==='repos') nbR++; else if (st==='inactif') nbI++; else nbN++;
+      var fj = facsFilt.find(function(fc){ return fc.date===ds; });
+      days.push({ date:ds, statut:st, fac:fj?fj.montant_facture:0 });
+    }
+    calHTML = '<div style="margin-bottom:12px">' +
+      '<div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">ACTIVITÉ — ' +
+      '<span style="color:#3B6D11">' + nbA + ' actif</span> · ' +
+      '<span style="color:#A32D2D">' + nbP + ' panne</span> · ' +
+      '<span style="color:#BA7517">' + nbR + ' repos</span> · ' +
+      '<span style="color:#555">' + nbI + ' inactif</span> · ' +
+      '<span style="color:#aaa">' + nbN + ' non saisi</span></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:2px">' +
+      days.map(function(day){
+        return '<div title="' + day.date + ' · ' + day.statut + (day.fac?' · '+day.fac.toLocaleString('fr-FR')+' F':'') + '" style="width:16px;height:16px;border-radius:3px;background:' + (calColors[day.statut]||'#e0dfd8') + '"></div>';
+      }).join('') + '</div>' +
+      '<div style="display:flex;gap:10px;font-size:10px;margin-top:4px">' +
+      '<span style="color:#3B6D11">■ Actif</span><span style="color:#A32D2D">■ Panne</span><span style="color:#BA7517">■ Repos</span><span style="color:#555">■ Inactif</span><span style="color:#ccc">■ Non saisi</span>' +
+      '</div></div>';
+  } else {
+    // Mode "Tout" : afficher histo 30 derniers jours depuis la fiche
+    const histo30 = (f.historique || []).slice(0, 30).reverse();
+    calHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">30 DERNIERS JOURS</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:2px">' +
+      histo30.map(function(h){
+        var c = {actif:'#3B6D11',panne:'#A32D2D',repos:'#BA7517',inactif:'#555',non_saisi:'#e0dfd8'}[h.statut||'non_saisi']||'#e0dfd8';
+        return '<div title="' + h.date + '" style="width:16px;height:16px;border-radius:3px;background:'+c+'"></div>';
+      }).join('') + '</div></div>';
+  }
+
+  // Chauffeurs sur la période
+  var chaufHTML = '';
+  const affActives = affVeh.filter(function(a){
+    var d1 = a.date_debut||'2000-01-01';
+    var d2 = a.date_fin||'2099-12-31';
+    return per ? (d1 <= per.fin && d2 >= per.debut) : true;
+  });
+  if (affActives.length) {
+    chaufHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">CHAUFFEUR(S)</div>' +
+      affActives.map(function(a){
+        var aVers = versFilt.filter(function(vs){ return vs.affectation_id===a.id; });
+        var aFacs = facsFilt.filter(function(fc){ return fc.chauffeur_id===a.chauffeur_id; });
+        var aEnc = aVers.reduce(function(s,vs){return s+vs.montant;},0);
+        var aFac = aFacs.reduce(function(s,fc){return s+(fc.montant_facture||0);},0);
+        var aRet = Math.max(0,aFac-aEnc);
+        return '<div onclick="ouvrirFicheChauf(\'' + a.chauffeur_id + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9f9f9;border:1px solid #e0dfd8;border-radius:8px;cursor:pointer;margin-bottom:4px">' +
+          '<div><div style="font-weight:600">' + a.chauffeur + '</div>' +
+          '<div style="font-size:11px;color:#6b6b67">' + a.montant_journalier.toLocaleString('fr-FR') + ' F/j' + (a.date_fin?' · Fin: '+a.date_fin:' · En cours') + '</div></div>' +
+          '<div style="text-align:right">' +
+          '<div style="font-size:12px;color:#3B6D11;font-weight:600">' + fmt(aEnc) + ' versé</div>' +
+          (aRet>0?'<div style="font-size:11px;color:#A32D2D;font-weight:700">'+fmt(aRet)+' retard</div>':'<div style="font-size:11px;color:#3B6D11">✓ à jour</div>') +
+          '</div></div>';
+      }).join('') + '</div>';
+  }
+
+  // Versements
+  var versHTML = versFilt.length ? '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">VERSEMENTS (' + versFilt.length + ')</div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr></thead><tbody>' +
+    versFilt.slice(0,20).map(function(vs){
+      return '<tr><td>'+vs.date_versement+'</td><td style="color:#3B6D11;font-weight:600">'+fmt(vs.montant)+'</td><td>'+vs.mode_paiement+'</td><td>'+pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td></tr>';
+    }).join('') + '</tbody></table></div></div>' : '';
+
+  // Dépenses
+  var depHTML = depsFilt.length ? '<div><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">DÉPENSES (' + depsFilt.length + ')</div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Desc.</th></tr></thead><tbody>' +
+    depsFilt.map(function(d){
+      return '<tr><td>'+d.date_depense+'</td><td>'+pill(d.categorie,'gray')+'</td><td style="color:#A32D2D;font-weight:600">'+fmt(d.montant)+'</td><td style="font-size:11px">'+( d.description||'—')+'</td></tr>';
+    }).join('') + '</tbody></table></div></div>' : '';
+
+  // Infos véhicule
+  var infoHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">' +
+    '<div style="font-size:13px;color:#6b6b67">' + v.marque + ' ' + (v.modele||'') + ' ' + (v.annee||'') + (v.tag?' · '+v.tag:'') + '</div>' +
+    pill(v.statut, v.statut==='actif'?'ok':v.statut==='en_panne'?'err':'warn') +
+    (v.km_actuel?'<div style="font-size:11px;color:#6b6b67;margin-left:auto">'+v.km_actuel.toLocaleString('fr-FR')+' km</div>':'') +
+    '</div>';
+
+  body.innerHTML = infoHTML + kpiHTML + calHTML + chaufHTML + versHTML + depHTML;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1647,27 +1807,135 @@ async function saveChauf(btn) {
   toast('Mis à jour'); fermer('m-edit-chauf'); loadChauffeurs();
 }
 
+// ─── FICHE CHAUFFEUR AVEC PÉRIODE ───────────────────────────────────────
+var _ficheChaufIdCur = null;
+var _ficheChaufPerCur = 'mois';
+
 async function ouvrirFicheChauf(id) {
-  const f = await api('GET', '/chauffeurs/' + id + '/fiche');
-  if (!f || !f.chauffeur) { toast('Erreur', 'err'); return; }
-  const c = f.chauffeur;
-  const fin = '<div class="stat-grid">' +
-    '<div class="stat-box"><div class="stat-val" style="color:#185FA5">' + fmt(f.total_facture) + '</div><div class="stat-label">Facturé</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#3B6D11">' + fmt(f.total_verse) + '</div><div class="stat-label">Encaissé</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:' + (f.manquant > 0 ? '#A32D2D' : '#3B6D11') + '">' + fmt(f.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#A32D2D">' + fmt(f.total_depenses) + '</div><div class="stat-label">Dépenses</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:' + (f.recette_nette >= 0 ? '#3B6D11' : '#A32D2D') + '">' + fmt(f.recette_nette) + '</div><div class="stat-label">Recette nette</div></div>' +
-    '<div class="stat-box"><div class="stat-val">' + (f.affectation ? fmt(f.affectation.montant_journalier) + '/j' : '—') + '</div><div class="stat-label">Tarif/jour</div></div>' + '</div>';
-  const versHtml = Array.isArray(f.versements) && f.versements.length ?
-    '<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">Historique versements</div><table><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr></thead><tbody>' +
-    f.versements.slice(0, 15).map(function(vs) { return '<tr><td>' + vs.date_versement + '</td><td style="color:#3B6D11;font-weight:600">' + fmt(vs.montant) + '</td><td>' + vs.mode_paiement + '</td><td>' + pill(vs.statut, vs.statut === 'recu' ? 'ok' : vs.statut === 'partiel' ? 'warn' : 'err') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '';
-  document.getElementById('fc-body').innerHTML =
-    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">' +
-    '<div style="width:48px;height:48px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#185FA5">' + c.prenom[0] + c.nom[0] + '</div>' +
-    '<div><div style="font-size:17px;font-weight:700">' + c.prenom + ' ' + c.nom + '</div><div style="font-size:12px;color:#6b6b67">' + c.telephone + (c.numero_permis ? ' · ' + c.numero_permis : '') + '</div></div></div>' +
-    fin + '<div style="font-size:12px;margin-top:8px"><strong>Véhicule : </strong>' + (f.vehicule ? f.vehicule.immatriculation + ' ' + f.vehicule.marque : 'Non affecté') + '</div>' +
-    (c.adresse ? '<div style="font-size:12px;margin-top:4px"><strong>Adresse : </strong>' + c.adresse + '</div>' : '') + versHtml;
+  _ficheChaufIdCur = id;
+  document.querySelectorAll('[id^="fcbtn-"]').forEach(function(b){ b.classList.remove('active'); });
+  var btn = document.getElementById('fcbtn-' + _ficheChaufPerCur);
+  if (btn) btn.classList.add('active');
+  // Mettre à jour le titre
+  const chaufs = await api('GET', '/chauffeurs');
+  const c = Array.isArray(chaufs) ? chaufs.find(function(x){ return x.id===id; }) : null;
+  const titre = document.getElementById('fc-titre');
+  if (titre && c) titre.textContent = c.prenom + ' ' + c.nom;
+  await renderFicheChauf();
   ouvrir('m-fiche-chauf');
+}
+
+function setFicheChaufPer(mode) {
+  _ficheChaufPerCur = mode;
+  document.querySelectorAll('[id^="fcbtn-"]').forEach(function(b){ b.classList.remove('active'); });
+  var btn = document.getElementById('fcbtn-' + mode);
+  if (btn) btn.classList.add('active');
+  renderFicheChauf();
+}
+
+async function renderFicheChauf() {
+  const body = document.getElementById('fc-body');
+  if (!body || !_ficheChaufIdCur) return;
+  body.innerHTML = '<div class="empty">Chargement…</div>';
+
+  var per = _ficheChaufPerCur === 'tout' ? null : calcPeriode(_ficheChaufPerCur);
+  var perLabel = document.getElementById('fc-per-label');
+  if (perLabel) perLabel.textContent = per ? per.debut + ' → ' + per.fin : 'Toute la période';
+
+  const [chaufs, affs, vers, deps, facs, vehs] = await Promise.all([
+    api('GET', '/chauffeurs'),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/facturations'),
+    api('GET', '/vehicules')
+  ]);
+
+  const c = Array.isArray(chaufs) ? chaufs.find(function(x){ return x.id===_ficheChaufIdCur; }) : null;
+  if (!c) { body.innerHTML = '<div class="empty">Chauffeur introuvable</div>'; return; }
+
+  const cAffs = Array.isArray(affs) ? affs.filter(function(a){ return a.chauffeur_id===c.id; }) : [];
+  const cAffIds = cAffs.map(function(a){ return a.id; });
+
+  // Filtrer par période
+  const versFilt = Array.isArray(vers) ? vers.filter(function(vs){
+    return cAffIds.includes(vs.affectation_id) && (!per || (vs.date_versement >= per.debut && vs.date_versement <= per.fin));
+  }) : [];
+  const facsFilt = Array.isArray(facs) ? facs.filter(function(f){
+    return f.chauffeur_id===c.id && (!per || (f.date >= per.debut && f.date <= per.fin));
+  }) : [];
+  const depsFilt = Array.isArray(deps) ? deps.filter(function(d){
+    return d.chauffeur_id===c.id && (!per || (d.date_depense >= per.debut && d.date_depense <= per.fin));
+  }) : [];
+
+  // Calculs CORRECTS
+  const totFac = facsFilt.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+  const totEnc = versFilt.reduce(function(s,vs){ return s+vs.montant; }, 0);
+  const totDep = depsFilt.reduce(function(s,d){ return s+d.montant; }, 0);
+  const retard = Math.max(0, totFac - totEnc);
+  const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
+
+  // En-tête chauffeur
+  const avatar = '<div style="width:44px;height:44px;border-radius:50%;background:#E6F1FB;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#185FA5;flex-shrink:0">' + c.prenom[0] + c.nom[0] + '</div>';
+  const infoHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">' + avatar +
+    '<div><div style="font-size:16px;font-weight:700">' + c.prenom + ' ' + c.nom + '</div>' +
+    '<div style="font-size:12px;color:#6b6b67">' + c.telephone + (c.numero_permis?' · '+c.numero_permis:'') + '</div>' +
+    (c.adresse?'<div style="font-size:11px;color:#6b6b67">'+c.adresse+'</div>':'') +
+    '</div></div>';
+
+  // KPIs
+  const kpiHTML = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">' +
+    '<div class="stat-box"><div class="stat-val" style="color:#185FA5">' + fmt(totFac) + '</div><div class="stat-label">Facturé</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#3B6D11">' + fmt(totEnc) + '</div><div class="stat-label">Versé</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (retard>0?'#A32D2D':'#3B6D11') + '">' + (retard>0?fmt(retard):'✓ À jour') + '</div><div class="stat-label">Retard</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (taux>=90?'#3B6D11':taux>=70?'#BA7517':'#A32D2D') + '">' + taux + '%</div><div class="stat-label">Taux</div></div>' +
+    '</div>';
+
+  // Véhicules utilisés sur la période
+  var vehsActifs = cAffs.filter(function(a){
+    return !per || ((a.date_debut||'2000-01-01') <= per.fin && (a.date_fin||'2099-12-31') >= per.debut);
+  });
+  var vehsHTML = '';
+  if (vehsActifs.length) {
+    vehsHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">VÉHICULE(S) UTILISÉ(S)</div>' +
+      vehsActifs.map(function(a){
+        var veh = Array.isArray(vehs) ? vehs.find(function(v){ return v.id===a.vehicule_id; }) : null;
+        if (!veh) return '';
+        var aVers = versFilt.filter(function(vs){ return vs.affectation_id===a.id; });
+        var aFacs = facsFilt.filter(function(f){ return f.vehicule_id===a.vehicule_id; });
+        var aEnc = aVers.reduce(function(s,vs){return s+vs.montant;},0);
+        var aFac = aFacs.reduce(function(s,f){return s+(f.montant_facture||0);},0);
+        var aRet = Math.max(0,aFac-aEnc);
+        return '<div onclick="ouvrirFicheVeh(\'' + veh.id + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9f9f9;border:1px solid #e0dfd8;border-radius:8px;cursor:pointer;margin-bottom:4px">' +
+          '<div><div style="font-weight:600">' + veh.immatriculation + ' <span style="font-weight:400;color:#6b6b67">' + veh.marque + '</span>' + (veh.tag?' '+pill(veh.tag,'purple'):'') + '</div>' +
+          '<div style="font-size:11px;color:#6b6b67">' + a.montant_journalier.toLocaleString('fr-FR') + ' F/j · ' + (a.date_debut||'?') + ' → ' + (a.date_fin||'En cours') + '</div></div>' +
+          '<div style="text-align:right"><div style="color:#3B6D11;font-size:12px;font-weight:600">' + fmt(aEnc) + '</div>' +
+          (aRet>0?'<div style="color:#A32D2D;font-size:11px;font-weight:700">'+fmt(aRet)+' retard</div>':'<div style="color:#3B6D11;font-size:11px">✓ à jour</div>') +
+          '</div></div>';
+      }).join('') + '</div>';
+  }
+
+  // Calendrier des journées facturées
+  var calHTML = '';
+  if (facsFilt.length) {
+    var typeColors2 = { complet:'#3B6D11', demi_panne:'#A32D2D', repos:'#BA7517', inactif:'#555' };
+    var typeLabels2 = { complet:'Complète', demi_panne:'Demi-panne', repos:'Repos', inactif:'Inactif' };
+    calHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">JOURNÉES FACTURÉES (' + facsFilt.length + ')</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:3px">' +
+      facsFilt.sort(function(a,b){return a.date.localeCompare(b.date);}).map(function(f){
+        var col = typeColors2[f.type_journee]||'#888';
+        return '<div title="' + f.date + ' · ' + (typeLabels2[f.type_journee]||f.type_journee) + ' · ' + (f.montant_facture||0).toLocaleString('fr-FR') + ' F" style="padding:3px 6px;border-radius:4px;font-size:10px;font-weight:600;background:'+col+'20;color:'+col+';border:1px solid '+col+'40">' + f.date.slice(5) + '</div>';
+      }).join('') + '</div></div>';
+  }
+
+  // Versements détaillés
+  var versHTML = versFilt.length ? '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">VERSEMENTS (' + versFilt.length + ')</div>' +
+    '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr></thead><tbody>' +
+    versFilt.slice(0,30).map(function(vs){
+      return '<tr><td>'+vs.date_versement+'</td><td style="color:#3B6D11;font-weight:600">'+fmt(vs.montant)+'</td><td>'+vs.mode_paiement+'</td><td>'+pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td></tr>';
+    }).join('')+'</tbody></table></div></div>' : '<div style="color:#6b6b67;font-size:12px;font-style:italic;margin-bottom:12px">Aucun versement sur cette période</div>';
+
+  body.innerHTML = infoHTML + kpiHTML + vehsHTML + calHTML + versHTML;
 }
 
 // ═══════════════════════════════════════════════════════
