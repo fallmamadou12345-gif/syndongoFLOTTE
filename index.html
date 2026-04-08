@@ -219,15 +219,18 @@ tr:hover td{background:#fafaf8}
       <div class="filter-bar" style="margin-bottom:12px">
         <label>Période :</label>
         <div class="periode-row">
+          <button class="periode-btn" id="pbtn-semaine" onclick="setPeriode('semaine')">Cette semaine</button>
           <button class="periode-btn active" id="pbtn-mois" onclick="setPeriode('mois')">Ce mois</button>
+          <button class="periode-btn" id="pbtn-mois_prev" onclick="setPeriode('mois_prev')">Mois passé</button>
           <button class="periode-btn" id="pbtn-7j" onclick="setPeriode('7j')">7 jours</button>
           <button class="periode-btn" id="pbtn-30j" onclick="setPeriode('30j')">30 jours</button>
           <button class="periode-btn" id="pbtn-libre" onclick="setPeriode('libre')">Libre</button>
-          <div id="periode-libre" style="display:none;display:flex;gap:6px;align-items:center">
-            <input type="date" id="d-debut" onchange="loadDashboard()">
+          <div id="periode-libre" style="display:none;gap:6px;align-items:center">
+            <input type="date" id="d-debut" onchange="setPeriode('libre')">
             <span style="font-size:11px;color:#6b6b67">→</span>
-            <input type="date" id="d-fin" onchange="loadDashboard()">
+            <input type="date" id="d-fin" onchange="setPeriode('libre')">
           </div>
+          <div id="d-per-label" style="font-size:11px;color:#185FA5;font-weight:600;background:#E6F1FB;padding:3px 10px;border-radius:99px;display:none;align-self:center"></div>
         </div>
         <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap">
           <div class="ac-wrap" style="min-width:140px">
@@ -1125,75 +1128,189 @@ function rechGlobal(q) {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 async function loadDashboard() {
-  // Période filtrée
-  const _per = getPeriodeDash();
-  const _tag = (document.getElementById('d-filter-tag') || {}).value || '';
-  const _sj = (document.getElementById('d-filter-sj') || {}).value || '';
-  let _dashUrl = '/dashboard';
-  const _dashParams = [];
-  if (_per) { _dashParams.push('date_debut=' + _per.debut); _dashParams.push('date_fin=' + _per.fin); }
-  if (_tag) _dashParams.push('tag=' + encodeURIComponent(_tag));
-  if (_sj) _dashParams.push('statut_jour=' + _sj);
-  if (_dashParams.length) _dashUrl += '?' + _dashParams.join('&');
-  const d = await api('GET', _dashUrl);
+  // ── Récupérer la période et les filtres ──────────────────
+  const per  = getPeriodeDash();                       // { debut, fin } ou null
+  const tag  = (document.getElementById('d-filter-tag') || {}).value || '';
+  const sj   = (document.getElementById('d-filter-sj')  || {}).value || '';
+
+  // ── Afficher le label de la période active ───────────────
+  const perLabel = document.getElementById('d-per-label');
+  if (perLabel) {
+    if (per) {
+      const modeLabels = { mois:'Ce mois', '7j':'7 jours', '30j':'30 jours', libre:'Période libre' };
+      perLabel.textContent = (modeLabels[_periodeMode] || _periodeMode) + ' : ' + per.debut + ' → ' + per.fin;
+      perLabel.style.display = 'block';
+    } else {
+      perLabel.style.display = 'none';
+    }
+  }
+
+  // ── Skeleton loading ─────────────────────────────────────
+  ['k-facture','k-rec','k-dep','k-marge','k-taux','k-retard'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = '…'; el.style.opacity = '.4'; }
+  });
+
+  // ── Charger TOUTES les données en parallèle ──────────────
+  var dashUrl = '/dashboard';
+  var dp = [];
+  if (per) { dp.push('date_debut='+per.debut); dp.push('date_fin='+per.fin); }
+  if (tag) dp.push('tag='+encodeURIComponent(tag));
+  if (sj)  dp.push('statut_jour='+sj);
+  if (dp.length) dashUrl += '?' + dp.join('&');
+
+  var [d, affs, vers, deps, facs] = await Promise.all([
+    api('GET', dashUrl),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/depenses'),
+    api('GET', '/facturations')
+  ]);
+
   if (!d || !d.kpis) return;
-  // Facturé
-  const kf = document.getElementById('k-facture');
-  if (kf) kf.textContent = fmt(d.kpis.facture_total || d.kpis.recettes);
-  // Encaissé
-  document.getElementById('k-rec').textContent = fmt(d.kpis.recettes);
-  // Dépenses
-  document.getElementById('k-dep').textContent = fmt(d.kpis.depenses);
-  // Marge nette = Facturé - Dépenses
-  const totFacD = d.kpis.facture_total || d.kpis.recettes;
-  const margeNette = totFacD - d.kpis.depenses;
-  const me = document.getElementById('k-marge');
-  me.textContent = fmt(margeNette); me.style.color = margeNette >= 0 ? '#3B6D11' : '#A32D2D';
-  // Taux de recouvrement
-  const taux = totFacD > 0 ? Math.round(d.kpis.recettes / totFacD * 100) : 0;
-  const kt = document.getElementById('k-taux');
+
+  // ── Filtrer TOUS les tableaux par période ─────────────────
+  function enPeriode(date) {
+    if (!per) return true;
+    return date >= per.debut && date <= per.fin;
+  }
+
+  var versFilt = Array.isArray(vers) ? vers.filter(function(v){ return enPeriode(v.date_versement); }) : [];
+  var depsFilt = Array.isArray(deps) ? deps.filter(function(d){ return enPeriode(d.date_depense); }) : [];
+  var facsFilt = Array.isArray(facs) ? facs.filter(function(f){ return enPeriode(f.date); }) : [];
+
+  // ── Filtrer par tag si actif ──────────────────────────────
+  var vehs = await api('GET', '/vehicules' + (tag ? '?tag='+encodeURIComponent(tag) : ''));
+  if (!Array.isArray(vehs)) vehs = [];
+  var vIds = vehs.map(function(v){ return v.id; });
+
+  // Filtrer les données par les véhicules visibles
+  var affsFilt = Array.isArray(affs) ? affs.filter(function(a){ return vIds.includes(a.vehicule_id); }) : [];
+  var affIds   = affsFilt.map(function(a){ return a.id; });
+
+  versFilt = versFilt.filter(function(v){ return affIds.includes(v.affectation_id); });
+  depsFilt = depsFilt.filter(function(d){ return vIds.includes(d.vehicule_id); });
+  facsFilt = facsFilt.filter(function(f){ return vIds.includes(f.vehicule_id); });
+
+  // ── Calculs KPIs CORRECTS sur la période ─────────────────
+  var totFac = facsFilt.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+  var totEnc = versFilt.reduce(function(s,v){ return s+v.montant; }, 0);
+  var totDep = depsFilt.reduce(function(s,d){ return s+d.montant; }, 0);
+  var marge  = totFac - totDep;
+  var taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
+
+  // Retard = Σ MAX(0, Facturé_veh - Encaissé_veh) — calcul par véhicule
+  var totRet = 0;
+  vehs.forEach(function(v) {
+    var vAffIds = affsFilt.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
+    var vFac = facsFilt.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    var vEnc = versFilt.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
+    totRet += Math.max(0, vFac - vEnc);
+  });
+
+  // ── Afficher les KPIs (animation) ────────────────────────
+  function setKpi(id, val, color) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.style.opacity = '1';
+    if (color) el.style.color = color;
+  }
+
+  setKpi('k-facture', fmt(totFac), '#185FA5');
+  setKpi('k-rec',     fmt(totEnc), '#3B6D11');
+  setKpi('k-dep',     fmt(totDep), '#A32D2D');
+  setKpi('k-marge',   fmt(marge),  marge >= 0 ? '#3B6D11' : '#A32D2D');
+  setKpi('k-retard',  fmt(totRet), totRet > 0 ? '#A32D2D' : '#3B6D11');
+
+  var kt = document.getElementById('k-taux');
   if (kt) {
     kt.textContent = taux + '%';
     kt.style.color = taux >= 90 ? '#059669' : taux >= 70 ? '#BA7517' : '#A32D2D';
+    kt.style.opacity = '1';
   }
-  document.getElementById('k-total').textContent = d.kpis.vehicules_total;
+
+  // ── Stats journalières (toujours basées sur aujourd'hui) ──
+  document.getElementById('k-total').textContent = vehs.length;
   if (d.stats_jour) {
-    document.getElementById('k-actif').textContent = d.stats_jour.actif || 0;
-    document.getElementById('k-panne').textContent = d.stats_jour.panne || 0;
-    document.getElementById('k-repos').textContent = d.stats_jour.repos || 0;
-    document.getElementById('k-inact').textContent = d.stats_jour.inactif || 0;
-    document.getElementById('k-ns').textContent = d.stats_jour.non_saisi || 0;
+    document.getElementById('k-actif').textContent = d.stats_jour.actif  || 0;
+    document.getElementById('k-panne').textContent = d.stats_jour.panne  || 0;
+    document.getElementById('k-repos').textContent = d.stats_jour.repos  || 0;
+    document.getElementById('k-inact').textContent = d.stats_jour.inactif|| 0;
+    document.getElementById('k-ns').textContent    = d.stats_jour.non_saisi || 0;
   }
-  // Retards
-  const ret = await api('GET', '/retards');
-  const totalRet = Array.isArray(ret) ? ret.reduce(function(s, r) { return s + r.retard; }, 0) : 0;
-  document.getElementById('k-retard').textContent = fmt(totalRet);
-  // Alertes
-  const alEl = document.getElementById('d-alertes');
-  const alertes = d.alertes || [];
-  alEl.innerHTML = alertes.length === 0 ? '<div class="empty">Aucune alerte</div>' :
-    alertes.map(function(a) {
-      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f5f4f0;font-size:12px">' +
-        '<span style="width:8px;height:8px;border-radius:50%;background:' + (a.type === 'danger' ? '#A32D2D' : '#BA7517') + ';flex-shrink:0;display:inline-block"></span>' +
-        a.message + '</div>';
-    }).join('');
-  // Rentabilité
-  const vehs = await api('GET', '/vehicules');
-  const vers = await api('GET', '/versements');
-  const deps = await api('GET', '/depenses');
-  const affs = await api('GET', '/affectations');
-  if (!Array.isArray(vehs) || !vehs.length) { document.getElementById('d-rent').innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
-  const rows = vehs.map(function(v) {
-    const rec = Array.isArray(vers) ? vers.filter(function(vs) { const a = Array.isArray(affs) ? affs.find(function(a) { return a.id === vs.affectation_id; }) : null; return a && a.vehicule_id === v.id; }).reduce(function(s, vs) { return s + vs.montant; }, 0) : 0;
-    const dep = Array.isArray(deps) ? deps.filter(function(dd) { return dd.vehicule_id === v.id; }).reduce(function(s, dd) { return s + dd.montant; }, 0) : 0;
-    const mg = rec - dep; const pct = rec > 0 ? Math.round(mg / rec * 100) : 0;
-    return '<tr onclick="ouvrirFicheVeh(\'' + v.id + '\')" style="cursor:pointer"><td><strong>' + v.immatriculation + '</strong> ' + v.marque + (v.tag ? ' ' + pill(v.tag, 'purple') : '') + '</td>' +
-      '<td style="color:#3B6D11">' + fmt(rec) + '</td><td style="color:#A32D2D">' + fmt(dep) + '</td>' +
-      '<td style="color:' + (mg >= 0 ? '#3B6D11' : '#A32D2D') + '"><strong>' + fmt(mg) + '</strong></td>' +
-      '<td>' + pill(pct + '%', pct >= 70 ? 'ok' : pct >= 40 ? 'warn' : 'err') + '</td></tr>';
+
+  // ── Alertes & Rappels ────────────────────────────────────
+  var alertesTech = await genererAlertesTechniques();
+  var alertes = [...alertesTech, ...(d.alertes || [])];
+  var alEl = document.getElementById('d-alertes');
+  alEl.innerHTML = !alertes.length
+    ? '<div class="empty" style="color:#3B6D11">✓ Aucune alerte</div>'
+    : alertes.map(function(a) {
+        var col = a.type==='danger' ? '#A32D2D' : a.type==='info' ? '#185FA5' : '#BA7517';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f4f0;font-size:12px">' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0"></span>' +
+          '<div style="flex:1">'+a.message+'</div>' +
+          (a.vehicule_id?'<button class="btn-sm" style="background:#E6F1FB;color:#0C447C;flex-shrink:0" data-id="'+a.vehicule_id+'" onclick="ouvrirFicheVeh(this.dataset.id)">Voir</button>':'') +
+          '</div>';
+      }).join('');
+
+  // ── Tableau rentabilité filtré par période ────────────────
+  if (!vehs.length) { document.getElementById('d-rent').innerHTML = '<div class="empty">Aucun véhicule</div>'; renderGraph(); return; }
+
+  var rows = vehs
+    .map(function(v) {
+      var vAffIds = affsFilt.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
+      var vFac = facsFilt.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+      var vEnc = versFilt.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
+      var vDep = depsFilt.filter(function(d){ return d.vehicule_id===v.id; }).reduce(function(s,d){ return s+d.montant; }, 0);
+      var vRet = Math.max(0, vFac - vEnc);
+      var vMarge = vEnc - vDep;
+      var vTaux = vFac > 0 ? Math.round(vEnc/vFac*100) : 0;
+      if (vFac === 0 && vEnc === 0 && vDep === 0) return null; // Masquer les inactifs sur la période
+      return { v, vFac, vEnc, vDep, vRet, vMarge, vTaux };
+    })
+    .filter(Boolean)
+    .sort(function(a,b){ return b.vRet - a.vRet; }); // Trier par retard décroissant
+
+  var rowsHtml = rows.map(function(r) {
+    return '<tr data-id="'+r.v.id+'" onclick="ouvrirFicheVeh(this.dataset.id)" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">'+r.v.immatriculation+'</strong> <span style="color:#6b6b67;font-size:11px">'+r.v.marque+'</span>'+(r.v.tag?' '+pill(r.v.tag,'purple'):'')+' '+(r.v.statut_presume?'<span style="font-size:9px;color:#BA7517">*</span>':'')+
+      '</td>' +
+      '<td style="text-align:right;color:#185FA5;font-weight:600">'+fmt(r.vFac)+'</td>' +
+      '<td style="text-align:right;color:#3B6D11;font-weight:600">'+fmt(r.vEnc)+'</td>' +
+      '<td style="text-align:right;color:#A32D2D">'+fmt(r.vDep)+'</td>' +
+      '<td style="text-align:right;color:'+(r.vRet>0?'#A32D2D':'#3B6D11')+';font-weight:'+(r.vRet>0?'700':'400')+'">'+(r.vRet>0?fmt(r.vRet):'✓')+'</td>' +
+      '<td style="text-align:right;color:'+(r.vMarge>=0?'#3B6D11':'#A32D2D')+';font-weight:600">'+fmt(r.vMarge)+'</td>' +
+      '<td style="text-align:center">'+pill(r.vTaux+'%', r.vTaux>=90?'ok':r.vTaux>=70?'warn':'err')+'</td>' +
+    '</tr>';
   }).join('');
-  document.getElementById('d-rent').innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Recettes</th><th>Dépenses</th><th>Marge</th><th>%</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-  // Charger le graphique
+
+  // Ligne totaux
+  var totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
+    '<td>TOTAL ('+rows.length+' véhicules)</td>' +
+    '<td style="text-align:right;color:#185FA5">'+fmt(totFac)+'</td>' +
+    '<td style="text-align:right;color:#3B6D11">'+fmt(totEnc)+'</td>' +
+    '<td style="text-align:right;color:#A32D2D">'+fmt(totDep)+'</td>' +
+    '<td style="text-align:right;color:'+(totRet>0?'#A32D2D':'#3B6D11')+'">'+( totRet>0?fmt(totRet):'✓')+'</td>' +
+    '<td style="text-align:right;color:'+(marge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(marge)+'</td>' +
+    '<td style="text-align:center">'+taux+'%</td></tr>';
+
+  document.getElementById('d-rent').innerHTML =
+    '<div style="overflow-x:auto"><table>' +
+    '<thead><tr>' +
+      '<th>Véhicule</th>' +
+      '<th style="text-align:right;color:#185FA5">Facturé</th>' +
+      '<th style="text-align:right;color:#3B6D11">Encaissé</th>' +
+      '<th style="text-align:right;color:#A32D2D">Dépenses</th>' +
+      '<th style="text-align:right;color:#DC2626">Retard</th>' +
+      '<th style="text-align:right">Marge</th>' +
+      '<th style="text-align:center">Taux</th>' +
+    '</tr></thead>' +
+    '<tbody>' + rowsHtml + totRow + '</tbody>' +
+    '</table></div>';
+
+  // ── Graphique ────────────────────────────────────────────
   renderGraph();
 }
 
@@ -2489,44 +2606,98 @@ async function refreshSelects() {
 
 // ── Période dashboard ────────────────────────────────────
 let _periodeMode = 'mois';
+let _periodeDebut = '';
+let _periodeFin = '';
+
+function _fmtDate(d) { return d.toISOString().split('T')[0]; }
 
 function setPeriode(mode) {
   _periodeMode = mode;
-  document.querySelectorAll('.periode-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById('pbtn-' + mode);
+  // Boutons actifs
+  ['mois','mois_prev','7j','30j','semaine','semaine_prev','libre'].forEach(function(m) {
+    var b = document.getElementById('pbtn-' + m);
+    if (b) b.classList.remove('active');
+  });
+  var btn = document.getElementById('pbtn-' + mode);
   if (btn) btn.classList.add('active');
-  const libreDiv = document.getElementById('periode-libre');
+  // Afficher/cacher les champs libres
+  var libreDiv = document.getElementById('periode-libre');
   if (libreDiv) libreDiv.style.display = mode === 'libre' ? 'flex' : 'none';
+
   if (mode !== 'libre') {
-    const today = new Date();
-    let debut = new Date();
-    if (mode === 'mois') debut = new Date(today.getFullYear(), today.getMonth(), 1);
-    else if (mode === '7j') { debut = new Date(); debut.setDate(debut.getDate() - 7); }
-    else if (mode === '30j') { debut = new Date(); debut.setDate(debut.getDate() - 30); }
-    const fmt = d => d.toISOString().split('T')[0];
-    const dd = document.getElementById('d-debut');
-    const df = document.getElementById('d-fin');
-    if (dd) dd.value = fmt(debut);
-    if (df) df.value = fmt(today);
+    var today = new Date();
+    var debut, fin;
+    fin = new Date(today);
+    if (mode === 'mois') {
+      debut = new Date(today.getFullYear(), today.getMonth(), 1);
+    } else if (mode === 'mois_prev') {
+      debut = new Date(today.getFullYear(), today.getMonth()-1, 1);
+      fin   = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (mode === 'semaine') {
+      var day = today.getDay(), diff = day===0?6:day-1;
+      debut = new Date(today); debut.setDate(today.getDate()-diff);
+    } else if (mode === 'semaine_prev') {
+      var d2 = today.getDay(), d3 = d2===0?6:d2-1;
+      fin   = new Date(today); fin.setDate(today.getDate()-d3-1);
+      debut = new Date(fin);   debut.setDate(fin.getDate()-6);
+    } else if (mode === '7j') {
+      debut = new Date(); debut.setDate(debut.getDate()-7);
+    } else if (mode === '30j') {
+      debut = new Date(); debut.setDate(debut.getDate()-30);
+    } else {
+      debut = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    _periodeDebut = _fmtDate(debut);
+    _periodeFin   = _fmtDate(fin);
+    // Mettre à jour les inputs libres aussi
+    var dd = document.getElementById('d-debut');
+    var df = document.getElementById('d-fin');
+    if (dd) dd.value = _periodeDebut;
+    if (df) df.value = _periodeFin;
+  } else {
+    // Mode libre : lire les inputs
+    var dd2 = document.getElementById('d-debut');
+    var df2 = document.getElementById('d-fin');
+    _periodeDebut = dd2 ? dd2.value : '';
+    _periodeFin   = df2 ? df2.value : '';
   }
+
+  // Afficher le label de période
+  var lbl = document.getElementById('d-per-label');
+  if (lbl && _periodeDebut && _periodeFin) {
+    var modeLabels = {mois:'Ce mois',mois_prev:'Mois passé',semaine:'Cette semaine',semaine_prev:'Semaine passée','7j':'7 jours','30j':'30 jours',libre:'Libre'};
+    lbl.textContent = (modeLabels[mode]||mode) + ' · ' + _periodeDebut + ' → ' + _periodeFin;
+    lbl.style.display = 'block';
+  }
+
   loadDashboard();
 }
 
 function getPeriodeDash() {
-  const dd = document.getElementById('d-debut')?.value || '';
-  const df = document.getElementById('d-fin')?.value || '';
-  return dd && df ? { debut: dd, fin: df } : null;
+  // Priorité : variables JS (plus fiables que les inputs cachés)
+  if (_periodeDebut && _periodeFin) return { debut: _periodeDebut, fin: _periodeFin };
+  // Fallback : lire les inputs
+  var dd = (document.getElementById('d-debut') || {}).value || '';
+  var df = (document.getElementById('d-fin')   || {}).value || '';
+  if (dd && df) return { debut: dd, fin: df };
+  return null;
 }
 
-// Initialiser la période au chargement
 function initPeriodeDash() {
-  const today = new Date();
-  const debut = new Date(today.getFullYear(), today.getMonth(), 1);
-  const fmt = d => d.toISOString().split('T')[0];
-  const dd = document.getElementById('d-debut');
-  const df = document.getElementById('d-fin');
-  if (dd && !dd.value) dd.value = fmt(debut);
-  if (df && !df.value) df.value = fmt(today);
+  // Initialiser avec "Ce mois" par défaut
+  var today = new Date();
+  var debut = new Date(today.getFullYear(), today.getMonth(), 1);
+  _periodeDebut = _fmtDate(debut);
+  _periodeFin   = _fmtDate(today);
+  _periodeMode  = 'mois';
+  // Mettre à jour les inputs
+  var dd = document.getElementById('d-debut');
+  var df = document.getElementById('d-fin');
+  if (dd) dd.value = _periodeDebut;
+  if (df) df.value = _periodeFin;
+  // Activer le bouton ce mois
+  var btn = document.getElementById('pbtn-mois');
+  if (btn) btn.classList.add('active');
 }
 
 // ── Autocomplete générique ────────────────────────────────
