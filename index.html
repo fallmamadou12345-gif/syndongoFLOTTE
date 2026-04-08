@@ -156,6 +156,14 @@ tr:hover td{background:#fafaf8}
 .kpi-link { cursor:pointer; transition:all .15s; }
 .kpi-link:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.1); border-color:#185FA5 !important; }
 .kpi-link:active { transform:translateY(0); }
+
+.filter-chip-group { display:flex;gap:4px;flex-wrap:wrap; }
+.f-chip { font-size:11px;padding:4px 10px;border-radius:99px;border:1px solid #e0dfd8;background:#fff;color:#6b6b67;cursor:pointer;transition:all .15s; }
+.f-chip.active { background:#185FA5;color:#fff;border-color:#185FA5; }
+.f-chip:hover:not(.active) { background:#f0f0f0; }
+.sort-btn { font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;background:#fff;color:#6b6b67;cursor:pointer; }
+.sort-btn.asc::after { content:" ↑"; }
+.sort-btn.desc::after { content:" ↓"; }
 </style>
 </head>
 <body>
@@ -621,10 +629,11 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <!-- KPIs rapports -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px">
         <div class="kpi" style="border-left:3px solid #185FA5"><div class="kpi-label">Total Facturé</div><div class="kpi-val" id="rp-k-fac" style="color:#185FA5">—</div></div>
         <div class="kpi" style="border-left:3px solid #3B6D11"><div class="kpi-label">Total Encaissé</div><div class="kpi-val" id="rp-k-enc" style="color:#3B6D11">—</div></div>
         <div class="kpi" style="border-left:3px solid #A32D2D"><div class="kpi-label">Dépenses</div><div class="kpi-val" id="rp-k-dep" style="color:#A32D2D">—</div></div>
+        <div class="kpi kpi-link" style="border-left:3px solid #DC2626" onclick="goPage('retards',navEl('retards'))"><div class="kpi-label">Total Retards</div><div class="kpi-val" id="rp-k-ret" style="color:#A32D2D">—</div><div style="font-size:10px;color:#6b6b67">→ Voir retards</div></div>
         <div class="kpi" style="border-left:3px solid #8B5CF6"><div class="kpi-label">Marge nette</div><div class="kpi-val" id="rp-k-marge">—</div></div>
       </div>
 
@@ -632,14 +641,35 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">
           Rapport par véhicule
-          <input id="rp-q" placeholder="🔍 Filtrer…" style="font-size:12px;width:160px" oninput="filtrerRapport()">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="rp-q" placeholder="🔍 Véhicule / Chauffeur / Tag…" style="font-size:12px;width:200px" oninput="filtrerRapport()">
+            <select id="rp-statut" style="font-size:12px;width:130px" onchange="filtrerRapport()">
+              <option value="">Tous</option>
+              <option value="retard">Avec retard</option>
+              <option value="ok">À jour</option>
+              <option value="top">100%+ (sur-versé)</option>
+            </select>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444;padding:5px 10px" onclick="trierRapport('immatriculation')">A→Z</button>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444;padding:5px 10px" onclick="trierRapport('ret')">Retards ↓</button>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444;padding:5px 10px" onclick="trierRapport('taux')">Taux ↓</button>
+          </div>
         </div>
         <div id="rp-table"><div class="empty">Chargement…</div></div>
       </div>
 
       <!-- Rapport par chauffeur -->
       <div class="card">
-        <div class="card-title">Rapport par chauffeur</div>
+        <div class="card-title">
+          Rapport par chauffeur
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="rp-chauf-q" placeholder="🔍 Chauffeur…" style="font-size:12px;width:160px" oninput="filtrerRapportChauf()">
+            <select id="rp-chauf-statut" style="font-size:12px;width:130px" onchange="filtrerRapportChauf()">
+              <option value="">Tous</option>
+              <option value="retard">Avec retard</option>
+              <option value="ok">À jour</option>
+            </select>
+          </div>
+        </div>
         <div id="rp-chauf-table"><div class="empty">Chargement…</div></div>
       </div>
     </div>
@@ -3279,6 +3309,308 @@ loadPage = function(id) {
     return;
   }
   _origLoadPage(id);
+};
+
+// ═══════════════════════════════════════════════════════
+// RAPPORTS — AMÉLIORATIONS
+// ═══════════════════════════════════════════════════════
+
+let _rapportSortKey = 'immatriculation';
+let _rapportSortDir = 1;
+let _rapportChaufData = [];
+
+// Mise à jour de loadRapports pour inclure le KPI Retards
+const _origLoadRapports = loadRapports;
+loadRapports = async function() {
+  await _origLoadRapports();
+  // Calculer total retards
+  const totRet = _rapportData.reduce(function(s,r){ return s + r.ret; }, 0);
+  const krRet = document.getElementById('rp-k-ret');
+  if (krRet) krRet.textContent = fmt(totRet);
+};
+
+// Trier le tableau rapports
+function trierRapport(key) {
+  if (_rapportSortKey === key) {
+    _rapportSortDir *= -1;
+  } else {
+    _rapportSortKey = key;
+    _rapportSortDir = -1; // Desc par défaut
+  }
+  // Mettre à jour les boutons de tri
+  document.querySelectorAll('.sort-btn').forEach(function(b) {
+    b.classList.remove('asc','desc');
+  });
+  filtrerRapport();
+}
+
+// Surcharge filtrerRapport pour ajouter filtre statut et tri
+const _origFiltrerRapport = filtrerRapport;
+filtrerRapport = function() {
+  const q = ((document.getElementById('rp-q') || {}).value || '').toLowerCase();
+  const statut = (document.getElementById('rp-statut') || {}).value || '';
+  let data = _rapportData.slice();
+
+  // Filtre texte
+  if (q) data = data.filter(function(r) {
+    return r.immatriculation.toLowerCase().includes(q) ||
+           r.marque.toLowerCase().includes(q) ||
+           r.tag.toLowerCase().includes(q) ||
+           r.chauffeur.toLowerCase().includes(q);
+  });
+
+  // Filtre statut
+  if (statut === 'retard') data = data.filter(function(r){ return r.ret > 0; });
+  else if (statut === 'ok') data = data.filter(function(r){ return r.ret === 0 && r.taux >= 100; });
+  else if (statut === 'top') data = data.filter(function(r){ return r.taux > 100; });
+
+  // Tri
+  data.sort(function(a, b) {
+    let va = a[_rapportSortKey] || 0;
+    let vb = b[_rapportSortKey] || 0;
+    if (typeof va === 'string') return va.localeCompare(vb) * _rapportSortDir;
+    return (va - vb) * _rapportSortDir;
+  });
+
+  const el = document.getElementById('rp-table');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty">Aucun résultat</div>'; return; }
+
+  // Totaux
+  const totFac = data.reduce(function(s,r){return s+r.fac;},0);
+  const totEnc = data.reduce(function(s,r){return s+r.enc;},0);
+  const totDep = data.reduce(function(s,r){return s+r.dep;},0);
+  const totRet = data.reduce(function(s,r){return s+r.ret;},0);
+  const totMarge = data.reduce(function(s,r){return s+r.marge;},0);
+
+  const thStyle = function(k) {
+    const active = _rapportSortKey === k;
+    const dir = _rapportSortDir === 1 ? '↑' : '↓';
+    return 'cursor:pointer;user-select:none;' + (active ? 'color:#185FA5;' : '');
+  };
+  const thIcon = function(k) { return _rapportSortKey === k ? (_rapportSortDir === 1 ? ' ↑' : ' ↓') : ' ⇅'; };
+
+  const rows = data.map(function(r) {
+    const retColor = r.ret > 0 ? '#A32D2D' : '#3B6D11';
+    const retText = r.ret > 0 ? fmt(r.ret) : '✓ À jour';
+    const retBold = r.ret > 0 ? 'bold' : 'normal';
+    const tauxColor = r.taux >= 100 ? '#3B6D11' : r.taux >= 70 ? '#BA7517' : '#A32D2D';
+    return '<tr onclick="ouvrirFicheVeh(\'' + r.id + '\')" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">' + r.immatriculation + '</strong> <span style="color:#6b6b67;font-size:11px">' + r.marque + '</span>' + (r.tag ? ' ' + pill(r.tag,'purple') : '') + '</td>' +
+      '<td style="font-size:12px">' + (r.chauffeur !== 'Non affecté' ? r.chauffeur : '<span style="color:#aaa;font-size:11px">Non affecté</span>') + '</td>' +
+      '<td style="color:#185FA5;font-weight:600;text-align:right">' + fmt(r.fac) + '</td>' +
+      '<td style="color:#3B6D11;font-weight:600;text-align:right">' + fmt(r.enc) + '</td>' +
+      '<td style="color:#A32D2D;text-align:right">' + fmt(r.dep) + '</td>' +
+      '<td style="color:' + retColor + ';font-weight:' + retBold + ';text-align:right">' + retText + '</td>' +
+      '<td style="color:' + (r.marge>=0?'#3B6D11':'#A32D2D') + ';font-weight:600;text-align:right">' + fmt(r.marge) + '</td>' +
+      '<td style="text-align:center">' + '<span style="font-size:11px;font-weight:700;color:' + tauxColor + '">' + r.taux + '%</span>' + '</td>' +
+    '</tr>';
+  }).join('');
+
+  // Ligne totaux
+  const totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
+    '<td colspan="2" style="font-weight:700">TOTAL (' + data.length + ' véhicules)</td>' +
+    '<td style="color:#185FA5;text-align:right">' + fmt(totFac) + '</td>' +
+    '<td style="color:#3B6D11;text-align:right">' + fmt(totEnc) + '</td>' +
+    '<td style="color:#A32D2D;text-align:right">' + fmt(totDep) + '</td>' +
+    '<td style="color:' + (totRet>0?'#A32D2D':'#3B6D11') + ';text-align:right">' + (totRet>0?fmt(totRet):'✓ À jour') + '</td>' +
+    '<td style="color:' + (totMarge>=0?'#3B6D11':'#A32D2D') + ';text-align:right">' + fmt(totMarge) + '</td>' +
+    '<td style="text-align:center">' + (totFac>0?Math.round(totEnc/totFac*100)+'%':'—') + '</td>' +
+  '</tr>';
+
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr>' +
+    '<th data-sort="immatriculation" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('immatriculation') + '">Véhicule' + thIcon('immatriculation') + '</th>' +
+    '<th data-sort="chauffeur" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('chauffeur') + '">Chauffeur' + thIcon('chauffeur') + '</th>' +
+    '<th data-sort="fac" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('fac') + ';text-align:right;color:#185FA5">Facturé' + thIcon('fac') + '</th>' +
+    '<th data-sort="enc" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('enc') + ';text-align:right;color:#3B6D11">Encaissé' + thIcon('enc') + '</th>' +
+    '<th data-sort="dep" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('dep') + ';text-align:right;color:#A32D2D">Dépenses' + thIcon('dep') + '</th>' +
+    '<th data-sort="ret" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('ret') + ';text-align:right;color:#A32D2D">Retard' + thIcon('ret') + '</th>' +
+    '<th data-sort="marge" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('marge') + ';text-align:right">Marge' + thIcon('marge') + '</th>' +
+    '<th data-sort="taux" onclick="trierRapport(this.dataset.sort)" style="' + thStyle('taux') + ';text-align:center">Taux' + thIcon('taux') + '</th>' +
+    '</tr></thead>' +
+    '<tbody>' + rows + totRow + '</tbody></table></div>';
+};
+
+// Filtrer le tableau chauffeurs
+let _rapportChaufCache = [];
+function filtrerRapportChauf() {
+  const q = ((document.getElementById('rp-chauf-q') || {}).value || '').toLowerCase();
+  const statut = (document.getElementById('rp-chauf-statut') || {}).value || '';
+  let data = _rapportChaufCache.slice();
+  if (q) data = data.filter(function(r) { return r.nom.toLowerCase().includes(q) || r.vehicule.toLowerCase().includes(q); });
+  if (statut === 'retard') data = data.filter(function(r) { return r.ret > 0; });
+  else if (statut === 'ok') data = data.filter(function(r) { return r.ret === 0; });
+  renderRapportChauf(data);
+}
+
+function renderRapportChauf(data) {
+  const el = document.getElementById('rp-chauf-table');
+  if (!el || !data.length) { if (el) el.innerHTML = '<div class="empty">Aucun résultat</div>'; return; }
+  const totFac = data.reduce(function(s,r){return s+r.fac;},0);
+  const totEnc = data.reduce(function(s,r){return s+r.enc;},0);
+  const totRet = data.reduce(function(s,r){return s+r.ret;},0);
+  const rows = data.map(function(r) {
+    const retColor = r.ret > 0 ? '#A32D2D' : '#3B6D11';
+    const tauxColor = r.taux >= 100 ? '#3B6D11' : r.taux >= 70 ? '#BA7517' : '#A32D2D';
+    return '<tr onclick="ouvrirFicheChauf(\'' + r.id + '\')" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">' + r.nom + '</strong></td>' +
+      '<td>' + (r.vehicule !== 'Non affecté' ? '<span style="font-size:11px;font-weight:600;background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:99px">' + r.vehicule + '</span>' : '<span style="color:#aaa;font-size:11px">Non affecté</span>') + '</td>' +
+      '<td style="color:#185FA5;font-weight:600;text-align:right">' + fmt(r.fac) + '</td>' +
+      '<td style="color:#3B6D11;font-weight:600;text-align:right">' + fmt(r.enc) + '</td>' +
+      '<td style="color:' + retColor + ';font-weight:' + (r.ret>0?'700':'400') + ';text-align:right">' + (r.ret>0?fmt(r.ret):'✓ À jour') + '</td>' +
+      '<td style="text-align:center;font-size:11px;font-weight:700;color:' + tauxColor + '">' + r.taux + '%</td>' +
+    '</tr>';
+  }).join('');
+  const totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
+    '<td colspan="2">TOTAL (' + data.length + ' chauffeurs)</td>' +
+    '<td style="color:#185FA5;text-align:right">' + fmt(totFac) + '</td>' +
+    '<td style="color:#3B6D11;text-align:right">' + fmt(totEnc) + '</td>' +
+    '<td style="color:' + (totRet>0?'#A32D2D':'#3B6D11') + ';text-align:right">' + (totRet>0?fmt(totRet):'✓') + '</td>' +
+    '<td style="text-align:center">' + (totFac>0?Math.round(totEnc/totFac*100)+'%':'—') + '</td>' +
+  '</tr>';
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr><th>Chauffeur</th><th>Véhicule</th>' +
+    '<th style="text-align:right;color:#185FA5">Facturé</th><th style="text-align:right;color:#3B6D11">Encaissé</th>' +
+    '<th style="text-align:right;color:#A32D2D">Retard</th><th style="text-align:center">Taux</th>' +
+    '</tr></thead><tbody>' + rows + totRow + '</tbody></table></div>';
+}
+
+// Surcharge loadRapportChauf pour stocker le cache
+const _origLoadRapportChauf = loadRapportChauf;
+loadRapportChauf = async function(versFilt, depsFilt, facsFilt, affs, vehs) {
+  const chaufs = await api('GET', '/chauffeurs');
+  if (!Array.isArray(chaufs)) return;
+  _rapportChaufCache = chaufs.map(function(c) {
+    const cAffs = Array.isArray(affs) ? affs.filter(function(a){ return a.chauffeur_id === c.id; }) : [];
+    const cAffIds = cAffs.map(function(a){ return a.id; });
+    const aff = cAffs.find(function(a){ return !a.date_fin; });
+    const veh = aff ? (Array.isArray(vehs) ? vehs.find(function(v){ return v.id === aff.vehicule_id; }) : null) : null;
+    const fac = facsFilt.filter(function(f){ return f.chauffeur_id === c.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    const enc = versFilt.filter(function(vs){ return cAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
+    const ret = Math.max(0, fac - enc);
+    const taux = fac > 0 ? Math.round(enc/fac*100) : 0;
+    if (fac === 0 && enc === 0) return null;
+    return { id:c.id, nom:c.prenom+' '+c.nom, tel:c.telephone, vehicule:veh?veh.immatriculation:'Non affecté', fac, enc, ret, taux };
+  }).filter(Boolean).sort(function(a,b){ return b.ret - a.ret; });
+  filtrerRapportChauf();
+};
+
+// ═══════════════════════════════════════════════════════
+// FILTRES INTELLIGENTS GLOBAUX — chips cliquables
+// ═══════════════════════════════════════════════════════
+
+// Chips pour filtre caisse/facturation
+function filtrerCaisseType(type) {
+  const el = document.getElementById('ff-type');
+  if (el) { el.value = el.value === type ? '' : type; }
+  loadFac();
+  // Mise à jour visuelle chips si présents
+  document.querySelectorAll('[data-caisse-chip]').forEach(function(c) {
+    c.classList.toggle('active', c.dataset.caisseChip === type && el && el.value === type);
+  });
+}
+
+// Améliorer tous les selects avec style visuel professionnel
+function styleAllSelects() {
+  document.querySelectorAll('select').forEach(function(sel) {
+    if (!sel.style.borderRadius) sel.style.borderRadius = '8px';
+    sel.addEventListener('change', function() {
+      if (this.value) {
+        this.style.background = '#E6F1FB';
+        this.style.color = '#0C447C';
+        this.style.fontWeight = '600';
+        this.style.borderColor = '#185FA5';
+      } else {
+        this.style.background = '';
+        this.style.color = '';
+        this.style.fontWeight = '';
+        this.style.borderColor = '';
+      }
+    });
+  });
+}
+
+// Bouton reset filtres universel
+function resetFiltres(page) {
+  const resets = {
+    vehicules: function() {
+      _activeChips.clear();
+      ['v-q','new-tag'].forEach(function(id){ const e=document.getElementById(id); if(e) e.value=''; });
+      const vt = document.getElementById('v-tag'); if(vt) vt.value='';
+      ['actif','panne','repos','inactif','non_saisi'].forEach(function(s){ const c=document.getElementById('chip-'+s); if(c) c.className='chip inactive'; });
+      _vehsCache=[]; loadVehicules();
+    },
+    chauffeurs: function() {
+      const cq=document.getElementById('c-q'); if(cq) cq.value='';
+      const cf=document.getElementById('c-filter-aff'); if(cf) cf.value='';
+      _chaufsCache=[]; loadChauffeurs();
+    },
+    retards: function() {
+      ['ret-debut','ret-fin','ret-q'].forEach(function(id){ const e=document.getElementById(id); if(e) e.value=''; });
+      const rt=document.getElementById('ret-tag'); if(rt) rt.value='';
+      loadRetards();
+    },
+    depenses: function() {
+      ['dep-debut','dep-fin','dep-q'].forEach(function(id){ const e=document.getElementById(id); if(e) e.value=''; });
+      const dc=document.getElementById('dep-cat'); if(dc) dc.value='';
+      loadDepenses();
+    },
+    rapports: function() {
+      const rq=document.getElementById('rp-q'); if(rq) rq.value='';
+      const rs=document.getElementById('rp-statut'); if(rs) rs.value='';
+      const rcs=document.getElementById('rp-chauf-statut'); if(rcs) rcs.value='';
+      const rcq=document.getElementById('rp-chauf-q'); if(rcq) rcq.value='';
+      _rapportSortKey='immatriculation'; _rapportSortDir=1;
+      filtrerRapport(); filtrerRapportChauf();
+    }
+  };
+  if (resets[page]) resets[page]();
+}
+
+// Ajouter bouton reset sur toutes les filter-bars
+function ajouterBoutonsReset() {
+  const pages = ['vehicules','retards','depenses'];
+  pages.forEach(function(page) {
+    const filterBar = document.querySelector('#page-' + page + ' .filter-bar');
+    if (filterBar && !filterBar.querySelector('.btn-reset')) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-sm btn-reset';
+      btn.style.cssText = 'background:#f0f0f0;color:#444;padding:5px 10px;border:1px solid #e0dfd8;border-radius:6px;cursor:pointer;margin-left:auto;white-space:nowrap';
+      btn.textContent = '↺ Réinitialiser';
+      btn.onclick = function() { resetFiltres(page); };
+      filterBar.appendChild(btn);
+    }
+  });
+}
+
+// Indicateur de filtres actifs
+function nbFiltresActifs(page) {
+  let n = 0;
+  if (page === 'vehicules') {
+    if ((document.getElementById('v-q')||{}).value) n++;
+    if ((document.getElementById('v-tag')||{}).value) n++;
+    if (_activeChips.size) n += _activeChips.size;
+  } else if (page === 'retards') {
+    if ((document.getElementById('ret-debut')||{}).value) n++;
+    if ((document.getElementById('ret-tag')||{}).value) n++;
+    if ((document.getElementById('ret-q')||{}).value) n++;
+  } else if (page === 'depenses') {
+    if ((document.getElementById('dep-cat')||{}).value) n++;
+    if ((document.getElementById('dep-debut')||{}).value) n++;
+    if ((document.getElementById('dep-q')||{}).value) n++;
+  }
+  return n;
+}
+
+// Initialiser les améliorations visuelles après le démarrage de l'app
+const _origDemarrerApp = demarrerApp;
+demarrerApp = function() {
+  _origDemarrerApp();
+  setTimeout(function() {
+    styleAllSelects();
+    ajouterBoutonsReset();
+  }, 500);
 };
 </script>
 </body>
