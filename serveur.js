@@ -538,6 +538,25 @@ async function handleAPI(req, res, body) {
     db.versements.push(v);saveDB(db);return res.end(JSON.stringify({id:v.id,statut,ecart:attendu-montant,message:'Versement enregistré'}));
   }
   const vsM=p.match(/^\/api\/versements\/([^/]+)$/);
+  // SUPPRIMER un versement
+  const versM=p.match(/^\/api\/versements\/([^/]+)$/);
+  if(versM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const vs=db.versements.find(v=>v.id===versM[1]);
+    if(!vs){res.writeHead(404);return res.end(JSON.stringify({detail:'Versement introuvable'}));}
+    const aff=db.affectations.find(a=>a.id===vs.affectation_id);
+    if(isGest&&aff&&!auth.gest.vehicules_ids.includes(aff.vehicule_id)){
+      res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
+    }
+    db.versements=db.versements.filter(v=>v.id!==versM[1]);
+    db.historique=(db.historique||[]);
+    const vehV=aff?db.vehicules.find(x=>x.id===aff.vehicule_id):null;
+    db.historique.push({id:uid(),type:'versement_supprime',
+      ref_nom:(vehV?vehV.immatriculation:'?')+' '+vs.date_versement+' ('+vs.montant+' F)',
+      auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
+    saveDB(db);return res.end(JSON.stringify({message:'Versement supprimé'}));
+  }
+
   if(vsM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}db.versements=db.versements.filter(v=>v.id!==vsM[1]);saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));}
   if(vsM&&method==='PATCH'){if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.versements.findIndex(v=>v.id===vsM[1]);if(idx!==-1){const at=db.versements[idx].montant_attendu;const m=data.montant!==undefined?Number(data.montant):db.versements[idx].montant;const s=m>=at?'recu':m>0?'partiel':'en_retard';db.versements[idx]={...db.versements[idx],...data,montant:m,statut:s};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
 
