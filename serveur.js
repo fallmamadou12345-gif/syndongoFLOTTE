@@ -116,7 +116,17 @@ function cors(res) {
 function vehsVisibles(db, auth) {
   if (auth.role === 'manager') return db.vehicules;
   if (auth.role === 'proprietaire') return db.vehicules.filter(v => auth.proprio.vehicules_ids.includes(v.id));
-  if (auth.role === 'gestionnaire') return db.vehicules.filter(v => auth.gest.vehicules_ids.includes(v.id));
+  if (auth.role === 'gestionnaire') {
+    const gTags = auth.gest.tags || (auth.gest.tag ? [auth.gest.tag] : []);
+    // Si le gestionnaire a des tags, inclure aussi les véhicules de ces tags
+    if (gTags.length) {
+      const byTag = db.vehicules.filter(v => gTags.includes(v.tag));
+      const byId  = db.vehicules.filter(v => auth.gest.vehicules_ids.includes(v.id));
+      const allIds = new Set([...byTag.map(v=>v.id), ...byId.map(v=>v.id)]);
+      return db.vehicules.filter(v => allIds.has(v.id));
+    }
+    return db.vehicules.filter(v => auth.gest.vehicules_ids.includes(v.id));
+  }
   return [];
 }
 
@@ -144,7 +154,7 @@ async function handleAPI(req, res, body) {
     const pr = db.proprietaires.find(x => x.password === data.password);
     if (pr) return res.end(JSON.stringify({ role:'proprietaire', token:data.password, nom:pr.nom, proprio_id:pr.id }));
     const gt = db.gestionnaires.find(x => x.password === data.password);
-    if (gt) return res.end(JSON.stringify({ role:'gestionnaire', token:data.password, nom:gt.nom, gest_id:gt.id }));
+    if (gt) return res.end(JSON.stringify({ role:'gestionnaire', token:data.password, nom:gt.nom, gest_id:gt.id, tags:gt.tags||[], tag:gt.tag||'', vehicules_ids:gt.vehicules_ids||[] }));
     res.writeHead(401); return res.end(JSON.stringify({ detail:'Mot de passe incorrect' }));
   }
 

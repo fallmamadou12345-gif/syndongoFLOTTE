@@ -824,7 +824,20 @@ tr:hover td{background:#fafaf8}
         </div>
         <div class="form-row">
           <div class="field"><label>Mot de passe *</label><input id="gpwd" placeholder="Ex: gestIbr2026"></div>
-          <div class="field"><label>Propriétaire lié (ses véhicules auto-assignés)</label><select id="gprop"><option value="">— Aucun —</option></select></div>
+          <div class="field"><label>Propriétaire lié (véhicules auto-assignés)</label><select id="gprop"><option value="">— Aucun —</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Tag / Groupe géré <span style="font-size:10px;color:#6b6b67">(tous les véhicules de ce tag seront assignés)</span></label>
+            <select id="gtag"><option value="">— Aucun tag —</option></select>
+          </div>
+          <div class="field">
+            <label>Tags multiples <span style="font-size:10px;color:#6b6b67">(sélection multiple)</span></label>
+            <div id="gtags-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#f5f4f0;border-radius:8px;min-height:36px;border:1px solid #e0dfd8"></div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#6b6b67;margin-bottom:10px;padding:7px 10px;background:#EAF3DE;border-radius:6px">
+          💡 <strong>Priorité :</strong> Tag(s) &gt; Propriétaire lié. Si un tag est sélectionné, tous les véhicules de ce tag seront automatiquement assignés au gestionnaire.
         </div>
         <button class="btn btn-blue" onclick="addGestionnaire(this)">Créer le gestionnaire</button>
       </div>
@@ -926,6 +939,7 @@ const API = window.location.hostname === 'localhost'
   : window.location.origin + '/api';
 
 let TOKEN = '', ROLE = '', USER = '';
+let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'' }; // Infos du gestionnaire connecté
 let allTags = [], allVehs = [], allChaufs = [], allAffs = [];
 
 const fmt = n => Math.round(n || 0).toLocaleString('fr-FR') + ' F';
@@ -1010,6 +1024,12 @@ window.addEventListener('load', async function() {
     if (r.ok) {
       const d = await r.json();
       TOKEN = d.token; ROLE = d.role; USER = d.nom;
+      if (d.role === 'gestionnaire') {
+        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'' };
+      } else {
+        const savedGest = localStorage.getItem('snd_gest');
+        if (savedGest) try { GEST_INFO = JSON.parse(savedGest); } catch(e) {}
+      }
       demarrerApp();
     } else {
       localStorage.removeItem('snd_tk');
@@ -1026,9 +1046,17 @@ function demarrerApp() {
 
   // Badge
   const b = document.getElementById('user-badge');
-  b.textContent = USER;
-  if (ROLE === 'gestionnaire') { b.style.background = '#EEEDFE'; b.style.color = '#3C3489'; }
-  else if (ROLE === 'proprietaire') { b.style.background = '#E6F1FB'; b.style.color = '#0C447C'; }
+  if (ROLE === 'gestionnaire') {
+    var tagsLabel = GEST_INFO.tags && GEST_INFO.tags.length ? ' · ' + GEST_INFO.tags.join(', ') : (GEST_INFO.tag ? ' · ' + GEST_INFO.tag : '');
+    b.textContent = USER + tagsLabel;
+    b.style.background = '#EEEDFE'; b.style.color = '#3C3489';
+    b.title = 'Gestionnaire · Tags : ' + (GEST_INFO.tags.join(', ') || GEST_INFO.tag || 'Aucun tag assigné');
+  } else if (ROLE === 'proprietaire') {
+    b.textContent = USER;
+    b.style.background = '#E6F1FB'; b.style.color = '#0C447C';
+  } else {
+    b.textContent = USER;
+  }
 
   // Nav selon rôle
   const NAVS = {
@@ -1086,7 +1114,15 @@ function demarrerApp() {
 
   // Init
   initPeriodeDash();
-  loadTags().then(function() { initFiltresTags(); });
+  loadTags().then(function() {
+    initFiltresTags();
+    // Pour les gestionnaires : pré-filtrer sur leur tag principal
+    if (ROLE === 'gestionnaire' && (GEST_INFO.tags.length || GEST_INFO.tag)) {
+      var myTag = GEST_INFO.tags.length ? GEST_INFO.tags[0] : GEST_INFO.tag;
+      var dtag = document.getElementById('d-filter-tag');
+      if (dtag && myTag) dtag.value = myTag;
+    }
+  });
   loadDashboard();
   refreshSelects();
 }
@@ -1114,7 +1150,7 @@ function loadPage(id) {
   else if (id === 'alertes') loadAlertes();
   else if (id === 'proprietaires') loadProprietaires();
   else if (id === 'journal') { initJournal(); loadJournal(); }
-  else if (id === 'acces') { loadGestionnaires(); loadProprietaires(); }
+  else if (id === 'acces') { loadGestionnaires(); loadProprietaires(); setTimeout(function(){ initGtagsCheckboxes(); }, 300); }
 }
 
 function rechGlobal(q) {
@@ -1335,23 +1371,34 @@ async function loadTags() {
   if (!Array.isArray(raw)) return;
   // Normaliser : extraire uniquement les strings
   allTags = raw.map(t => (typeof t === 'object' && t !== null) ? (t.nom || String(t)) : String(t)).filter(Boolean);
+  // Restreindre les tags aux tags assignés pour les gestionnaires
+  var tagsVisibles = allTags;
+  if (ROLE === 'gestionnaire') {
+    var myTags = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags : (GEST_INFO.tag ? [GEST_INFO.tag] : []);
+    if (myTags.length) tagsVisibles = allTags.filter(function(t){ return myTags.includes(t); });
+  }
+
   // Mettre à jour tous les selects
   const selects = [
     { id: 'vtag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'gtag', placeholder: '— Aucun tag —', filter: false },
     { id: 'ev-tag', placeholder: '— Aucun tag —', filter: false },
     { id: 'v-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag2', placeholder: 'Tous tags', filter: true },
     { id: 'ret-tag', placeholder: 'Tous tags', filter: true },
     { id: 'gprop-tag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'rp-tag', placeholder: 'Tous tags', filter: true },
   ];
   selects.forEach(function(s) {
     const el = document.getElementById(s.id);
     if (!el) return;
     const cur = el.value;
+    // Gestionnaire : seulement ses tags dans les filtres
+    var optsTags = (ROLE === 'gestionnaire' && s.filter) ? tagsVisibles : allTags;
     el.innerHTML = '<option value="">' + s.placeholder + '</option>' +
-      allTags.map(function(t) { return '<option value="' + esc(t) + '">' + t + '</option>'; }).join('');
-    if (cur && allTags.includes(cur)) el.value = cur;
+      optsTags.map(function(t) { return '<option value="' + esc(t) + '">' + t + '</option>'; }).join('');
+    if (cur && optsTags.includes(cur)) el.value = cur;
   });
   // Rendu liste tags dans la page Véhicules
   renderTagsList();
@@ -2433,7 +2480,10 @@ async function loadGestionnaires() {
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
       '<div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-weight:700;font-size:14px">' + g.nom + '</span>' + pill('Gestionnaire', 'purple') + '</div>' +
       (g.telephone ? '<div style="font-size:12px;color:#6b6b67;margin-bottom:6px">' + g.telephone + '</div>' : '') +
-      (propLie ? '<div style="font-size:12px;margin-bottom:6px;background:#EAF3DE;padding:3px 10px;border-radius:99px;display:inline-block;color:#27500A">Gère les véhicules de : <strong>' + propLie.nom + '</strong></div>' : '<div style="font-size:12px;color:#aaa;margin-bottom:6px">Aucun propriétaire lié</div>') +
+      // Afficher tags assignés
+      (g.tags && g.tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">' + g.tags.map(function(t) { return '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;background:#EEEDFE;color:#3C3489">🏷️ ' + t + '</span>'; }).join('') + '</div>' :
+       (g.tag ? '<div style="margin-bottom:6px">' + pill('🏷️ ' + g.tag, 'purple') + '</div>' : '')) +
+      (propLie ? '<div style="font-size:12px;margin-bottom:6px;background:#EAF3DE;padding:3px 10px;border-radius:99px;display:inline-block;color:#27500A">👤 Gère les véhicules de : <strong>' + propLie.nom + '</strong></div>' : '') +
       '<div style="margin-bottom:6px"><div style="font-size:10px;color:#6b6b67;margin-bottom:3px;font-weight:600">VÉHICULES (' + gvehs.length + ')</div>' +
       (gvehs.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px">' + gvehs.map(function(v) { return '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:#E6F1FB;color:#0C447C">' + v.immatriculation + '</span>'; }).join('') + '</div>' : '<span style="font-size:12px;color:#aaa">Aucun</span>') + '</div>' +
       '<div style="font-size:10px;color:#6b6b67;margin-bottom:3px;font-weight:600">PERMISSIONS</div>' +
@@ -2443,29 +2493,61 @@ async function loadGestionnaires() {
       '<div onclick="navigator.clipboard.writeText(\'' + (g.password || '') + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:12px;background:#f5f4f0;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer" title="Cliquer pour copier">' + (g.password || '—') + ' 📋</div>' +
       '<div style="display:flex;gap:5px;margin-top:4px">' +
       '<button class="btn-sm" style="background:#EEEDFE;color:#3C3489" onclick="assignerVehGest(\'' + g.id + '\',\'' + g.nom + '\')">Véhicules</button>' +
+      '<button class="btn-sm" style="background:#EEEDFE;color:#3C3489" onclick="editerTagsGest(\'' + g.id + '\',\'' + g.nom + '\')">🏷️ Tags</button>' +
+      '<button class="btn-sm" style="background:#FAEEDA;color:#633806" onclick="syncTagsGest(\'' + g.id + '\')">Sync tags</button>' +
       '<button class="btn-sm" style="background:#FAEEDA;color:#633806" onclick="syncGest(\'' + g.id + '\',\'' + (g.proprio_id || '') + '\')">Sync proprio</button>' +
       '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delGest(\'' + g.id + '\',\'' + g.nom + '\')">Suppr.</button></div></div></div></div>';
   }).join('');
 }
 
 async function addGestionnaire(btn) {
-  const nom = document.getElementById('gnom').value.trim(), pwd = document.getElementById('gpwd').value.trim();
+  const nom = document.getElementById('gnom').value.trim();
+  const pwd = document.getElementById('gpwd').value.trim();
   if (!nom || !pwd) { toast('Nom et mot de passe obligatoires', 'err'); return; }
+
   const proprio_id = document.getElementById('gprop').value;
+  // Tags sélectionnés (multi)
+  const tagsSelectionnes = Array.from(document.querySelectorAll('#gtags-checkboxes input:checked')).map(function(cb){ return cb.value; });
+  // Tag unique (select simple) — priorité si sélectionné
+  const tagUnique = (document.getElementById('gtag') || {}).value || '';
+  const tagsFinaux = tagsSelectionnes.length ? tagsSelectionnes : (tagUnique ? [tagUnique] : []);
+
   let vehicules_ids = [];
-  if (proprio_id) {
-    let props = await api('GET', '/proprietaires');
-    if (!Array.isArray(props)) props = [];
-    const prop = props.find(function(p) { return p.id === proprio_id; });
-    if (prop) vehicules_ids = prop.vehicules_ids || [];
-    toast(vehicules_ids.length + ' véhicule(s) du propriétaire auto-assignés', 'info');
+  const vehs = await api('GET', '/vehicules');
+
+  // Assigner par tags
+  if (tagsFinaux.length) {
+    tagsFinaux.forEach(function(tag) {
+      var vehsTag = Array.isArray(vehs) ? vehs.filter(function(v){ return v.tag === tag; }) : [];
+      vehsTag.forEach(function(v){ if (!vehicules_ids.includes(v.id)) vehicules_ids.push(v.id); });
+    });
+    toast(vehicules_ids.length + ' véhicule(s) des tags sélectionnés assignés', 'info');
+  } else if (proprio_id) {
+    // Assigner par propriétaire
+    const props = await api('GET', '/proprietaires');
+    if (Array.isArray(props)) {
+      const prop = props.find(function(p){ return p.id === proprio_id; });
+      if (prop) vehicules_ids = prop.vehicules_ids || [];
+    }
+    toast(vehicules_ids.length + ' véhicule(s) du propriétaire assignés', 'info');
   }
+
   setBtnLoad(btn, true);
-  const r = await api('POST', '/gestionnaires', { nom: nom, telephone: document.getElementById('gtel').value, password: pwd, proprio_id: proprio_id || null, vehicules_ids: vehicules_ids });
+  const r = await api('POST', '/gestionnaires', {
+    nom: nom,
+    telephone: document.getElementById('gtel').value,
+    password: pwd,
+    proprio_id: proprio_id || null,
+    tags: tagsFinaux,
+    tag: tagsFinaux[0] || '',
+    vehicules_ids: vehicules_ids
+  });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
-  toast('Gestionnaire ' + nom + ' créé — mot de passe : ' + pwd);
+  toast('✅ Gestionnaire ' + nom + ' créé' + (vehicules_ids.length ? ' — ' + vehicules_ids.length + ' véhicule(s)' : ''));
   ['gnom', 'gtel', 'gpwd'].forEach(function(id) { document.getElementById(id).value = ''; });
+  var gtag = document.getElementById('gtag'); if (gtag) gtag.value = '';
+  document.querySelectorAll('#gtags-checkboxes input:checked').forEach(function(cb){ cb.checked = false; });
   loadGestionnaires();
 }
 
@@ -4641,6 +4723,112 @@ loadPage = function(id) {
   }
   _origLoadPage2(id);
 };
+
+// ─── GESTION TAGS GESTIONNAIRES ──────────────────────────────────────────
+
+// Éditer les tags d'un gestionnaire via modale
+async function editerTagsGest(gid, gnom) {
+  var gests = await api('GET', '/gestionnaires');
+  var vehs  = await api('GET', '/vehicules');
+  if (!Array.isArray(gests)) return;
+  var gest = gests.find(function(g){ return g.id === gid; });
+  if (!gest) return;
+
+  var currentTags = gest.tags || (gest.tag ? [gest.tag] : []);
+
+  // Créer une modale inline
+  var existing = document.getElementById('m-tags-gest');
+  if (existing) existing.remove();
+
+  var mo = document.createElement('div');
+  mo.id = 'm-tags-gest';
+  mo.className = 'modal-bg';
+  mo.style.zIndex = '1200';
+  mo.innerHTML =
+    '<div class="modal" style="max-width:480px">' +
+      '<div class="modal-head">' +
+        '<div class="modal-title">🏷️ Tags de ' + gnom + '</div>' +
+        '<button class="modal-close" onclick="var m=document.getElementById(&quot;m-tags-gest&quot;);if(m)m.remove()">×</button>' +
+      '</div>' +
+      '<div style="padding:4px 0 12px">' +
+        '<div style="font-size:12px;color:#6b6b67;margin-bottom:10px">Sélectionnez le ou les tags que gère ce gestionnaire. Tous les véhicules de ces tags lui seront assignés.</div>' +
+        '<div id="tg-list" style="display:flex;flex-direction:column;gap:6px">' +
+          allTags.map(function(t) {
+            var nbVehs = Array.isArray(vehs) ? vehs.filter(function(v){ return v.tag===t; }).length : 0;
+            var isChecked = currentTags.includes(t);
+            return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:' + (isChecked?'#EEEDFE':'#f9f9f9') + ';border:1px solid ' + (isChecked?'#3C3489':'#e0dfd8') + ';border-radius:8px;cursor:pointer;transition:all .15s">' +
+              '<input type="checkbox" value="' + t + '"' + (isChecked?' checked':'') + ' style="width:16px;height:16px">' +
+              '<div style="flex:1"><div style="font-weight:600">' + t + '</div><div style="font-size:11px;color:#6b6b67">' + nbVehs + ' véhicule(s)</div></div>' +
+              '</label>';
+          }).join('') +
+        '</div>' +
+        '<button class="btn btn-blue" style="width:100%;margin-top:14px" onclick="sauverTagsGest(this.dataset.gid)" data-gid="' + gid + '">✓ Sauvegarder</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(mo);
+  mo.style.display = 'flex';
+  mo.addEventListener('click', function(e){ if (e.target === mo) mo.remove(); });
+}
+
+async function sauverTagsGest(gid) {
+  var checks = document.querySelectorAll('#tg-list input:checked');
+  var tags = Array.from(checks).map(function(cb){ return cb.value; });
+
+  // Récupérer les véhicules de ces tags
+  var vehs = await api('GET', '/vehicules');
+  var vehicules_ids = [];
+  tags.forEach(function(tag) {
+    (Array.isArray(vehs) ? vehs : []).filter(function(v){ return v.tag===tag; }).forEach(function(v){
+      if (!vehicules_ids.includes(v.id)) vehicules_ids.push(v.id);
+    });
+  });
+
+  await api('PATCH', '/gestionnaires/' + gid, {
+    tags: tags,
+    tag: tags[0] || '',
+    vehicules_ids: vehicules_ids
+  });
+
+  document.getElementById('m-tags-gest').remove();
+  toast('✅ ' + tags.length + ' tag(s) assigné(s) — ' + vehicules_ids.length + ' véhicule(s)');
+  loadGestionnaires();
+}
+
+// Synchroniser les véhicules d'un gestionnaire selon ses tags
+async function syncTagsGest(gid) {
+  var gests = await api('GET', '/gestionnaires');
+  var gest = Array.isArray(gests) ? gests.find(function(g){ return g.id===gid; }) : null;
+  if (!gest) { toast('Gestionnaire introuvable', 'err'); return; }
+
+  var tags = gest.tags || (gest.tag ? [gest.tag] : []);
+  if (!tags.length) { toast('Aucun tag assigné à ce gestionnaire', 'err'); return; }
+
+  var vehs = await api('GET', '/vehicules');
+  var vehicules_ids = [];
+  tags.forEach(function(tag) {
+    (Array.isArray(vehs) ? vehs : []).filter(function(v){ return v.tag===tag; }).forEach(function(v){
+      if (!vehicules_ids.includes(v.id)) vehicules_ids.push(v.id);
+    });
+  });
+
+  await api('PATCH', '/gestionnaires/' + gid, { vehicules_ids: vehicules_ids });
+  toast('✅ Synchronisé — ' + vehicules_ids.length + ' véhicule(s) pour les tags : ' + tags.join(', '));
+  loadGestionnaires();
+}
+
+// Initialiser les checkboxes tags dans le formulaire gestionnaire
+async function initGtagsCheckboxes() {
+  var el = document.getElementById('gtags-checkboxes');
+  if (!el) return;
+  var vehs = await api('GET', '/vehicules');
+  el.innerHTML = allTags.map(function(t) {
+    var nb = Array.isArray(vehs) ? vehs.filter(function(v){ return v.tag===t; }).length : 0;
+    return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#fff;border:1px solid #e0dfd8;border-radius:99px;cursor:pointer;font-size:12px">' +
+      '<input type="checkbox" value="' + t + '" style="width:13px;height:13px">' +
+      '<span>' + t + ' <span style="color:#6b6b67;font-size:10px">(' + nb + ')</span></span>' +
+      '</label>';
+  }).join('');
+}
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
