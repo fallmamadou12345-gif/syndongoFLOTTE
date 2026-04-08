@@ -508,7 +508,8 @@ tr:hover td{background:#fafaf8}
 
     <!-- CAISSE & FACTURATION -->
     <div class="page" id="page-caisse">
-      <!-- Saisie multiple rapide -->
+
+      <!-- Saisie rapide multiple (en-tête) -->
       <div class="card" style="border-top:3px solid #8B5CF6;margin-bottom:12px">
         <div class="card-title">
           ⚡ Saisie rapide multiple
@@ -531,6 +532,8 @@ tr:hover td{background:#fafaf8}
           Valider la saisie multiple
         </button>
       </div>
+
+      <!-- Formulaires Facturation + Encaissement côte à côte -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card" style="border-top:3px solid #185FA5">
           <div class="card-title">Facturation J-1</div>
@@ -584,27 +587,46 @@ tr:hover td{background:#fafaf8}
           <button class="btn btn-green" style="width:100%" onclick="validerEnc(this)">Enregistrer l'encaissement</button>
         </div>
       </div>
+
+      <!-- Historique unifié avec onglets -->
       <div class="card">
         <div class="card-title">
-          Historique facturations
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <div class="ac-wrap" style="min-width:180px">
-              <input id="ff-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px" oninput="loadFac()">
-            </div>
-            <select id="ff-veh" style="font-size:12px;width:150px" onchange="loadFac()"><option value="">Tous véhicules</option></select>
-            <input type="date" id="ff-debut" style="font-size:12px;width:130px" onchange="loadFac()">
-            <span style="font-size:11px;color:#6b6b67">au</span>
-            <input type="date" id="ff-fin" style="font-size:12px;width:130px" onchange="loadFac()">
-            <select id="ff-type" style="font-size:12px;width:130px" onchange="loadFac()">
-              <option value="">Tous types</option>
-              <option value="complet">Complète</option>
-              <option value="demi_panne">Demi-panne</option>
-              <option value="repos">Repos</option>
-              <option value="inactif">Inactif</option>
-            </select>
+          Historique
+          <!-- Onglets -->
+          <div style="display:flex;gap:0;border:1px solid #e0dfd8;border-radius:8px;overflow:hidden;background:#f5f4f0">
+            <button id="tab-fac-btn" onclick="switchCaisseTab('fac')"
+              style="font-size:12px;padding:5px 14px;border:none;cursor:pointer;font-weight:700;background:#185FA5;color:#fff;border-radius:0">
+              📋 Facturations
+            </button>
+            <button id="tab-enc-btn" onclick="switchCaisseTab('enc')"
+              style="font-size:12px;padding:5px 14px;border:none;cursor:pointer;font-weight:600;background:transparent;color:#6b6b67;border-radius:0">
+              💵 Encaissements
+            </button>
+            <button id="tab-bilan-btn" onclick="switchCaisseTab('bilan')"
+              style="font-size:12px;padding:5px 14px;border:none;cursor:pointer;font-weight:600;background:transparent;color:#6b6b67;border-radius:0">
+              📊 Bilan
+            </button>
           </div>
         </div>
-        <div id="t-fac"><div class="empty">Aucune facturation</div></div>
+
+        <!-- Filtres communs -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #f0efeb">
+          <input id="hist-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px;width:200px" oninput="loadCaisseTab()">
+          <select id="hist-veh" style="font-size:12px;width:160px" onchange="loadCaisseTab()"><option value="">Tous véhicules</option></select>
+          <input type="date" id="hist-debut" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
+          <span style="font-size:11px;color:#6b6b67">au</span>
+          <input type="date" id="hist-fin" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
+          <select id="hist-type-fac" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
+            <option value="">Tous types</option>
+            <option value="complet">Complète</option>
+            <option value="demi_panne">Demi-panne</option>
+            <option value="repos">Repos</option>
+            <option value="inactif">Inactif</option>
+          </select>
+        </div>
+
+        <!-- Contenu de l'onglet actif -->
+        <div id="caisse-tab-content"><div class="empty">Chargement…</div></div>
       </div>
     </div>
 
@@ -5805,6 +5827,251 @@ demarrerApp = function() {
   // Afficher indicateur sync
   var si = document.getElementById('sync-indicator');
   if (si) si.style.display = 'flex';
+};
+
+// ═══════════════════════════════════════════════════════
+// CAISSE UNIFIÉE — Onglets Facturations / Encaissements / Bilan
+// ═══════════════════════════════════════════════════════
+
+var _caisseTab = 'fac'; // onglet actif
+
+function switchCaisseTab(tab) {
+  _caisseTab = tab;
+  // Mettre à jour les onglets
+  var tabs = { fac: 'tab-fac-btn', enc: 'tab-enc-btn', bilan: 'tab-bilan-btn' };
+  var labels = { fac: '📋 Facturations', enc: '💵 Encaissements', bilan: '📊 Bilan' };
+  Object.keys(tabs).forEach(function(t) {
+    var btn = document.getElementById(tabs[t]);
+    if (!btn) return;
+    if (t === tab) {
+      btn.style.background = t === 'fac' ? '#185FA5' : t === 'enc' ? '#3B6D11' : '#8B5CF6';
+      btn.style.color = '#fff';
+      btn.style.fontWeight = '700';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = '#6b6b67';
+      btn.style.fontWeight = '600';
+    }
+  });
+  // Afficher/cacher le filtre type (seulement pour facturations)
+  var ftEl = document.getElementById('hist-type-fac');
+  if (ftEl) ftEl.style.display = tab === 'fac' ? 'block' : 'none';
+  loadCaisseTab();
+}
+
+async function loadCaisseTab() {
+  if (_caisseTab === 'fac') await loadFac();
+  else if (_caisseTab === 'enc') await loadEncaissements();
+  else await loadBilanCaisse();
+}
+
+// ── Historique Facturations (nouveau rendu dans caisse-tab-content) ────
+const _origLoadFac2 = loadFac;
+loadFac = async function() {
+  if (_caisseTab !== 'fac' && document.getElementById('caisse-tab-content')) {
+    // Si on est sur un autre onglet, ne pas rafraîchir t-fac
+    return;
+  }
+  const vid = (document.getElementById('hist-veh') || document.getElementById('ff-veh') || {}).value || '';
+  const ffQ = ((document.getElementById('hist-q') || document.getElementById('ff-q') || {}).value || '').toLowerCase();
+  const ffDebut = (document.getElementById('hist-debut') || document.getElementById('ff-debut') || {}).value || '';
+  const ffFin   = (document.getElementById('hist-fin')   || document.getElementById('ff-fin')   || {}).value || '';
+  const ffType  = (document.getElementById('hist-type-fac') || document.getElementById('ff-type') || {}).value || '';
+
+  let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
+  if (!Array.isArray(list)) list = [];
+  if (ffQ)     list = list.filter(function(f){ return (f.vehicule||'').toLowerCase().includes(ffQ)||(f.chauffeur||'').toLowerCase().includes(ffQ); });
+  if (ffDebut) list = list.filter(function(f){ return f.date >= ffDebut; });
+  if (ffFin)   list = list.filter(function(f){ return f.date <= ffFin; });
+  if (ffType)  list = list.filter(function(f){ return f.type_journee === ffType; });
+
+  // Cibler soit t-fac (ancienne page) soit caisse-tab-content (nouvelle)
+  var tabEl = document.getElementById('caisse-tab-content');
+  var el = tabEl && _caisseTab === 'fac' ? tabEl : (document.getElementById('t-fac') || tabEl);
+  if (!el) return;
+
+  const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation sur cette période</div>'; return; }
+
+  const labels = { complet:'Journée complète', demi_panne:'Demi-panne', repos:'Repos', inactif:'Inactif' };
+  const totFac = list.reduce(function(s,f){ return s+(f.montant_facture||0); },0);
+
+  const resume = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;margin-bottom:8px">' +
+    '<span style="font-size:12px;color:#6b6b67">' + list.length + ' facturation(s)</span>' +
+    '<span style="font-size:14px;font-weight:800;color:#185FA5">' + fmt(totFac) + '</span></div>';
+
+  const rows = list.map(function(f) {
+    const typePill = pill(labels[f.type_journee]||f.type_journee, f.type_journee==='complet'?'ok':f.type_journee==='demi_panne'?'warn':'gray');
+    const actionsCol = isM ? '<td style="display:flex;gap:4px">' +
+      '<button class="btn-sm" style="background:#FAEEDA;color:#633806;padding:4px 9px" ' +
+        'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
+        'data-type="' + f.type_journee + '" data-montant="' + f.montant_facture + '" ' +
+        'onclick="editFacFromBtn(this)">✏️</button>' +
+      '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;padding:4px 9px" ' +
+        'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
+        'onclick="delFacFromBtn(this)">🗑️</button></td>' : '';
+    return '<tr style="border-bottom:1px solid #f5f4f0">' +
+      '<td style="color:#6b6b67;white-space:nowrap">' + f.date + '</td>' +
+      '<td><strong style="color:#185FA5">' + f.vehicule + '</strong></td>' +
+      '<td style="font-size:12px">' + f.chauffeur + '</td>' +
+      '<td>' + typePill + '</td>' +
+      '<td style="text-align:right;font-weight:700;color:' + (f.montant_facture>0?'#185FA5':'#aaa') + '">' + fmt(f.montant_facture) + '</td>' +
+      actionsCol + '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div style="overflow-x:auto">' + resume +
+    '<table><thead><tr>' +
+    '<th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th>' +
+    '<th style="text-align:right">Montant</th>' + (isM ? '<th></th>' : '') +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+};
+
+// ── Historique Encaissements ──────────────────────────────────────────
+async function loadEncaissements() {
+  var el = document.getElementById('caisse-tab-content');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">Chargement…</div>';
+
+  const ffQ     = ((document.getElementById('hist-q')||{}).value||'').toLowerCase();
+  const ffDebut = (document.getElementById('hist-debut')||{}).value||'';
+  const ffFin   = (document.getElementById('hist-fin')||{}).value||'';
+  const vid     = (document.getElementById('hist-veh')||{}).value||'';
+
+  let list = await api('GET', '/versements' + (ffDebut&&ffFin ? '?date_debut='+ffDebut+'&date_fin='+ffFin : ''));
+  if (!Array.isArray(list)) list = [];
+  if (ffQ) list = list.filter(function(v){ return (v.vehicule||'').toLowerCase().includes(ffQ)||(v.chauffeur||'').toLowerCase().includes(ffQ); });
+  if (vid) list = list.filter(function(v){ return v.vehicule === vid || (v.vehicule_id && v.vehicule_id === vid); });
+
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucun encaissement sur cette période</div>'; return; }
+
+  const totEnc = list.reduce(function(s,v){ return s+v.montant; },0);
+  const resume = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;margin-bottom:8px">' +
+    '<span style="font-size:12px;color:#6b6b67">' + list.length + ' encaissement(s)</span>' +
+    '<span style="font-size:14px;font-weight:800;color:#3B6D11">' + fmt(totEnc) + '</span></div>';
+
+  const modeLabels = { especes:'Espèces', wave:'Wave', orange_money:'Orange Money', virement:'Virement' };
+  const rows = list.map(function(v) {
+    const statutColor = v.statut==='recu'?'#3B6D11':v.statut==='partiel'?'#BA7517':'#A32D2D';
+    return '<tr style="border-bottom:1px solid #f5f4f0">' +
+      '<td style="color:#6b6b67;white-space:nowrap">' + v.date_versement + '</td>' +
+      '<td><strong style="color:#3B6D11">' + (v.vehicule||'?') + '</strong></td>' +
+      '<td style="font-size:12px">' + (v.chauffeur||'?') + '</td>' +
+      '<td style="font-size:11px">' + (modeLabels[v.mode_paiement]||v.mode_paiement||'—') + '</td>' +
+      '<td style="text-align:right;font-weight:700;color:#3B6D11">' + fmt(v.montant) + '</td>' +
+      '<td>' + pill(v.statut||'—', v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div style="overflow-x:auto">' + resume +
+    '<table><thead><tr>' +
+    '<th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Mode</th>' +
+    '<th style="text-align:right">Montant</th><th>Statut</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// ── Bilan combiné Facturations + Encaissements par véhicule ──────────
+async function loadBilanCaisse() {
+  var el = document.getElementById('caisse-tab-content');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">Chargement…</div>';
+
+  const ffDebut = (document.getElementById('hist-debut')||{}).value||'';
+  const ffFin   = (document.getElementById('hist-fin')||{}).value||'';
+
+  const [vehs, affs, vers, facs] = await Promise.all([
+    api('GET', '/vehicules'),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/facturations')
+  ]);
+  if (!Array.isArray(vehs)) return;
+
+  const facsF = ffDebut&&ffFin ? facs.filter(function(f){return f.date>=ffDebut&&f.date<=ffFin;}) : facs;
+  const versF = ffDebut&&ffFin ? vers.filter(function(v){return v.date_versement>=ffDebut&&v.date_versement<=ffFin;}) : vers;
+
+  const bilan = vehs.map(function(v) {
+    const vAffs = (affs||[]).filter(function(a){return a.vehicule_id===v.id;});
+    const vAffIds = vAffs.map(function(a){return a.id;});
+    const vFacsPer = (facsF||[]).filter(function(f){return f.vehicule_id===v.id;});
+    const vFacsAll = (facs||[]).filter(function(f){return f.vehicule_id===v.id;});
+    const vVersAll = (vers||[]).filter(function(vs){return vAffIds.includes(vs.affectation_id);});
+    const fac = vFacsPer.reduce(function(s,f){return s+(f.montant_facture||0);},0);
+    if (fac === 0) return null;
+    const imp = imputerVersements(vFacsAll, vVersAll, vFacsPer.map(function(f){return f.id;}), vAffIds);
+    const aff = vAffs.find(function(a){return !a.date_fin;});
+    return { id:v.id, immat:v.immatriculation, marque:v.marque, tag:v.tag||'', chauffeur:aff?aff.chauffeur:'—', fac, enc:imp.encImpute, ret:imp.retard };
+  }).filter(Boolean).sort(function(a,b){return b.ret-a.ret;});
+
+  if (!bilan.length) { el.innerHTML = '<div class="empty">Aucune donnée sur cette période</div>'; return; }
+
+  const totFac = bilan.reduce(function(s,r){return s+r.fac;},0);
+  const totEnc = bilan.reduce(function(s,r){return s+r.enc;},0);
+  const totRet = bilan.reduce(function(s,r){return s+r.ret;},0);
+
+  const rows = bilan.map(function(r) {
+    const pct = r.fac>0 ? Math.round(r.enc/r.fac*100) : 0;
+    const retCol = r.ret>0
+      ? '<td style="color:#A32D2D;font-weight:700;text-align:right">' + fmt(r.ret) + '</td>'
+      : '<td style="color:#3B6D11;text-align:right">✓</td>';
+    return '<tr onclick="ouvrirFicheVeh(this.dataset.id)" data-id="' + r.id + '" style="cursor:pointer">' +
+      '<td><strong style="color:#185FA5">' + r.immat + '</strong> <span style="color:#6b6b67;font-size:11px">' + r.marque + '</span>' + (r.tag?' '+pill(r.tag,'purple'):'') + '</td>' +
+      '<td style="font-size:12px">' + r.chauffeur + '</td>' +
+      '<td style="color:#185FA5;font-weight:600;text-align:right">' + fmt(r.fac) + '</td>' +
+      '<td style="color:#3B6D11;font-weight:600;text-align:right">' + fmt(r.enc) + '</td>' +
+      retCol +
+      '<td style="text-align:center">' + pill(pct+'%', pct>=90?'ok':pct>=70?'warn':'err') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  const totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
+    '<td colspan="2">TOTAL (' + bilan.length + ' véhicules)</td>' +
+    '<td style="color:#185FA5;text-align:right">' + fmt(totFac) + '</td>' +
+    '<td style="color:#3B6D11;text-align:right">' + fmt(totEnc) + '</td>' +
+    '<td style="color:' + (totRet>0?'#A32D2D':'#3B6D11') + ';text-align:right;font-weight:800">' + (totRet>0?fmt(totRet):'✓') + '</td>' +
+    '<td style="text-align:center">' + (totFac>0?Math.round(totEnc/totFac*100)+'%':'—') + '</td>' +
+  '</tr>';
+
+  el.innerHTML = '<div style="overflow-x:auto"><table>' +
+    '<thead><tr><th>Véhicule</th><th>Chauffeur</th>' +
+    '<th style="text-align:right;color:#185FA5">Facturé</th>' +
+    '<th style="text-align:right;color:#3B6D11">Encaissé</th>' +
+    '<th style="text-align:right;color:#A32D2D">Retard</th>' +
+    '<th style="text-align:center">Taux</th></tr></thead>' +
+    '<tbody>' + rows + totRow + '</tbody></table></div>';
+}
+
+// ── Syncer les anciens IDs de filtres vers les nouveaux ───────────────
+// Les ff-debut, ff-fin etc. pointent maintenant vers hist-debut, hist-fin
+function syncFiltresCaisse() {
+  var vehEl = document.getElementById('hist-veh');
+  var fvEl = document.getElementById('ff-veh');
+  if (vehEl && fvEl && !vehEl.options.length) {
+    // Copier les options de ff-veh vers hist-veh
+    vehEl.innerHTML = fvEl.innerHTML;
+  }
+}
+
+// Surcharge loadPage caisse
+var _origLoadPage4 = loadPage;
+loadPage = function(id) {
+  if (id === 'caisse') {
+    var hier = new Date(); hier.setDate(hier.getDate()-1);
+    var fd = document.getElementById('fd'); if (fd && !fd.value) fd.value = hier.toISOString().split('T')[0];
+    var smDate = document.getElementById('sm-date'); if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
+    // Initialiser les dates du filtre historique
+    var hd = document.getElementById('hist-debut');
+    var hf = document.getElementById('hist-fin');
+    if (hd && !hd.value) { var d30=new Date(); d30.setDate(d30.getDate()-30); hd.value=d30.toISOString().split('T')[0]; }
+    if (hf && !hf.value) { hf.value = new Date().toISOString().split('T')[0]; }
+    refreshSelects();
+    setTimeout(function() {
+      syncFiltresCaisse();
+      initSaisieMultiple();
+      switchCaisseTab('fac');
+    }, 200);
+    return;
+  }
+  _origLoadPage4(id);
 };
 </script>
 
