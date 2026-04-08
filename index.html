@@ -754,6 +754,65 @@ tr:hover td{background:#fafaf8}
 
 
 
+
+    <!-- CONTRÔLE & ANOMALIES -->
+    <div class="page" id="page-controle">
+
+      <!-- Barre d'action -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;margin:0">🔍 Contrôle des écarts</h2>
+          <div style="font-size:12px;color:#6b6b67;margin-top:2px">Détection automatique des anomalies de facturation et d'encaissement</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-blue" id="btn-analyse" onclick="lancerAnalyse(this)">
+            🔍 Analyser tout
+          </button>
+          <button class="btn btn-gray" onclick="exportAnomaliesCSV()" id="btn-export-anom" style="display:none">
+            📊 Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Filtres -->
+      <div class="filter-bar" style="margin-bottom:12px">
+        <label>Afficher :</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="chip inactive" id="anom-chip-tous" onclick="filtrerAnomalies('tous')">Tout</button>
+          <button class="chip inactive" id="anom-chip-doublon" onclick="filtrerAnomalies('doublon')">🔴 Doublons</button>
+          <button class="chip inactive" id="anom-chip-ecart" onclick="filtrerAnomalies('ecart')">🟠 Écarts</button>
+          <button class="chip inactive" id="anom-chip-zero" onclick="filtrerAnomalies('zero')">🟡 Montants 0</button>
+          <button class="chip inactive" id="anom-chip-survers" onclick="filtrerAnomalies('survers')">🔵 Sur-versements</button>
+          <button class="chip inactive" id="anom-chip-orphelin" onclick="filtrerAnomalies('orphelin')">⚪ Orphelins</button>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <input id="anom-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px;width:180px" oninput="filtrerAnomalies()">
+        </div>
+      </div>
+
+      <!-- Résumé -->
+      <div id="controle-resume" style="display:none;margin-bottom:12px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+          <div class="kpi-stat red"><div class="kpi-label">Doublons</div><div class="kpi-val" id="nb-doublon" style="color:#A32D2D">0</div></div>
+          <div class="kpi-stat orange" style="--c:#BA7517"><div class="kpi-label">Écarts</div><div class="kpi-val" id="nb-ecart" style="color:#BA7517">0</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #EAB308"><div class="kpi-label">Montants 0</div><div class="kpi-val" id="nb-zero" style="color:#B45309">0</div></div>
+          <div class="kpi-stat blue"><div class="kpi-label">Sur-versements</div><div class="kpi-val" id="nb-survers" style="color:#185FA5">0</div></div>
+          <div class="kpi-stat gray"><div class="kpi-label">Orphelins</div><div class="kpi-val" id="nb-orphelin" style="color:#444">0</div></div>
+        </div>
+      </div>
+
+      <!-- Liste des anomalies -->
+      <div class="card">
+        <div id="controle-content">
+          <div style="text-align:center;padding:40px;color:#6b6b67">
+            <div style="font-size:32px;margin-bottom:12px">🔍</div>
+            <div style="font-size:14px;font-weight:600;margin-bottom:6px">Cliquez sur "Analyser tout" pour détecter les anomalies</div>
+            <div style="font-size:12px">Le système va vérifier les doublons, écarts, montants suspects et orphelins</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- RAPPORTS -->
     <div class="page" id="page-rapports">
       <!-- Filtres rapports -->
@@ -1227,6 +1286,7 @@ function demarrerApp() {
       { id: 'depenses', label: 'Dépenses' },
       { id: 'alertes', label: 'Alertes' },
       { id: 'rapports', label: 'Rapports' },
+      { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
       { id: 'journal', label: 'Journal' },
       { id: 'proprietaires', label: 'Propriétaires' },
@@ -1241,6 +1301,7 @@ function demarrerApp() {
       { id: 'retards', label: 'Retards' },
       { id: 'depenses', label: 'Dépenses' },
       { id: 'rapports', label: 'Rapports' },
+      { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
       { id: 'journal', label: 'Journal' },
       { id: 'proprietaires', label: 'Mes Propriétaires' }
@@ -6179,6 +6240,294 @@ function bilanFicheHTML(totFac, totEnc, retard, marge, taux) {
     '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:'+(marge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(marge)+'</div><div style="font-size:10px;color:#6b6b67;text-transform:uppercase">Marge</div></div>' +
     '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:'+(taux>=90?'#3B6D11':taux>=70?'#BA7517':'#A32D2D')+'">'+taux+'%</div><div style="font-size:10px;color:#6b6b67;text-transform:uppercase">Taux</div></div>' +
     '</div>';
+}
+
+// ═══════════════════════════════════════════════════════
+// CONTRÔLE & ANOMALIES — Détection et correction
+// ═══════════════════════════════════════════════════════
+
+var _toutesAnomalies = [];
+var _anomFiltreType = 'tous';
+
+async function lancerAnalyse(btn) {
+  setBtnLoad(btn, true);
+  var el = document.getElementById('controle-content');
+  if (el) el.innerHTML = '<div class="empty">🔍 Analyse en cours…</div>';
+
+  var [vehs, affs, vers, facs] = await Promise.all([
+    api('GET', '/vehicules'),
+    api('GET', '/affectations'),
+    api('GET', '/versements'),
+    api('GET', '/facturations')
+  ]);
+  if (!Array.isArray(vehs)) vehs = [];
+  if (!Array.isArray(affs)) affs = [];
+  if (!Array.isArray(vers)) vers = [];
+  if (!Array.isArray(facs)) facs = [];
+
+  _toutesAnomalies = [];
+
+  // ────────────────────────────────────────────────────
+  // TYPE 1 : DOUBLONS — même véhicule, même date, facturé 2×
+  // ────────────────────────────────────────────────────
+  var facGroups = {};
+  facs.forEach(function(f) {
+    var key = f.vehicule_id + '_' + f.date;
+    if (!facGroups[key]) facGroups[key] = [];
+    facGroups[key].push(f);
+  });
+  Object.keys(facGroups).forEach(function(key) {
+    var group = facGroups[key];
+    if (group.length > 1) {
+      var v = vehs.find(function(x){ return x.id === group[0].vehicule_id; });
+      _toutesAnomalies.push({
+        type: 'doublon',
+        sévérité: 'danger',
+        icon: '🔴',
+        titre: 'Doublon de facturation',
+        desc: 'Le véhicule <strong>' + (v?v.immatriculation:'?') + '</strong> est facturé ' + group.length + 'x le <strong>' + group[0].date + '</strong>',
+        details: group.map(function(f){ return f.id + ' : ' + fmt(f.montant_facture) + ' (' + f.type_journee + ')'; }).join(' | '),
+        vehicule_id: group[0].vehicule_id,
+        vehicule: v ? v.immatriculation : '?',
+        date: group[0].date,
+        ids: group.map(function(f){ return f.id; }),
+        montants: group.map(function(f){ return f.montant_facture; }),
+        actions: [
+          { label: 'Garder la 1ère, supprimer les autres', fn: 'corrigerDoublon', args: [group.slice(1).map(function(f){return f.id;}).join(',')] },
+          { label: 'Voir le véhicule', fn: 'ouvrirFicheVeh', args: [group[0].vehicule_id] }
+        ]
+      });
+    }
+  });
+
+  // ────────────────────────────────────────────────────
+  // TYPE 2 : MONTANT 0 — facturé 0 sur une journée complète
+  // ────────────────────────────────────────────────────
+  facs.filter(function(f){ return f.type_journee === 'complet' && (f.montant_facture === 0 || !f.montant_facture); }).forEach(function(f) {
+    var v = vehs.find(function(x){ return x.id === f.vehicule_id; });
+    var aff = affs.find(function(a){ return a.vehicule_id === f.vehicule_id && !a.date_fin; });
+    _toutesAnomalies.push({
+      type: 'zero',
+      sévérité: 'warn',
+      icon: '🟡',
+      titre: 'Facturation complète à 0 F',
+      desc: '<strong>' + (v?v.immatriculation:'?') + '</strong> — journée complète facturée 0 F le ' + f.date,
+      details: 'Montant attendu : ' + fmt(aff ? aff.montant_journalier : 0),
+      vehicule_id: f.vehicule_id,
+      vehicule: v ? v.immatriculation : '?',
+      date: f.date,
+      fac_id: f.id,
+      montant_attendu: aff ? aff.montant_journalier : 0,
+      actions: [
+        { label: 'Corriger le montant → ' + fmt(aff ? aff.montant_journalier : 0), fn: 'corrigerMontantFac', args: [f.id, aff ? aff.montant_journalier : 0] },
+        { label: 'Supprimer cette facturation', fn: 'delFacById', args: [f.id] }
+      ]
+    });
+  });
+
+  // ────────────────────────────────────────────────────
+  // TYPE 3 : ÉCART IMPORTANT — montant ≠ tarif journalier
+  // ────────────────────────────────────────────────────
+  facs.filter(function(f){ return f.type_journee === 'complet' && f.montant_facture > 0; }).forEach(function(f) {
+    var v = vehs.find(function(x){ return x.id === f.vehicule_id; });
+    var aff = affs.find(function(a){ return a.vehicule_id === f.vehicule_id && !a.date_fin; });
+    if (!aff) return;
+    var attendu = aff.montant_journalier;
+    var ecart = Math.abs(f.montant_facture - attendu);
+    var pct = attendu > 0 ? Math.round(ecart / attendu * 100) : 0;
+    if (ecart > 0 && pct >= 10) { // Écart > 10%
+      _toutesAnomalies.push({
+        type: 'ecart',
+        sévérité: 'warn',
+        icon: '🟠',
+        titre: 'Écart de montant (' + pct + '%)',
+        desc: '<strong>' + (v?v.immatriculation:'?') + '</strong> le ' + f.date + ' — facturé <strong>' + fmt(f.montant_facture) + '</strong> au lieu de ' + fmt(attendu),
+        details: 'Différence : ' + fmt(f.montant_facture > attendu ? '+' : '') + fmt(f.montant_facture - attendu),
+        vehicule_id: f.vehicule_id,
+        vehicule: v ? v.immatriculation : '?',
+        date: f.date,
+        fac_id: f.id,
+        montant_actuel: f.montant_facture,
+        montant_attendu: attendu,
+        actions: [
+          { label: 'Corriger → ' + fmt(attendu), fn: 'corrigerMontantFac', args: [f.id, attendu] },
+          { label: 'Voir véhicule', fn: 'ouvrirFicheVeh', args: [f.vehicule_id] }
+        ]
+      });
+    }
+  });
+
+  // ────────────────────────────────────────────────────
+  // TYPE 4 : SUR-VERSEMENT — versé > facturé pour un véhicule
+  // ────────────────────────────────────────────────────
+  vehs.forEach(function(v) {
+    var vAffs = affs.filter(function(a){ return a.vehicule_id === v.id; });
+    var vAffIds = vAffs.map(function(a){ return a.id; });
+    var vFac = facs.filter(function(f){ return f.vehicule_id === v.id; });
+    var vVers = vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); });
+    var totFac = vFac.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    var totVers = vVers.reduce(function(s,vs){ return s+vs.montant; }, 0);
+    var surplus = totVers - totFac;
+    if (surplus > 0 && totFac > 0) {
+      _toutesAnomalies.push({
+        type: 'survers',
+        sévérité: 'info',
+        icon: '🔵',
+        titre: 'Sur-versement détecté',
+        desc: '<strong>' + v.immatriculation + '</strong> a versé <strong>' + fmt(totVers) + '</strong> pour ' + fmt(totFac) + ' facturé',
+        details: 'Surplus : +' + fmt(surplus) + ' — vérifier si une facturation est manquante',
+        vehicule_id: v.id,
+        vehicule: v.immatriculation,
+        totFac: totFac,
+        totVers: totVers,
+        surplus: surplus,
+        actions: [
+          { label: 'Voir la fiche véhicule', fn: 'ouvrirFicheVeh', args: [v.id] }
+        ]
+      });
+    }
+  });
+
+  // ────────────────────────────────────────────────────
+  // TYPE 5 : ORPHELIN — versement sans affectation active
+  // ────────────────────────────────────────────────────
+  vers.forEach(function(vs) {
+    var aff = affs.find(function(a){ return a.id === vs.affectation_id; });
+    if (!aff) {
+      _toutesAnomalies.push({
+        type: 'orphelin',
+        sévérité: 'gray',
+        icon: '⚪',
+        titre: 'Versement orphelin',
+        desc: 'Versement de <strong>' + fmt(vs.montant) + '</strong> du ' + vs.date_versement + ' sans affectation correspondante',
+        details: 'affectation_id: ' + vs.affectation_id,
+        vers_id: vs.id,
+        actions: [
+          { label: 'Supprimer ce versement', fn: 'delVers', args: [vs.id, vs.montant, vs.date_versement, null] }
+        ]
+      });
+    }
+  });
+
+  setBtnLoad(btn, false);
+
+  // Mettre à jour les compteurs
+  var counts = { doublon:0, ecart:0, zero:0, survers:0, orphelin:0 };
+  _toutesAnomalies.forEach(function(a){ counts[a.type] = (counts[a.type]||0)+1; });
+  ['doublon','ecart','zero','survers','orphelin'].forEach(function(t) {
+    var el2 = document.getElementById('nb-' + t);
+    if (el2) el2.textContent = counts[t];
+  });
+
+  // Afficher résumé
+  var resume = document.getElementById('controle-resume');
+  if (resume) resume.style.display = 'block';
+  var expBtn = document.getElementById('btn-export-anom');
+  if (expBtn) expBtn.style.display = _toutesAnomalies.length ? 'block' : 'none';
+
+  // Activer chip "Tout"
+  filtrerAnomalies('tous');
+}
+
+function filtrerAnomalies(type) {
+  if (type) _anomFiltreType = type;
+  var q = ((document.getElementById('anom-q')||{}).value||'').toLowerCase();
+
+  // Mettre à jour les chips
+  ['tous','doublon','ecart','zero','survers','orphelin'].forEach(function(t) {
+    var chip = document.getElementById('anom-chip-' + t);
+    if (chip) chip.className = 'chip ' + (_anomFiltreType === t ? 'active-blue' : 'inactive');
+  });
+
+  var filtered = _toutesAnomalies.filter(function(a) {
+    if (_anomFiltreType !== 'tous' && a.type !== _anomFiltreType) return false;
+    if (q) {
+      var haystack = (a.vehicule||'').toLowerCase() + (a.desc||'').toLowerCase() + (a.date||'').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  var el = document.getElementById('controle-content');
+  if (!el) return;
+
+  if (!_toutesAnomalies.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:32px">🔍</div><div style="font-size:14px;font-weight:600;margin-top:8px">Analyse non encore lancée</div></div>';
+    return;
+  }
+  if (!filtered.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:#3B6D11"><div style="font-size:32px">✅</div><div style="font-size:14px;font-weight:600;margin-top:8px">Aucune anomalie ' + (_anomFiltreType !== 'tous' ? 'de ce type' : '') + ' détectée !</div></div>';
+    return;
+  }
+
+  var sevColors = { danger:'#FCEBEB', warn:'#FFF8E6', info:'#E6F1FB', gray:'#F1EFE8' };
+  var sevBorders = { danger:'#A32D2D', warn:'#BA7517', info:'#185FA5', gray:'#888' };
+
+  el.innerHTML = '<div style="margin-bottom:8px;font-size:12px;color:#6b6b67">' + filtered.length + ' anomalie(s) trouvée(s)</div>' +
+    filtered.map(function(a, idx) {
+      var bg = sevColors[a.sévérité] || '#f9f9f9';
+      var border = sevBorders[a.sévérité] || '#e0dfd8';
+      var actionsHTML = a.actions ? a.actions.map(function(act) {
+        var args = act.args ? act.args.map(function(arg){ return JSON.stringify(arg); }).join(',') : '';
+        return '<button class="btn-sm" style="background:#fff;border:1px solid ' + border + ';color:' + border + ';padding:5px 12px;font-size:11px;font-weight:600" ' +
+          'onclick="' + act.fn + '(' + args + ')">' + act.label + '</button>';
+      }).join('') : '';
+      return '<div style="border:1px solid ' + border + ';border-left:4px solid ' + border + ';border-radius:10px;padding:12px 14px;margin-bottom:8px;background:' + bg + '">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="font-size:18px;flex-shrink:0">' + a.icon + '</span>' +
+          '<div style="flex:1">' +
+            '<div style="font-weight:700;font-size:13px;margin-bottom:3px">' + a.titre + '</div>' +
+            '<div style="font-size:12px;margin-bottom:3px">' + a.desc + '</div>' +
+            (a.details ? '<div style="font-size:11px;color:#6b6b67;margin-bottom:8px">📋 ' + a.details + '</div>' : '') +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' + actionsHTML + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+}
+
+// ── Actions de correction en un clic ─────────────────────────────────
+
+async function corrigerDoublon(idsStr) {
+  var ids = idsStr.split(',');
+  if (!confirm('Supprimer ' + ids.length + ' facturation(s) en doublon ?')) return;
+  await Promise.all(ids.map(function(id){ return api('DELETE', '/facturations/' + id); }));
+  toast('✅ ' + ids.length + ' doublon(s) supprimé(s)');
+  lancerAnalyse(document.getElementById('btn-analyse'));
+  loadDashboard();
+}
+
+async function corrigerMontantFac(facId, montantCorrect) {
+  if (!confirm('Corriger le montant à ' + fmt(montantCorrect) + ' F ?')) return;
+  var type = montantCorrect === 0 ? 'repos' : 'complet';
+  await api('PATCH', '/facturations/' + facId, { montant_facture: montantCorrect, type_journee: type });
+  toast('✅ Montant corrigé → ' + fmt(montantCorrect) + ' F');
+  lancerAnalyse(document.getElementById('btn-analyse'));
+  loadDashboard();
+}
+
+async function delFacById(facId) {
+  if (!confirm('Supprimer cette facturation ?')) return;
+  await api('DELETE', '/facturations/' + facId);
+  toast('🗑️ Facturation supprimée', 'info');
+  lancerAnalyse(document.getElementById('btn-analyse'));
+  loadDashboard();
+}
+
+function exportAnomaliesCSV() {
+  if (!_toutesAnomalies.length) { toast('Aucune anomalie à exporter', 'err'); return; }
+  var data = _toutesAnomalies.map(function(a) {
+    return {
+      'Type': a.type,
+      'Sévérité': a.sévérité,
+      'Titre': a.titre,
+      'Véhicule': a.vehicule || '',
+      'Date': a.date || '',
+      'Description': (a.desc || '').replace(/<[^>]+>/g, ''),
+      'Détails': a.details || ''
+    };
+  });
+  exportCSV(data, 'syndongo_anomalies_' + new Date().toISOString().slice(0,10));
 }
 </script>
 
