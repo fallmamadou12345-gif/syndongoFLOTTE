@@ -592,11 +592,20 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/facturations'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    // Gestionnaire : vérifier que le véhicule lui est assigné (via tags ou ids)
+    if(isGest){
+      const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+      if(!myVehs.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné à votre compte'}));}
+    }
     const existing=db.facturations.findIndex(f=>f.vehicule_id===data.vehicule_id&&f.date===data.date);
-    if(existing!==-1){db.facturations[existing]={...db.facturations[existing],...data,updated_at:new Date().toISOString()};saveDB(db);return res.end(JSON.stringify({message:'Facturation mise à jour',id:db.facturations[existing].id}));}
+    if(existing!==-1){
+      // Mise à jour si même véhicule/date (pas un vrai doublon — c'est une correction)
+      db.facturations[existing]={...db.facturations[existing],...data,updated_at:new Date().toISOString()};
+      saveDB(db);
+      return res.end(JSON.stringify({message:'Facturation mise à jour',id:db.facturations[existing].id,updated:true}));
+    }
     const f={id:uid(),...data,created_at:new Date().toISOString()};
-    db.facturations.push(f);saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée'}));
+    db.facturations.push(f);saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée',updated:false}));
   }
   // MODIFIER une facturation
   const facM=p.match(/^\/api\/facturations\/([^/]+)$/);

@@ -536,13 +536,19 @@ tr:hover td{background:#fafaf8}
       <!-- Formulaires Facturation + Encaissement côte à côte -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card" style="border-top:3px solid #185FA5">
-          <div class="card-title">Facturation J-1</div>
+          <div class="card-title">Facturation</div>
           <div class="form-row">
             <div class="field"><label>Véhicule *</label><select id="fv" onchange="onFacVeh()"><option value="">— choisir —</option></select></div>
             <div class="field"><label>Chauffeur</label><input id="fc" readonly style="opacity:.7;background:#f0efeb"></div>
           </div>
           <div class="form-row">
-            <div class="field"><label>Date (hier par défaut)</label><input id="fd" type="date"></div>
+            <div class="field">
+              <label>Mode de saisie</label>
+              <div style="display:flex;gap:6px;margin-top:4px">
+                <button class="chip active-blue" id="fmode-single" onclick="setFacMode('single')" style="font-size:11px;padding:4px 10px">Une date</button>
+                <button class="chip inactive" id="fmode-multi" onclick="setFacMode('multi')" style="font-size:11px;padding:4px 10px">Plusieurs dates</button>
+              </div>
+            </div>
             <div class="field"><label>Type journée</label>
               <select id="ftype" onchange="calcFac()">
                 <option value="complet">Journée complète</option>
@@ -552,9 +558,29 @@ tr:hover td{background:#fafaf8}
               </select>
             </div>
           </div>
-          <div style="background:#f5f4f0;border-radius:8px;padding:12px;text-align:center;margin-bottom:12px">
-            <div style="font-size:11px;color:#6b6b67;margin-bottom:4px">Montant à facturer</div>
-            <div id="f-montant" style="font-size:28px;font-weight:700;color:#185FA5">— F</div>
+          <!-- Mode une seule date -->
+          <div id="fac-mode-single">
+            <div class="field" style="margin-bottom:10px">
+              <label>Date</label>
+              <input id="fd" type="date">
+              <div id="fd-warning" style="display:none;font-size:11px;color:#A32D2D;margin-top:3px;padding:4px 8px;background:#FCEBEB;border-radius:5px"></div>
+            </div>
+          </div>
+          <!-- Mode plusieurs dates -->
+          <div id="fac-mode-multi" style="display:none">
+            <div class="field" style="margin-bottom:8px">
+              <label>Dates à facturer <span style="font-size:10px;color:#6b6b67">(cliquez pour sélectionner)</span></label>
+              <div class="form-row" style="gap:6px;margin-bottom:6px">
+                <input type="date" id="fmulti-debut" placeholder="Du" style="font-size:12px" onchange="genererDatesMulti()">
+                <input type="date" id="fmulti-fin" placeholder="Au" style="font-size:12px" onchange="genererDatesMulti()">
+              </div>
+              <div id="fmulti-dates" style="display:flex;flex-wrap:wrap;gap:4px;max-height:100px;overflow-y:auto;padding:6px;background:#f5f4f0;border-radius:8px;min-height:36px"></div>
+              <div id="fmulti-info" style="font-size:11px;color:#6b6b67;margin-top:4px"></div>
+            </div>
+          </div>
+          <div style="background:#f5f4f0;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
+            <div style="font-size:11px;color:#6b6b67;margin-bottom:2px">Montant à facturer</div>
+            <div id="f-montant" style="font-size:26px;font-weight:700;color:#185FA5">— F</div>
             <div id="f-info" style="font-size:11px;color:#6b6b67;margin-top:2px"></div>
           </div>
           <button class="btn btn-blue" style="width:100%" onclick="validerFac(this)">Valider la facturation</button>
@@ -6529,6 +6555,190 @@ function exportAnomaliesCSV() {
   });
   exportCSV(data, 'syndongo_anomalies_' + new Date().toISOString().slice(0,10));
 }
+
+// ═══════════════════════════════════════════════════════
+// FACTURATION INTELLIGENTE
+// ═══════════════════════════════════════════════════════
+
+var _facMode = 'single'; // 'single' ou 'multi'
+var _datesSelectionnees = []; // dates cochées en mode multi
+
+function setFacMode(mode) {
+  _facMode = mode;
+  var btnS = document.getElementById('fmode-single');
+  var btnM = document.getElementById('fmode-multi');
+  var divS = document.getElementById('fac-mode-single');
+  var divM = document.getElementById('fac-mode-multi');
+  if (btnS) { btnS.className = 'chip ' + (mode==='single'?'active-blue':'inactive'); }
+  if (btnM) { btnM.className = 'chip ' + (mode==='multi'?'active-blue':'inactive'); }
+  if (divS) divS.style.display = mode==='single' ? 'block' : 'none';
+  if (divM) divM.style.display = mode==='multi' ? 'block' : 'none';
+  calcFac();
+}
+
+// Vérifier si un véhicule a déjà une facturation à une date donnée
+async function checkDoublon(vehiculeId, date) {
+  if (!vehiculeId || !date) return false;
+  var facs = await api('GET', '/facturations?vehicule_id=' + vehiculeId);
+  if (!Array.isArray(facs)) return false;
+  return facs.some(function(f){ return f.date === date; });
+}
+
+// Quand on change de véhicule ou de date — vérifier le doublon
+var _onFacVeh_orig = typeof onFacVeh === 'function' ? onFacVeh : null;
+onFacVeh = async function() {
+  if (_onFacVeh_orig) await _onFacVeh_orig();
+  await checkDoublonFac();
+};
+
+async function checkDoublonFac() {
+  var vid = (document.getElementById('fv')||{}).value || '';
+  var date = (document.getElementById('fd')||{}).value || '';
+  var warn = document.getElementById('fd-warning');
+  if (!warn || !vid || !date) { if(warn) warn.style.display='none'; return; }
+  var existe = await checkDoublon(vid, date);
+  if (existe) {
+    warn.style.display = 'block';
+    warn.innerHTML = '⚠️ Ce véhicule a déjà une facturation le ' + date + ' — valider mettra à jour l\'existante.';
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+// Écouter les changements de date
+document.addEventListener('change', function(e) {
+  if (e.target.id === 'fd') checkDoublonFac();
+});
+
+// ── Générer les dates entre deux bornes pour le mode multi ──────────
+function genererDatesMulti() {
+  var debut = (document.getElementById('fmulti-debut')||{}).value || '';
+  var fin   = (document.getElementById('fmulti-fin')||{}).value   || '';
+  var container = document.getElementById('fmulti-dates');
+  if (!container) return;
+  if (!debut || !fin || debut > fin) { container.innerHTML = '<span style="color:#aaa;font-size:11px">Choisissez une plage de dates</span>'; return; }
+
+  var dates = [];
+  var cur = new Date(debut);
+  var finD = new Date(fin);
+  var today = new Date().toISOString().split('T')[0];
+  while (cur <= finD) {
+    var ds = cur.toISOString().split('T')[0];
+    if (ds <= today) dates.push(ds); // Seulement dates passées ou aujourd'hui
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  if (!_datesSelectionnees.length) _datesSelectionnees = [...dates];
+
+  container.innerHTML = dates.map(function(d) {
+    var sel = _datesSelectionnees.includes(d);
+    var jour = new Date(d).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'});
+    return '<div onclick="toggleDateMulti(this.dataset.date,this)" data-date="' + d + '" style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid ' +
+      (sel?'#185FA5':'#e0dfd8') + ';background:' + (sel?'#E6F1FB':'#fff') + ';color:' + (sel?'#0C447C':'#6b6b67') + '">' + jour + '</div>';
+  }).join('');
+
+  updateFacMultiInfo();
+  calcFac();
+}
+
+function toggleDateMulti(date, el) {
+  var idx = _datesSelectionnees.indexOf(date);
+  if (idx === -1) {
+    _datesSelectionnees.push(date);
+    if (el) { el.style.background='#E6F1FB'; el.style.borderColor='#185FA5'; el.style.color='#0C447C'; }
+  } else {
+    _datesSelectionnees.splice(idx, 1);
+    if (el) { el.style.background='#fff'; el.style.borderColor='#e0dfd8'; el.style.color='#6b6b67'; }
+  }
+  updateFacMultiInfo();
+  calcFac();
+}
+
+function updateFacMultiInfo() {
+  var el = document.getElementById('fmulti-info');
+  if (el) el.textContent = _datesSelectionnees.length + ' date(s) sélectionnée(s)';
+}
+
+// ── Remplacer validerFac par la version intelligente ─────────────────
+const _origValiderFac = validerFac;
+validerFac = async function(btn) {
+  var vid   = (document.getElementById('fv')||{}).value || '';
+  var type  = (document.getElementById('ftype')||{}).value || 'complet';
+  if (!vid) { toast('Sélectionnez un véhicule', 'err'); return; }
+
+  if (!_facAff || !_facAff.length) _facAff = await api('GET', '/affectations') || [];
+  var aff = _facAff.find(function(a){ return a.vehicule_id === vid && !a.date_fin; });
+  if (!aff) { toast('Aucune affectation active pour ce véhicule', 'err'); return; }
+  var base = aff.montant_journalier || 0;
+  var montant = type==='complet' ? base : type==='demi_panne' ? Math.round(base/2) : 0;
+  var sjMap = { complet:'actif', demi_panne:'panne', repos:'repos', inactif:'inactif' };
+
+  if (_facMode === 'single') {
+    var date = (document.getElementById('fd')||{}).value || '';
+    if (!date) { toast('Date obligatoire', 'err'); return; }
+    setBtnLoad(btn, true);
+    var r = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:aff.chauffeur_id, date, type_journee:type, montant_facture:montant, montant_base:base });
+    await api('POST', '/activites', { vehicule_id:vid, statut_jour:sjMap[type]||'repos', date });
+    setBtnLoad(btn, false);
+    if (r && r.detail) { toast(r.detail, 'err'); return; }
+    toast(r.updated ? '✏️ Facturation mise à jour — ' + fmt(montant) : '✅ Facturé — ' + fmt(montant));
+    document.getElementById('fd-warning').style.display = 'none';
+
+  } else {
+    // Mode multi-dates
+    if (!_datesSelectionnees.length) { toast('Sélectionnez au moins une date', 'err'); return; }
+    setBtnLoad(btn, true);
+    var ok = 0; var maj = 0;
+    for (var i = 0; i < _datesSelectionnees.length; i++) {
+      var d = _datesSelectionnees[i];
+      var res2 = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:aff.chauffeur_id, date:d, type_journee:type, montant_facture:montant, montant_base:base });
+      await api('POST', '/activites', { vehicule_id:vid, statut_jour:sjMap[type]||'repos', date:d });
+      if (res2 && res2.updated) maj++; else ok++;
+    }
+    setBtnLoad(btn, false);
+    toast('✅ ' + ok + ' facturée(s)' + (maj?' · '+maj+' mise(s) à jour':'') + ' — ' + fmt(montant * _datesSelectionnees.length) + ' total');
+    _datesSelectionnees = [];
+    genererDatesMulti();
+  }
+
+  loadFac();
+  loadDashboard();
+  _facAff = [];
+  calcFac();
+};
+
+// ═══════════════════════════════════════════════════════
+// RESTRICTION DES TAGS POUR GESTIONNAIRES
+// ═══════════════════════════════════════════════════════
+
+// Filtrer les véhicules dans le select de facturation pour les gestionnaires
+var _origRefreshSelects = typeof refreshSelects === 'function' ? refreshSelects : null;
+refreshSelects = async function() {
+  if (_origRefreshSelects) await _origRefreshSelects();
+
+  // Pour les gestionnaires : restreindre les véhicules du formulaire de facturation
+  if (ROLE === 'gestionnaire') {
+    var fvEl = document.getElementById('fv');
+    var dvEl = document.getElementById('dv'); // dépenses
+    if (!fvEl) return;
+
+    var vehs = await api('GET', '/vehicules');
+    if (!Array.isArray(vehs)) return;
+
+    // Filtrer par tags assignés
+    var myTags = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags : (GEST_INFO.tag ? [GEST_INFO.tag] : []);
+
+    [fvEl, dvEl].forEach(function(el) {
+      if (!el) return;
+      var cur = el.value;
+      el.innerHTML = '<option value="">— choisir —</option>' +
+        vehs.map(function(v) {
+          return '<option value="' + v.id + '">' + v.immatriculation + (v.tag?' ('+v.tag+')':'') + '</option>';
+        }).join('');
+      if (cur) el.value = cur;
+    });
+  }
+};
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
