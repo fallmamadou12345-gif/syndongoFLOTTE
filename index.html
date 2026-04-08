@@ -203,6 +203,7 @@ tr:hover td{background:#fafaf8}
 .kpi-label { font-size:11px; color:#6b6b67; font-weight:600; margin-bottom:4px; text-transform:uppercase; letter-spacing:.3px; }
 .kpi-val { font-size:20px; font-weight:800; line-height:1.1; }
 .kpi-stat2 { background:#fff; border:1px solid #e0dfd8; border-radius:10px; padding:9px 10px; }
+.gs-result-item:hover{background:#f5f4f0}
 </style>
 </head>
 <body>
@@ -228,10 +229,21 @@ tr:hover td{background:#fafaf8}
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="logo">Sy<span>Ndongo</span></div>
-      <input type="text" id="gs" placeholder="Rechercher…" style="width:180px;font-size:12px" oninput="rechGlobal(this.value)">
+      <div style="position:relative">
+      <input type="text" id="gs" placeholder="🔍 Rechercher véhicule, chauffeur…" 
+             style="width:220px;font-size:12px;padding-left:10px" 
+             oninput="rechGlobalPro(this.value)"
+             onkeydown="if(event.key==='Escape'){this.value='';fermerGlobalSearch()}"
+             onfocus="rechGlobalPro(this.value)">
+      <div id="gs-drop" style="display:none;position:absolute;top:100%;left:0;width:380px;background:#fff;border:1px solid #e0dfd8;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:500;margin-top:4px;max-height:320px;overflow-y:auto"></div>
+    </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span id="user-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:#EAF3DE;color:#27500A"></span>
+      <div id="sync-indicator" style="display:none;font-size:10px;color:#6b6b67;display:flex;align-items:center;gap:4px">
+        <div id="sync-dot" style="width:6px;height:6px;border-radius:50%;background:#3B6D11"></div>
+        <span id="sync-label">En ligne</span>
+      </div>
       <button class="btn-sm btn-gray" onclick="logout()">Déconnexion</button>
     </div>
   </div>
@@ -2387,13 +2399,39 @@ async function loadFac() {
   if (ffFin) list = list.filter(function(f) { return f.date <= ffFin; });
   if (ffType) list = list.filter(function(f) { return f.type_journee === ffType; });
   const el = document.getElementById('t-fac');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation</div>'; return; }
-  const labels = { complet: 'Complète', demi_panne: 'Demi-panne', repos: 'Repos', inactif: 'Inactif' };
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th><th>Montant</th></tr></thead><tbody>' +
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation sur cette période</div>'; return; }
+  const labels = { complet:'Journée complète', demi_panne:'Demi-panne', repos:'Repos', inactif:'Inactif' };
+  const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
+  // Total période
+  const totalFac = list.reduce(function(s,f){ return s+(f.montant_facture||0); },0);
+  const resume = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:8px;border-bottom:1px solid #e0dfd8">' +
+    '<span style="font-size:12px;color:#6b6b67">' + list.length + ' facturation(s)</span>' +
+    '<span style="font-size:14px;font-weight:700;color:#185FA5">' + fmt(totalFac) + '</span>' +
+    '</div>';
+  el.innerHTML = '<div style="overflow-x:auto">' + resume +
+    '<table><thead><tr>' +
+    '<th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th><th style="text-align:right">Montant</th>' +
+    (isM ? '<th>Actions</th>' : '') +
+    '</tr></thead><tbody>' +
     list.map(function(f) {
-      return '<tr><td>' + f.date + '</td><td><strong>' + f.vehicule + '</strong></td><td>' + f.chauffeur + '</td>' +
-        '<td>' + pill(labels[f.type_journee] || f.type_journee, f.type_journee === 'complet' ? 'ok' : f.type_journee === 'demi_panne' ? 'warn' : 'gray') + '</td>' +
-        '<td style="font-weight:600;color:' + (f.montant_facture > 0 ? '#185FA5' : '#6b6b67') + '">' + fmt(f.montant_facture) + '</td></tr>';
+      const typePill = pill(labels[f.type_journee]||f.type_journee,
+        f.type_journee==='complet'?'ok':f.type_journee==='demi_panne'?'warn':'gray');
+      const montantCol = '<td style="text-align:right;font-weight:700;color:' +
+        (f.montant_facture>0?'#185FA5':'#6b6b67') + '">' + fmt(f.montant_facture) + '</td>';
+      const actionsCol = isM ? '<td style="display:flex;gap:4px;align-items:center">' +
+        '<button class="btn-sm" style="background:#FAEEDA;color:#633806;padding:4px 9px" ' +
+          'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
+          'data-type="' + f.type_journee + '" data-montant="' + f.montant_facture + '" ' +
+          'onclick="editFacFromBtn(this)">✏️ Modif.</button>' +
+        '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;padding:4px 9px" ' +
+          'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
+          'onclick="delFacFromBtn(this)">🗑️</button>' +
+        '</td>' : '';
+      return '<tr style="border-bottom:1px solid #f5f4f0">' +
+        '<td style="color:#6b6b67;white-space:nowrap">' + f.date + '</td>' +
+        '<td><strong style="color:#185FA5">' + f.vehicule + '</strong></td>' +
+        '<td style="font-size:12px">' + f.chauffeur + '</td>' +
+        '<td>' + typePill + '</td>' + montantCol + actionsCol + '</tr>';
     }).join('') + '</tbody></table></div>';
 }
 
@@ -5165,6 +5203,496 @@ function updateKpiCounters() {
     if (nbDep && depNb) { nbDep.textContent = depNb + ' dép.'; nbDep.style.display = 'inline'; }
   }
 }
+
+// ═══════════════════════════════════════════════════════
+// FACTURATIONS — MODIFIER / SUPPRIMER
+// ═══════════════════════════════════════════════════════
+
+async function delFac(btn, id, vehicule, date) {
+  if (!confirm('Supprimer la facturation du ' + date + ' pour ' + vehicule + ' ?\nCette action est irréversible.')) return;
+  setBtnLoad(btn, true);
+  const r = await api('DELETE', '/facturations/' + id);
+  setBtnLoad(btn, false);
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('🗑️ Facturation supprimée — ' + vehicule + ' ' + date, 'info');
+  loadFac();
+  loadDashboard();
+}
+
+function editFac(btn, id, vehicule, date, typeJournee, montant) {
+  // Créer une modale d'édition inline
+  var existing = document.getElementById('m-edit-fac');
+  if (existing) existing.remove();
+
+  var mo = document.createElement('div');
+  mo.id = 'm-edit-fac';
+  mo.className = 'modal-bg';
+  mo.style.zIndex = '1200';
+  mo.innerHTML =
+    '<div class="modal" style="max-width:440px">' +
+      '<div class="modal-head">' +
+        '<div style="flex:1">' +
+          '<div class="modal-title">✏️ Modifier facturation</div>' +
+          '<div style="font-size:12px;color:#6b6b67;margin-top:2px">' + vehicule + ' · ' + date + '</div>' +
+        '</div>' +
+        '<button class="modal-close" onclick="var m=document.getElementById(&quot;m-edit-fac&quot;);if(m)m.remove()">×</button>' +
+      '</div>' +
+      '<div style="padding-top:8px">' +
+        '<div class="form-row">' +
+          '<div class="field"><label>Type de journée</label>' +
+            '<select id="ef-type" style="width:100%" onchange="calcEditFac()">' +
+              '<option value="complet"' + (typeJournee==='complet'?' selected':'') + '>Journée complète</option>' +
+              '<option value="demi_panne"' + (typeJournee==='demi_panne'?' selected':'') + '>Demi-panne (50%)</option>' +
+              '<option value="repos"' + (typeJournee==='repos'?' selected':'') + '>Repos (0 F)</option>' +
+              '<option value="inactif"' + (typeJournee==='inactif'?' selected':'') + '>Inactif (0 F)</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="field"><label>Montant (FCFA)</label>' +
+            '<input id="ef-montant" type="number" value="' + montant + '" style="width:100%">' +
+          '</div>' +
+        '</div>' +
+        '<div style="background:#f5f4f0;border-radius:8px;padding:10px;margin-bottom:12px;text-align:center">' +
+          '<div style="font-size:11px;color:#6b6b67">Montant après modification</div>' +
+          '<div id="ef-preview" style="font-size:24px;font-weight:800;color:#185FA5">' + fmt(montant) + '</div>' +
+        '</div>' +
+        '<button class="btn btn-blue" style="width:100%" data-fac-id="' + id + '" onclick="sauverFac(this)">✓ Sauvegarder</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(mo);
+  mo.style.display = 'flex';
+  mo.addEventListener('click', function(e){ if (e.target === mo) mo.remove(); });
+}
+
+function calcEditFac() {
+  var type = (document.getElementById('ef-type')||{}).value || 'complet';
+  var montantEl = document.getElementById('ef-montant');
+  var preview = document.getElementById('ef-preview');
+  if (!montantEl || !preview) return;
+  var m = parseInt(montantEl.value) || 0;
+  if (type === 'repos' || type === 'inactif') { montantEl.value = 0; preview.textContent = '0 F'; }
+  else if (type === 'demi_panne') { montantEl.value = Math.round(m / 2) || ''; preview.textContent = fmt(Math.round(m/2)||0); }
+  else { preview.textContent = fmt(m); }
+}
+
+document.addEventListener('input', function(e) {
+  if (e.target.id === 'ef-montant') {
+    var preview = document.getElementById('ef-preview');
+    if (preview) preview.textContent = fmt(parseInt(e.target.value)||0);
+  }
+});
+
+async function sauverFac(btn) {
+  var id = btn.dataset.facId;
+  var type = (document.getElementById('ef-type')||{}).value || 'complet';
+  var montant = parseInt((document.getElementById('ef-montant')||{}).value) || 0;
+  if (!id) { toast('Erreur : ID introuvable', 'err'); return; }
+  setBtnLoad(btn, true);
+  var r = await api('PATCH', '/facturations/' + id, { type_journee: type, montant_facture: montant });
+  setBtnLoad(btn, false);
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  var m = document.getElementById('m-edit-fac'); if (m) m.remove();
+  toast('✅ Facturation modifiée → ' + fmt(montant));
+  loadFac();
+  loadDashboard();
+}
+
+// ═══════════════════════════════════════════════════════
+// TAGS — GESTION COMPLÈTE (Manager + Gestionnaire)
+// ═══════════════════════════════════════════════════════
+
+function renderTagsGestionPro() {
+  var el = document.getElementById('tags-list');
+  if (!el) return;
+  var cnt = document.getElementById('tags-count');
+  if (cnt) cnt.textContent = allTags.length + ' tag(s)';
+
+  if (!allTags.length) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:#6b6b67;border:2px dashed #e0dfd8;border-radius:10px">' +
+      '<div style="font-size:24px;margin-bottom:8px">🏷️</div>' +
+      '<div style="font-weight:600;margin-bottom:4px">Aucun tag créé</div>' +
+      '<div style="font-size:12px">Saisissez un nom ci-dessus et cliquez Ajouter</div>' +
+      '</div>';
+    return;
+  }
+
+  el.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' +
+    allTags.map(function(t) {
+      var nb = Array.isArray(_vehsCache) ? _vehsCache.filter(function(v){ return v.tag===t; }).length : 0;
+      var key = encodeURIComponent(t);
+      return '<div id="tagrow-' + key + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid #e0dfd8;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:all .15s" ' +
+        'style="cursor:pointer">' +
+        // Icône
+        '<div style="width:32px;height:32px;border-radius:8px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🏷️</div>' +
+        // Nom (affichage)
+        '<div id="taglbl-' + key + '" style="flex:1">' +
+          '<div style="font-weight:700;font-size:13px">' + t + '</div>' +
+          '<div style="font-size:10px;color:#6b6b67">' + nb + ' véhicule(s) dans ce groupe</div>' +
+        '</div>' +
+        // Input édition (caché)
+        '<input id="taginp2-' + key + '" value="' + t + '" ' +
+          'style="display:none;flex:1;font-size:13px;font-weight:600;padding:5px 10px;border:1.5px solid #185FA5;border-radius:7px" ' +
+          'data-tag="' + t + '" ' +
+          'class="tag-inline-inp">' +
+        // Boutons
+        '<div style="display:flex;gap:5px;flex-shrink:0">' +
+          '<button id="tagbtn2-edit-' + key + '" class="btn-sm" style="background:#f5f4f0;color:#444;padding:5px 10px" ' +
+            'data-tag="' + t + '" onclick="startRenomTag2FromBtn(this)">✏️</button>' +
+          '<button id="tagbtn2-save-' + key + '" class="btn-sm" style="display:none;background:#185FA5;color:#fff;padding:5px 10px" ' +
+            'data-tag="' + t + '" onclick="confirmerRenomTag2FromBtn(this)">✓</button>' +
+          '<button id="tagbtn2-cancel-' + key + '" class="btn-sm" style="display:none;background:#e0dfd8;color:#444;padding:5px 10px" ' +
+            'data-tag="' + t + '" onclick="annulerRenomTag2FromBtn(this)">✕</button>' +
+          '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;padding:5px 10px" ' +
+            'data-tag="' + t + '" onclick="supprimerTagFromBtn(this)">🗑️</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+}
+
+// Démarrer l'édition d'un tag
+function startRenomTag2(t) {
+  var key = encodeURIComponent(t);
+  var lbl = document.getElementById('taglbl-' + key);
+  var inp = document.getElementById('taginp2-' + key);
+  var btnE = document.getElementById('tagbtn2-edit-' + key);
+  var btnS = document.getElementById('tagbtn2-save-' + key);
+  var btnC = document.getElementById('tagbtn2-cancel-' + key);
+  if (!inp) return;
+  lbl.style.display = 'none'; inp.style.display = 'block';
+  btnE.style.display = 'none'; btnS.style.display = 'inline-flex'; btnC.style.display = 'inline-flex';
+  inp.focus(); inp.select();
+}
+
+function annulerRenomTag2(t) {
+  var key = encodeURIComponent(t);
+  var lbl = document.getElementById('taglbl-' + key);
+  var inp = document.getElementById('taginp2-' + key);
+  var btnE = document.getElementById('tagbtn2-edit-' + key);
+  var btnS = document.getElementById('tagbtn2-save-' + key);
+  var btnC = document.getElementById('tagbtn2-cancel-' + key);
+  if (inp) { inp.value = t; inp.style.display = 'none'; }
+  if (lbl) lbl.style.display = 'block';
+  if (btnE) btnE.style.display = 'inline-flex';
+  if (btnS) btnS.style.display = 'none';
+  if (btnC) btnC.style.display = 'none';
+}
+
+async function confirmerRenomTag2(ancien) {
+  var key = encodeURIComponent(ancien);
+  var inp = document.getElementById('taginp2-' + key);
+  var nouveau = inp ? inp.value.trim() : '';
+  if (!nouveau || nouveau === ancien) { annulerRenomTag2(ancien); return; }
+  if (allTags.includes(nouveau)) { toast('Ce tag "' + nouveau + '" existe déjà', 'err'); return; }
+  var btnS = document.getElementById('tagbtn2-save-' + key);
+  setBtnLoad(btnS, true);
+  try {
+    await api('PATCH', '/tags/' + encodeURIComponent(ancien), { ancien, nouveau });
+  } catch(e) {
+    await api('DELETE', '/tags', { tag: ancien });
+    await api('POST', '/tags', { tag: nouveau });
+  }
+  toast('✅ "' + ancien + '" renommé en "' + nouveau + '"');
+  allTags = [];
+  await loadTags();
+  renderTagsGestionPro();
+}
+
+// Remplacer renderTagsList par renderTagsGestionPro
+const _origRenderTagsList2 = typeof renderTagsList === 'function' ? renderTagsList : null;
+renderTagsList = function(tags) {
+  if (Array.isArray(tags)) allTags = tags;
+  renderTagsGestionPro();
+};
+
+// ─── Wrappers data-attribute pour les boutons facturation ────────────────
+function editFacFromBtn(btn) {
+  editFac(btn,
+    btn.dataset.facId,
+    btn.dataset.veh,
+    btn.dataset.date,
+    btn.dataset.type,
+    parseInt(btn.dataset.montant)||0
+  );
+}
+function delFacFromBtn(btn) {
+  delFac(btn, btn.dataset.facId, btn.dataset.veh, btn.dataset.date);
+}
+
+// Wrappers data-tag pour les boutons tags inline
+function startRenomTag2FromBtn(btn) { startRenomTag2(btn.dataset.tag); }
+function confirmerRenomTag2FromBtn(btn) {
+  var key = encodeURIComponent(btn.dataset.tag);
+  var inp = document.getElementById('taginp2-' + key);
+  confirmerRenomTag2(btn.dataset.tag);
+}
+function annulerRenomTag2FromBtn(btn) { annulerRenomTag2(btn.dataset.tag); }
+function supprimerTagFromBtn(btn) { supprimerTag(btn.dataset.tag, btn); }
+
+// ═══════════════════════════════════════════════════════
+// RECHERCHE GLOBALE INTELLIGENTE
+// ═══════════════════════════════════════════════════════
+
+async function rechGlobalPro(q) {
+  var drop = document.getElementById('gs-drop');
+  if (!drop) return;
+  var sq = (q||'').toLowerCase().trim();
+  if (!sq) { drop.style.display='none'; return; }
+
+  // Charger les données si besoin
+  if (!_vehsCache.length) _vehsCache = await api('GET', '/vehicules') || [];
+  if (!_chaufsCache.length) _chaufsCache = await api('GET', '/chauffeurs') || [];
+
+  var results = [];
+
+  // Véhicules
+  _vehsCache.filter(function(v) {
+    return v.immatriculation.toLowerCase().includes(sq) ||
+           (v.marque||'').toLowerCase().includes(sq) ||
+           (v.tag||'').toLowerCase().includes(sq);
+  }).slice(0,5).forEach(function(v) {
+    var sjColors = {actif:'#3B6D11',panne:'#A32D2D',repos:'#BA7517',inactif:'#444',non_saisi:'#aaa'};
+    results.push({
+      icon: '🚗',
+      main: v.immatriculation,
+      sub: v.marque + (v.tag ? ' · ' + v.tag : ''),
+      badge: v.statut_jour || 'non_saisi',
+      badgeColor: sjColors[v.statut_jour]||'#aaa',
+      action: "ouvrirFicheVeh('" + v.id + "');fermerGlobalSearch()"
+    });
+  });
+
+  // Chauffeurs
+  _chaufsCache.filter(function(c) {
+    return (c.prenom||'').toLowerCase().includes(sq) ||
+           (c.nom||'').toLowerCase().includes(sq) ||
+           (c.telephone||'').includes(sq);
+  }).slice(0,4).forEach(function(c) {
+    results.push({
+      icon: '👤',
+      main: c.prenom + ' ' + c.nom,
+      sub: c.telephone + (c.vehicule_actuel ? ' · ' + c.vehicule_actuel.split('·')[0].trim() : ''),
+      badge: c.vehicule_actuel ? 'Affecté' : 'Libre',
+      badgeColor: c.vehicule_actuel ? '#3B6D11' : '#aaa',
+      action: "ouvrirFicheChauf('" + c.id + "');fermerGlobalSearch()"
+    });
+  });
+
+  if (!results.length) {
+    drop.innerHTML = '<div style="padding:12px;text-align:center;color:#6b6b67;font-size:12px">Aucun résultat pour "' + q + '"</div>';
+    drop.style.display = 'block';
+    return;
+  }
+
+  drop.innerHTML = '<div style="padding:6px 10px;font-size:10px;font-weight:600;color:#6b6b67;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f0efeb">' +
+    results.length + ' résultat(s)</div>' +
+    results.map(function(r) {
+      return '<div onclick="' + r.action + '" style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid #f5f4f0;transition:background .1s" ' +
+        'class="gs-result-item">' +
+        '<span style="font-size:18px">' + r.icon + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:700;font-size:13px;color:#1a1a18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.main + '</div>' +
+          '<div style="font-size:11px;color:#6b6b67">' + r.sub + '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:' + r.badgeColor + '20;color:' + r.badgeColor + ';white-space:nowrap">' + r.badge + '</span>' +
+        '</div>';
+    }).join('') +
+    '<div style="padding:8px 12px;font-size:11px;color:#6b6b67;text-align:center;border-top:1px solid #f0efeb">Entrée pour chercher partout</div>';
+  drop.style.display = 'block';
+}
+
+function fermerGlobalSearch() {
+  var drop = document.getElementById('gs-drop');
+  var inp = document.getElementById('gs');
+  if (drop) drop.style.display = 'none';
+  if (inp) inp.value = '';
+}
+
+// Fermer au clic extérieur
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#gs') && !e.target.closest('#gs-drop')) {
+    var drop = document.getElementById('gs-drop');
+    if (drop) drop.style.display = 'none';
+  }
+});
+
+// Entrée = chercher partout
+document.addEventListener('keydown', function(e) {
+  var inp = document.getElementById('gs');
+  if (e.key === 'Enter' && document.activeElement === inp && inp.value) {
+    var q = inp.value;
+    fermerGlobalSearch();
+    // Aller sur véhicules avec la recherche
+    goPage('vehicules', navEl('vehicules'));
+    setTimeout(function() {
+      var vq = document.getElementById('v-q'); if (vq) { vq.value = q; }
+      var cq = document.getElementById('c-q'); if (cq) { cq.value = q; }
+      loadVehicules();
+    }, 200);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// INDICATEUR DE CONNEXION / SYNC
+// ═══════════════════════════════════════════════════════
+
+var _syncOk = true;
+var _origApi = api;
+api = async function(method, path, data) {
+  try {
+    var result = await _origApi(method, path, data);
+    if (!_syncOk) {
+      _syncOk = true;
+      var dot = document.getElementById('sync-dot');
+      var lbl = document.getElementById('sync-label');
+      if (dot) { dot.style.background = '#3B6D11'; dot.style.animation = ''; }
+      if (lbl) lbl.textContent = 'En ligne';
+    }
+    return result;
+  } catch(e) {
+    _syncOk = false;
+    var dot = document.getElementById('sync-dot');
+    var lbl = document.getElementById('sync-label');
+    if (dot) { dot.style.background = '#A32D2D'; dot.style.animation = 'pulse 1s infinite'; }
+    if (lbl) lbl.textContent = 'Hors ligne';
+    throw e;
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// RACCOURCIS CLAVIER
+// ═══════════════════════════════════════════════════════
+document.addEventListener('keydown', function(e) {
+  // Ignorer si focus sur un input/textarea
+  if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  // Alt+D → Dashboard
+  if (e.altKey && e.key === 'd') { goPage('dashboard', navEl('dashboard')); e.preventDefault(); }
+  // Alt+V → Véhicules
+  if (e.altKey && e.key === 'v') { goPage('vehicules', navEl('vehicules')); e.preventDefault(); }
+  // Alt+C → Caisse
+  if (e.altKey && e.key === 'c') { goPage('caisse', navEl('caisse')); e.preventDefault(); }
+  // Alt+R → Retards
+  if (e.altKey && e.key === 'r') { goPage('retards', navEl('retards')); e.preventDefault(); }
+  // / → Focus recherche
+  if (e.key === '/') { var gs = document.getElementById('gs'); if (gs) { gs.focus(); e.preventDefault(); } }
+});
+
+// ═══════════════════════════════════════════════════════
+// SAISIE RAPIDE — améliorer la confirmation présumés
+// avec retour visuel immédiat
+// ═══════════════════════════════════════════════════════
+
+// Auto-refresh dashboard toutes les 5 minutes si on y est
+var _dashRefreshTimer = null;
+function startDashAutoRefresh() {
+  if (_dashRefreshTimer) clearInterval(_dashRefreshTimer);
+  _dashRefreshTimer = setInterval(function() {
+    var activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'page-dashboard') {
+      loadDashboard();
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT EXCEL (CSV) — Tableau récap rapide
+// ═══════════════════════════════════════════════════════
+
+function exportCSV(data, filename) {
+  if (!data.length) { toast('Aucune donnée à exporter', 'err'); return; }
+  var keys = Object.keys(data[0]);
+  var csv = keys.join(';') + '\n' +
+    data.map(function(row) {
+      return keys.map(function(k) {
+        var v = row[k];
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/;/g, ',').replace(/\n/g, ' ');
+      }).join(';');
+    }).join('\n');
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename + '.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('✅ Export CSV téléchargé : ' + filename + '.csv');
+}
+
+async function exportRentabiliteCSV() {
+  if (!_rapportData.length) { toast('Chargez les rapports d\'abord', 'err'); return; }
+  var data = _rapportData.map(function(r) {
+    return {
+      'Immatriculation': r.immatriculation,
+      'Marque': r.marque,
+      'Tag': r.tag || '',
+      'Chauffeur': r.chauffeur,
+      'Facturé (FCFA)': r.fac,
+      'Encaissé (FCFA)': r.enc,
+      'Dépenses (FCFA)': r.dep,
+      'Retard (FCFA)': r.ret,
+      'Marge (FCFA)': r.marge,
+      'Taux (%)': r.taux
+    };
+  });
+  exportCSV(data, 'syndongo_rapport_' + new Date().toISOString().slice(0,10));
+}
+
+// Ajouter bouton export CSV dans la page rapports
+var _origLoadPage3 = loadPage;
+loadPage = function(id) {
+  _origLoadPage3(id);
+  if (id === 'rapports') {
+    // Ajouter bouton CSV si pas déjà là
+    setTimeout(function() {
+      var exportZone = document.getElementById('btn-rp-pdf');
+      if (exportZone && !document.getElementById('btn-rp-csv')) {
+        var btn = document.createElement('button');
+        btn.id = 'btn-rp-csv';
+        btn.className = 'btn btn-gray';
+        btn.style.cssText = 'font-size:11px;padding:5px 14px';
+        btn.textContent = '📊 Export CSV';
+        btn.onclick = exportRentabiliteCSV;
+        exportZone.parentNode.insertBefore(btn, exportZone.nextSibling);
+      }
+    }, 300);
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// AFFICHAGE NOTIFICATIONS TOAST AMÉLIORÉ
+// ═══════════════════════════════════════════════════════
+// Remplacer toast par une version avec icônes et durée variable
+var _origToast = toast;
+toast = function(msg, type, duration) {
+  var icons = { err:'❌ ', info:'ℹ️ ', warn:'⚠️ ', ok:'✅ ' };
+  var colors = { err:'#FCEBEB', info:'#E6F1FB', warn:'#FFF8E6', ok:'#EAF3DE' };
+  var textColors = { err:'#791F1F', info:'#0C447C', warn:'#633806', ok:'#27500A' };
+  var t = type || (msg.includes('✅') ? 'ok' : msg.includes('❌') ? 'err' : 'info');
+  var el = document.getElementById('toast-area');
+  if (!el) { _origToast(msg, type); return; }
+  var div = document.createElement('div');
+  div.style.cssText = 'padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;' +
+    'background:' + (colors[t]||'#EAF3DE') + ';color:' + (textColors[t]||'#27500A') + ';' +
+    'box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:340px;word-break:break-word;' +
+    'animation:toastIn .2s ease;cursor:pointer';
+  div.textContent = msg;
+  div.onclick = function() { div.remove(); };
+  el.appendChild(div);
+  setTimeout(function() {
+    div.style.opacity = '0';
+    div.style.transform = 'translateX(20px)';
+    div.style.transition = 'all .3s';
+    setTimeout(function() { div.remove(); }, 300);
+  }, duration || (t === 'err' ? 5000 : 3000));
+};
+
+// Démarrer l'auto-refresh après le login
+var _origDemarrerApp3 = demarrerApp;
+demarrerApp = function() {
+  _origDemarrerApp3();
+  startDashAutoRefresh();
+  // Afficher indicateur sync
+  var si = document.getElementById('sync-indicator');
+  if (si) si.style.display = 'flex';
+};
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->
