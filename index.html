@@ -1547,14 +1547,14 @@ async function loadDashboard() {
     var vImp = imputerVersements(vFacsAll, vVersAll, vFacPer.map(function(f){return f.id;}), vAffIds);
     var vEncImpute = vImp.encImpute;
 
-    // Retard = dette globale (total facturé - total versé, tout historique)
-    var vFacGlob = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    // Retard = dette globale (tout facturé - tout versé)
+    var vFacGlob  = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
     var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
-    var vRetard = Math.max(0, vFacGlob - vVersGlob);
+    var vRetard   = Math.max(0, vFacGlob - vVersGlob);
 
     totFac += vFacMontant;
     totEnc += vEncImpute;
-    // Retard : ne compter que si le véhicule est actif sur la période
+    // Compter le retard seulement pour les véhicules actifs sur la période
     if (vFacMontant > 0) totRet += vRetard;
   });
 
@@ -1642,10 +1642,13 @@ async function loadDashboard() {
       var vVersAll = Array.isArray(vers) ? vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }) : [];
       var vFac = vFacPer.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
       var vDep = depsFilt.filter(function(d){ return d.vehicule_id===v.id; }).reduce(function(s,d){ return s+d.montant; }, 0);
-      // FIFO : encaissé imputé sur les factures de la période
+      // Encaissé = FIFO imputé sur les factures de la période
       var vImp = imputerVersements(vFacsAll, vVersAll, vFacPer.map(function(f){return f.id;}), vAffIds);
       var vEnc = vImp.encImpute;
-      var vRet = vImp.retard;
+      // Retard = dette GLOBALE (tout facturé - tout versé depuis le début)
+      var vFacGlobTot = vFacsAll.reduce(function(s,f){return s+(f.montant_facture||0);},0);
+      var vVersGlobTot = vVersAll.reduce(function(s,vs){return s+vs.montant;},0);
+      var vRet = Math.max(0, vFacGlobTot - vVersGlobTot);
       var vMarge = vFac - vDep; // Marge = Facturé - Dépenses (pas Encaissé - Dépenses)
       var vTaux = vFac > 0 ? Math.round(vEnc/vFac*100) : 0;
       if (vFac === 0 && vEnc === 0 && vDep === 0) return null;

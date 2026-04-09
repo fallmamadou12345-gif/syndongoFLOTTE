@@ -531,7 +531,7 @@ async function handleAPI(req, res, body) {
         return{...v,chauffeur:c?c.prenom+' '+c.nom:'?',vehicule:veh?veh.immatriculation:'?',vehicule_id:q.vehicule_id};
       })));
     }
-    return res.end(JSON.stringify(list.slice(-300).reverse().map(v=>{
+    return res.end(JSON.stringify(list.reverse().map(v=>{
       const aff=db.affectations.find(a=>a.id===v.affectation_id);
       const c=aff?db.chauffeurs.find(x=>x.id===aff.chauffeur_id):null;
       const veh=aff?db.vehicules.find(x=>x.id===aff.vehicule_id):null;
@@ -595,7 +595,7 @@ async function handleAPI(req, res, body) {
     if(q.vehicule_id) list=list.filter(f=>f.vehicule_id===q.vehicule_id);
     if(q.chauffeur_id) list=list.filter(f=>f.chauffeur_id===q.chauffeur_id);
     if(q.date_debut&&q.date_fin) list=list.filter(f=>f.date>=q.date_debut&&f.date<=q.date_fin);
-    return res.end(JSON.stringify(list.slice(-500).reverse().map(f=>{
+    return res.end(JSON.stringify(list.reverse().map(f=>{
       const v=db.vehicules.find(x=>x.id===f.vehicule_id);
       const c=db.chauffeurs.find(x=>x.id===f.chauffeur_id);
       return{...f,vehicule:v?v.immatriculation:'?',chauffeur:c?c.prenom+' '+c.nom:'?'};
