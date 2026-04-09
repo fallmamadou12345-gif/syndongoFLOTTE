@@ -1068,6 +1068,32 @@ async function handleAPI(req, res, body) {
   }
 
   // ── JOURNAL DE BORD ──────────────────────────────────────────
+  // ── RAPPELS PERSONNALISÉS ─────────────────────────────────
+  if(p==='/api/rappels_custom'&&method==='GET'){
+    return res.end(JSON.stringify(db.rappels_custom||[]));
+  }
+  if(p==='/api/rappels_custom'&&method==='POST'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const rc={id:uid(),...data,created_at:new Date().toISOString()};
+    if(!db.rappels_custom) db.rappels_custom=[];
+    db.rappels_custom.push(rc);
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Rappel créé',id:rc.id}));
+  }
+  const rcM=p.match(/^\/api\/rappels_custom\/([^/]+)$/);
+  if(rcM&&method==='DELETE'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    db.rappels_custom=(db.rappels_custom||[]).filter(r=>r.id!==rcM[1]);
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Supprimé'}));
+  }
+  if(rcM&&method==='PATCH'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=( db.rappels_custom||[]).findIndex(r=>r.id===rcM[1]);
+    if(idx!==-1){db.rappels_custom[idx]={...db.rappels_custom[idx],...data};saveDB(db);}
+    return res.end(JSON.stringify({message:'Mis à jour'}));
+  }
+
   if(p==='/api/journal'&&method==='GET'){
     const myVehs=vehsVisibles(db,auth).map(v=>v.id);
     let list=db.journal||[];

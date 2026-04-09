@@ -753,12 +753,13 @@ tr:hover td{background:#fafaf8}
           </div>
         </div>
         <!-- KPIs alertes -->
-        <div id="al-kpis" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">
-          <div class="kpi-stat red"><div class="kpi-label">Assurances</div><div class="kpi-val" id="al-nb-assurance" style="color:#A32D2D;font-size:22px">—</div></div>
-          <div class="kpi-stat" style="border-left:3px solid #BA7517"><div class="kpi-label">Visites tech.</div><div class="kpi-val" id="al-nb-visite" style="color:#BA7517;font-size:22px">—</div></div>
-          <div class="kpi-stat orange" style="border-left:3px solid #633806"><div class="kpi-label">Vidanges</div><div class="kpi-val" id="al-nb-vidange" style="color:#633806;font-size:22px">—</div></div>
-          <div class="kpi-stat blue"><div class="kpi-label">Retards &gt;30j</div><div class="kpi-val" id="al-nb-retard" style="color:#185FA5;font-size:22px">—</div></div>
-          <div class="kpi-stat" style="border-left:3px solid #7C3AED"><div class="kpi-label">Dépenses freq.</div><div class="kpi-val" id="al-nb-dep" style="color:#7C3AED;font-size:22px">—</div></div>
+        <div id="al-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px">
+          <div class="kpi-stat red" style="cursor:pointer" onclick="filtrerAlertes('assurance')"><div class="kpi-label">🛡️ Assurances</div><div class="kpi-val" id="al-nb-assurance" style="color:#A32D2D;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #BA7517;cursor:pointer" onclick="filtrerAlertes('visite')"><div class="kpi-label">🔍 Visites tech.</div><div class="kpi-val" id="al-nb-visite" style="color:#BA7517;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #633806;cursor:pointer" onclick="filtrerAlertes('vidange')"><div class="kpi-label">🔧 Vidanges</div><div class="kpi-val" id="al-nb-vidange" style="color:#633806;font-size:22px">—</div></div>
+          <div class="kpi-stat blue" style="cursor:pointer" onclick="filtrerAlertes('retard')"><div class="kpi-label">⏰ Retards</div><div class="kpi-val" id="al-nb-retard" style="color:#185FA5;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #0D7C3D;cursor:pointer" onclick="filtrerAlertes('station')"><div class="kpi-label">🅿️ Stationnement</div><div class="kpi-val" id="al-nb-station" style="color:#0D7C3D;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #7C3AED;cursor:pointer" onclick="filtrerAlertes('custom')"><div class="kpi-label">📌 Personnalisés</div><div class="kpi-val" id="al-nb-custom" style="color:#7C3AED;font-size:22px">—</div></div>
         </div>
         <!-- Filtres -->
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
@@ -768,6 +769,8 @@ tr:hover td{background:#fafaf8}
           <button class="chip inactive" id="al-chip-vidange" onclick="filtrerAlertes('vidange')">🔧 Vidange</button>
           <button class="chip inactive" id="al-chip-retard" onclick="filtrerAlertes('retard')">⏰ Retard</button>
           <button class="chip inactive" id="al-chip-dep" onclick="filtrerAlertes('dep')">⚠️ Dépenses</button>
+          <button class="chip inactive" id="al-chip-station" onclick="filtrerAlertes('station')">🅿️ Stationnement</button>
+          <button class="chip inactive" id="al-chip-custom" onclick="filtrerAlertes('custom')">📌 Personnalisés</button>
           <input id="al-q" placeholder="🔍 Véhicule…" style="font-size:12px;width:160px;margin-left:auto" oninput="filtrerAlertes()">
         </div>
         <div id="al-rappels"><div class="empty">Chargement…</div></div>
@@ -789,7 +792,29 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>🔧 Km prochain vidange</label><input id="al-km-vidange" type="number" placeholder="130000"></div>
           <div class="field"><label>📋 Expiration carte grise</label><input id="al-carte-grise" type="date"></div>
         </div>
-        <button class="btn btn-blue" onclick="sauverEcheancesVeh(this)">💾 Sauvegarder</button>
+        <div class="form-row">
+          <div class="field"><label>🅿️ Paiement stationnement (échéance)</label><input id="al-station" type="date"></div>
+          <div class="field"><label>🅿️ Montant droit de stationnement (F)</label><input id="al-station-mt" type="number" placeholder="50000"></div>
+        </div>
+        <button class="btn btn-blue" onclick="sauverEcheancesVeh(this)" style="margin-right:8px">💾 Sauvegarder</button>
+      </div>
+
+      <!-- Alerte personnalisée (rappel custom) -->
+      <div class="card manager-only" style="border-top:3px solid #7C3AED">
+        <div class="card-title">📌 Créer un rappel personnalisé</div>
+        <div class="info-box" style="margin-bottom:10px">Ajoutez vos propres rappels pour un véhicule (taxe, amende, contrôle, etc.)</div>
+        <div class="form-row">
+          <div class="field"><label>Véhicule *</label><select id="al-custom-veh"><option value="">— choisir —</option></select></div>
+          <div class="field"><label>📝 Titre du rappel *</label><input id="al-custom-titre" placeholder="Ex: Taxe municipale, Amende…"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>📅 Date d'échéance</label><input id="al-custom-date" type="date"></div>
+          <div class="field"><label>💰 Montant (F)</label><input id="al-custom-mt" type="number" placeholder="0"></div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>📋 Note</label><input id="al-custom-note" placeholder="Détails supplémentaires…"></div>
+        </div>
+        <button class="btn btn-blue" onclick="sauverRappelCustom(this)">➕ Ajouter ce rappel</button>
       </div>
 
       <!-- Envoi alerte manuelle -->
@@ -2886,13 +2911,14 @@ async function loadAlertes() {
   _toutesAlertesTech = await genererAlertesTechniques();
 
   // Mettre à jour les KPIs
-  var counts = { assurance:0, visite:0, vidange:0, retard:0, dep:0 };
+  var counts = { assurance:0, visite:0, vidange:0, retard:0, dep:0, station:0, custom:0 };
   _toutesAlertesTech.forEach(function(a){ if (counts[a.cat]!==undefined) counts[a.cat]++; });
-  ['assurance','visite','vidange','retard','dep'].forEach(function(cat) {
+  ['assurance','visite','vidange','retard','station','custom'].forEach(function(cat) {
     var kpiEl = document.getElementById('al-nb-'+cat);
     if (kpiEl) {
       kpiEl.textContent = counts[cat] > 0 ? counts[cat] : '✓';
-      kpiEl.style.color = counts[cat] > 0 ? (cat==='retard'?'#185FA5':cat==='dep'?'#7C3AED':'#A32D2D') : '#3B6D11';
+      var kpiColors = {retard:'#185FA5',dep:'#7C3AED',station:'#0D7C3D',custom:'#7C3AED'};
+      kpiEl.style.color = counts[cat] > 0 ? (kpiColors[cat]||'#A32D2D') : '#3B6D11';
     }
   });
 
@@ -2910,6 +2936,15 @@ async function loadAlertes() {
                   return '<option value="'+v.id+'">'+v.immatriculation+' — '+v.marque+(v.tag?' ('+v.tag+')':'')+'</option>';
                 }).join('');
       if (cur) alveh.value = cur;
+      // Peupler aussi le select du formulaire rappels custom
+      var alveh2 = document.getElementById('al-custom-veh');
+      if (alveh2) {
+        var cur2 = alveh2.value;
+        alveh2.innerHTML = '<option value="">— aucun véhicule —</option>' +
+          vehsData.sort(function(a,b){ return a.immatriculation.localeCompare(b.immatriculation); })
+                  .map(function(v){ return '<option value="'+v.id+'">'+v.immatriculation+' — '+v.marque+(v.tag?' ('+v.tag+')':'')+'</option>'; }).join('');
+        if (cur2) alveh2.value = cur2;
+      }
     }
   }
 
@@ -3647,6 +3682,41 @@ async function genererAlertesTechniques() {
     }
   } catch(e) {}
 
+  // ── Droits de stationnement ─────────────────────────────
+  vehs.forEach(function(v) {
+    if (v.date_station) {
+      var jS = Math.ceil((new Date(v.date_station) - todayD) / (1000*60*60*24));
+      if (jS < 0) {
+        alertes.push({ type:'danger', cat:'station', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🅿️ Droit de stationnement <strong>ÉCHU depuis '+(Math.abs(jS))+' jour(s)</strong> — '+v.immatriculation+(v.montant_station?' ('+fmt(v.montant_station)+')':''),
+          detail:'Échéance: '+v.date_station, urgence: 3 });
+      } else if (jS <= 30) {
+        alertes.push({ type:'warn', cat:'station', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🅿️ Droit de stationnement dans <strong>'+jS+' jour(s)</strong> — '+v.immatriculation+(v.montant_station?' ('+fmt(v.montant_station)+')':''),
+          detail:'Échéance: '+v.date_station, urgence: jS <= 7 ? 3 : 2 });
+      }
+    }
+  });
+
+  // ── Rappels personnalisés ─────────────────────────────────
+  try {
+    var rappels = await api('GET', '/rappels_custom');
+    if (Array.isArray(rappels)) {
+      rappels.forEach(function(r) {
+        var jR = r.date_echeance ? Math.ceil((new Date(r.date_echeance) - todayD) / (1000*60*60*24)) : null;
+        var urgC = jR === null ? 1 : jR < 0 ? 3 : jR <= 7 ? 3 : jR <= 30 ? 2 : 1;
+        var label = jR === null ? '' : jR < 0 ? ' — <strong>ÉCHU depuis '+Math.abs(jR)+' j</strong>' : ' — dans '+jR+' jour(s)';
+        var veh = r.vehicule_id ? vehs.find(function(x){ return x.id===r.vehicule_id; }) : null;
+        alertes.push({ type: jR !== null && jR < 0 ? 'danger' : 'warn', cat:'custom',
+          vehicule_id: r.vehicule_id||null, immat: veh ? veh.immatriculation : '—', tag: veh ? (veh.tag||'') : '',
+          id_rappel: r.id,
+          message:'📌 '+r.titre+(veh?' — <strong>'+veh.immatriculation+'</strong>':'')+label+(r.montant?' ('+fmt(r.montant)+')':''),
+          detail: r.note || (r.date_echeance ? 'Échéance: '+r.date_echeance : ''),
+          urgence: urgC });
+      });
+    }
+  } catch(e) {}
+
   // Trier par urgence décroissante
   alertes.sort(function(a,b){ return (b.urgence||0)-(a.urgence||0); });
   return alertes;
@@ -3655,7 +3725,7 @@ async function genererAlertesTechniques() {
 function filtrerAlertes(type) {
   if (type) _alerteFiltreType = type;
   var q = ((document.getElementById('al-q')||{}).value||'').toLowerCase();
-  ['tous','assurance','visite','vidange','retard','dep'].forEach(function(t) {
+  ['tous','assurance','visite','vidange','retard','dep','station','custom'].forEach(function(t) {
     var c = document.getElementById('al-chip-' + t);
     if (c) c.className = 'chip ' + (_alerteFiltreType===t ? 'active-blue' : 'inactive');
   });
@@ -3680,7 +3750,10 @@ function filtrerAlertes(type) {
         (a.detail ? '<div style="font-size:11px;color:#6b6b67;margin-top:2px">'+a.detail+'</div>' : '') +
         (a.tag ? '<div style="margin-top:3px">'+pill(a.tag,'purple')+'</div>' : '') +
       '</div>' +
-      (a.vehicule_id ? '<button class="btn-sm" style="background:#E6F1FB;color:#0C447C;flex-shrink:0" onclick="ouvrirFicheVeh(\'' + a.vehicule_id + '\')">Voir</button>' : '') +
+      '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">' +
+      (a.vehicule_id ? '<button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="ouvrirFicheVeh(\'' + a.vehicule_id + '\')">Voir</button>' : '') +
+      (a.cat==='custom' && a.id_rappel ? '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="supprimerRappelCustom(\'' + a.id_rappel + '\')">🗑️</button>' : '') +
+      '</div>' +
     '</div>';
   }).join('');
 }
@@ -3697,7 +3770,9 @@ async function chargerEcheancesVeh() {
     'al-assurance': v.date_expiration_assurance || '',
     'al-visite': v.date_visite_technique || '',
     'al-km-vidange': v.km_prochain_vidange || '',
-    'al-carte-grise': v.date_carte_grise || ''
+    'al-carte-grise': v.date_carte_grise || '',
+    'al-station': v.date_station || '',
+    'al-station-mt': v.montant_station || ''
   };
   Object.keys(fields).forEach(function(id) {
     var el = document.getElementById(id);
@@ -3715,7 +3790,9 @@ async function sauverEcheancesVeh(btn) {
     date_expiration_assurance: document.getElementById('al-assurance').value || undefined,
     date_visite_technique: document.getElementById('al-visite').value || undefined,
     km_prochain_vidange: parseInt(document.getElementById('al-km-vidange').value) || undefined,
-    date_carte_grise: document.getElementById('al-carte-grise').value || undefined
+    date_carte_grise: document.getElementById('al-carte-grise').value || undefined,
+    date_station: document.getElementById('al-station').value || undefined,
+    montant_station: parseInt(document.getElementById('al-station-mt').value) || undefined
   };
   // Supprimer les champs undefined
   Object.keys(data).forEach(function(k){ if (!data[k]) delete data[k]; });
@@ -3723,6 +3800,39 @@ async function sauverEcheancesVeh(btn) {
   setBtnLoad(btn, false);
   toast('✅ Échéances sauvegardées');
   loadAlertes(); // Recharger les alertes
+}
+
+// Sauvegarder un rappel personnalisé (stocké dans db.rappels_custom)
+async function sauverRappelCustom(btn) {
+  var vid   = (document.getElementById('al-custom-veh')||{}).value || '';
+  var titre = (document.getElementById('al-custom-titre')||{}).value || '';
+  if (!titre) { toast('Titre requis', 'err'); return; }
+  setBtnLoad(btn, true);
+  var data = {
+    vehicule_id: vid || null,
+    titre: titre,
+    date_echeance: document.getElementById('al-custom-date').value || null,
+    montant: parseInt(document.getElementById('al-custom-mt').value) || 0,
+    note: document.getElementById('al-custom-note').value || '',
+    created_at: new Date().toISOString()
+  };
+  var r = await api('POST', '/rappels_custom', data);
+  setBtnLoad(btn, false);
+  if (r && r.id) {
+    toast('✅ Rappel ajouté');
+    ['al-custom-veh','al-custom-titre','al-custom-date','al-custom-mt','al-custom-note']
+      .forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    loadAlertes();
+  } else {
+    toast('Erreur lors de la sauvegarde', 'err');
+  }
+}
+
+async function supprimerRappelCustom(id) {
+  if (!confirm('Supprimer ce rappel ?')) return;
+  await api('DELETE', '/rappels_custom/' + id);
+  loadAlertes();
+  toast('Rappel supprimé');
 }
 
 // ═══════════════════════════════════════════════════════
