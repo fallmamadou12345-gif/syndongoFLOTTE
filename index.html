@@ -2175,7 +2175,7 @@ async function renderFicheVeh() {
   const [f, affs, vers, deps, facs] = await Promise.all([
     api('GET', '/vehicules/' + _ficheVehIdCur + '/fiche'),
     api('GET', '/affectations'),
-    api('GET', '/versements'),
+    api('GET', '/versements?vehicule_id=' + _ficheVehIdCur),  // Tous les versements de CE véhicule
     api('GET', '/depenses'),
     api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur)
   ]);
@@ -2187,9 +2187,11 @@ async function renderFicheVeh() {
   const affVeh = Array.isArray(affs) ? affs.filter(function(a){ return a.vehicule_id === _ficheVehIdCur; }) : [];
   const affIds = affVeh.map(function(a){ return a.id; });
 
+  // vers = déjà filtrés par vehicule_id (chargés avec ?vehicule_id=...)
+  // versFilt = filtre par période si sélectionnée
   const versFilt = per
-    ? (Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id) && vs.date_versement >= per.debut && vs.date_versement <= per.fin; }) : [])
-    : (Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id); }) : []);
+    ? (Array.isArray(vers) ? vers.filter(function(vs){ return vs.date_versement >= per.debut && vs.date_versement <= per.fin; }) : [])
+    : (Array.isArray(vers) ? vers : []);
 
   const depsFilt = per
     ? (Array.isArray(deps) ? deps.filter(function(d){ return d.vehicule_id === _ficheVehIdCur && d.date_depense >= per.debut && d.date_depense <= per.fin; }) : [])
@@ -2204,12 +2206,14 @@ async function renderFicheVeh() {
   const totDep = depsFilt.reduce(function(s,d){ return s + d.montant; }, 0);
 
   // ── Encaissé = FIFO imputé sur les factures de LA PÉRIODE de CE véhicule
-  var vFacsAll  = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id === _ficheVehIdCur; }) : [];
-  var vVersAll  = Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id); }) : [];
+  // facs = facturations de ce véhicule (chargées avec ?vehicule_id=...)
+  // vers = versements de ce véhicule (chargés avec ?vehicule_id=...)
+  var vFacsAll  = Array.isArray(facs) ? facs : [];
+  var vVersAll  = Array.isArray(vers) ? vers : [];
   var impFiche  = imputerVersements(vFacsAll, vVersAll, facsFilt.map(function(f){ return f.id; }), affIds);
   const totEnc  = impFiche.encImpute;
 
-  // ── Retard = dette GLOBALE de ce véhicule (tout l'historique)
+  // ── Retard = dette GLOBALE (tout facturé - tout versé pour ce véhicule)
   var vFacGlob  = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
   var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
   const retard  = Math.max(0, vFacGlob - vVersGlob);
@@ -2277,9 +2281,9 @@ async function renderFicheVeh() {
   if (affActives.length) {
     chaufHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">CHAUFFEUR(S)</div>' +
       affActives.map(function(a){
-        // Versements et facturations GLOBAUX (tout l'historique) pour ce chauffeur
-        var aVersGlob = Array.isArray(vers) ? vers.filter(function(vs){ return vs.affectation_id===a.id; }) : [];
-        var aFacsGlob = Array.isArray(facs) ? facs.filter(function(fc){ return fc.chauffeur_id===a.chauffeur_id && fc.vehicule_id===_ficheVehIdCur; }) : [];
+        // vers et facs déjà filtrés par vehicule_id
+        var aVersGlob = vVersAll.filter(function(vs){ return vs.affectation_id===a.id; });
+        var aFacsGlob = vFacsAll.filter(function(fc){ return fc.chauffeur_id===a.chauffeur_id; });
         var aEncGlob  = aVersGlob.reduce(function(s,vs){return s+vs.montant;},0);
         var aFacGlob  = aFacsGlob.reduce(function(s,fc){return s+(fc.montant_facture||0);},0);
         var aRet = Math.max(0, aFacGlob - aEncGlob);

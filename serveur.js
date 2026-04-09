@@ -520,11 +520,22 @@ async function handleAPI(req, res, body) {
     const myAffIds=db.affectations.filter(a=>myVehs.includes(a.vehicule_id)).map(a=>a.id);
     let list=db.versements.filter(v=>myAffIds.includes(v.affectation_id));
     if(q.date_debut&&q.date_fin) list=list.filter(v=>v.date_versement>=q.date_debut&&v.date_versement<=q.date_fin);
+    // Filtre par vehicule_id : retourne TOUS les versements de ce véhicule sans limite
+    if(q.vehicule_id){
+      const vAffIds=db.affectations.filter(a=>a.vehicule_id===q.vehicule_id&&myVehs.includes(a.vehicule_id)).map(a=>a.id);
+      list=list.filter(v=>vAffIds.includes(v.affectation_id));
+      return res.end(JSON.stringify(list.sort((a,b)=>b.date_versement.localeCompare(a.date_versement)).map(v=>{
+        const aff=db.affectations.find(a=>a.id===v.affectation_id);
+        const c=aff?db.chauffeurs.find(x=>x.id===aff.chauffeur_id):null;
+        const veh=db.vehicules.find(x=>x.id===q.vehicule_id);
+        return{...v,chauffeur:c?c.prenom+' '+c.nom:'?',vehicule:veh?veh.immatriculation:'?',vehicule_id:q.vehicule_id};
+      })));
+    }
     return res.end(JSON.stringify(list.slice(-300).reverse().map(v=>{
       const aff=db.affectations.find(a=>a.id===v.affectation_id);
       const c=aff?db.chauffeurs.find(x=>x.id===aff.chauffeur_id):null;
       const veh=aff?db.vehicules.find(x=>x.id===aff.vehicule_id):null;
-      return{...v,chauffeur:c?c.prenom+' '+c.nom:'?',vehicule:veh?veh.immatriculation:'?'};
+      return{...v,chauffeur:c?c.prenom+' '+c.nom:'?',vehicule:veh?veh.immatriculation:'?',vehicule_id:veh?veh.id:''};
     })));
   }
   if(p==='/api/versements'&&method==='POST'){
@@ -697,39 +708,11 @@ async function handleAPI(req, res, body) {
     const date_debut=q.date_debut||'';
     const date_fin=q.date_fin||'';
 
-    // ── Imputation FIFO ──────────────────────────────────────
-    // Les versements règlent les facturations dans l'ordre chronologique.
-    // Le retard sur une période = facturé période - encaissé imputé sur période.
-    // Exemple : facturé avril=100k, versé en avril=80k puis versé 3 mai=20k
-    //           → retard avril = 0 (les 20k de mai soldent avril)
-    function imputerFIFO(facsAll, versAll, facsPeriodeIds) {
-      // Trier par date
-      const ft=[...facsAll].sort((a,b)=>a.date.localeCompare(b.date));
-      const vt=[...versAll].sort((a,b)=>a.date_versement.localeCompare(b.date_versement));
-      // Pool de versements
-      const pool=vt.map(vs=>vs.montant);
-      // Imputer séquentiellement
-      const imp={};
-      ft.forEach(fac=>{
-        let due=fac.montant_facture||0, impute=0;
-        for(let i=0;i<pool.length&&due>0;i++){
-          const p=Math.min(pool[i],due);
-          impute+=p; pool[i]-=p; due-=p;
-        }
-        imp[fac.id]=impute;
-      });
-      // Sommer sur la période
-      const perSet=new Set(facsPeriodeIds);
-      let facMontant=0, encImpute=0;
-      ft.forEach(fac=>{
-        if(perSet.has(fac.id)){
-          facMontant+=fac.montant_facture||0;
-          encImpute+=imp[fac.id]||0;
-        }
-      });
-      encImpute=Math.min(encImpute,facMontant);
-      return{facMontant,encImpute,retard:Math.max(0,facMontant-encImpute)};
-    }
+    // ── Retard RÉEL = Dette cumulée globale ───────────────────
+    // Retard = Total facturé depuis le début - Total versé depuis le début
+    // La période filtre uniquement les véhicules ACTIFS sur cette période
+    // (ont au moins une facturation dans la période).
+    // Cela évite les faux retards dus au FIFO inter-périodes.
 
     const retards=vehs.map(v=>{
       const affs=db.affectations.filter(a=>a.vehicule_id===v.id);
@@ -737,17 +720,22 @@ async function handleAPI(req, res, body) {
       const aff_active=affs.find(a=>!a.date_fin);
       const chauffeur=aff_active?db.chauffeurs.find(c=>c.id===aff_active.chauffeur_id):null;
 
-      // Toutes les facturations du véhicule (pour FIFO global)
+      // Toutes les données du véhicule
       const facsAll=db.facturations.filter(f=>f.vehicule_id===v.id);
-      // Tous les versements du véhicule
       const versAll=db.versements.filter(vs=>affIds.includes(vs.affectation_id));
 
-      // Facturations sur la période demandée
-      let facsPeriode=facsAll;
-      if(date_debut&&date_fin) facsPeriode=facsAll.filter(f=>f.date>=date_debut&&f.date<=date_fin);
+      // Filtre période : ne garder que les véhicules ayant des factures sur la période
+      if(date_debut&&date_fin){
+        const facsPer=facsAll.filter(f=>f.date>=date_debut&&f.date<=date_fin);
+        if(facsPer.length===0) return null;
+      }
 
-      const res2=imputerFIFO(facsAll,versAll,facsPeriode.map(f=>f.id));
-      if(res2.retard===0) return null;
+      // Dette globale = tout l'historique
+      const totFac=facsAll.reduce((s,f)=>s+(f.montant_facture||0),0);
+      const totVers=versAll.reduce((s,v)=>s+v.montant,0);
+      const retard=Math.max(0,totFac-totVers);
+
+      if(retard===0) return null;
 
       return{
         vehicule_id:v.id,
@@ -755,15 +743,13 @@ async function handleAPI(req, res, body) {
         marque:v.marque,
         tag:v.tag||'',
         chauffeur:chauffeur?chauffeur.prenom+' '+chauffeur.nom:'Non affecté',
-        total_facture:res2.facMontant,
-        total_verse:res2.encImpute,
-        retard:res2.retard
+        total_facture:totFac,
+        total_verse:totVers,
+        retard
       };
     }).filter(Boolean).sort((a,b)=>b.retard-a.retard);
     return res.end(JSON.stringify(retards));
   }
-
-  // ── RAPPORT ───────────────────────────────────────────────
   if(p==='/api/rapport'&&method==='GET'){
     const vehs=vehsVisibles(db,auth);
     const date_debut=q.date_debut||'';
