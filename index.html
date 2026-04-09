@@ -1610,15 +1610,26 @@ async function loadDashboard() {
       : '';
   }
 
-  // ── Stats journalières (toujours basées sur aujourd'hui) ──
+  // ── Stats journalières — recalculées sur les véhicules filtrés (tag + statut) ──
   document.getElementById('k-total').textContent = vehs.length;
-  if (d.stats_jour) {
-    document.getElementById('k-actif').textContent = d.stats_jour.actif  || 0;
-    document.getElementById('k-panne').textContent = d.stats_jour.panne  || 0;
-    document.getElementById('k-repos').textContent = d.stats_jour.repos  || 0;
-    document.getElementById('k-inact').textContent = d.stats_jour.inactif|| 0;
-    document.getElementById('k-ns').textContent    = d.stats_jour.non_saisi || 0;
+
+  // d.activites_today contient le statut de CHAQUE véhicule filtré par le serveur
+  // On recompte sur les véhicules visibles seulement
+  var statsJour = { actif:0, panne:0, repos:0, inactif:0, non_saisi:0 };
+  var actMap = {};
+  if (d.activites_today) {
+    d.activites_today.forEach(function(a){ actMap[a.vehicule_id] = a.statut_jour; });
   }
+  vehs.forEach(function(v) {
+    var sj = actMap[v.id] || 'non_saisi';
+    statsJour[sj] = (statsJour[sj]||0) + 1;
+  });
+
+  document.getElementById('k-actif').textContent = statsJour.actif     || 0;
+  document.getElementById('k-panne').textContent = statsJour.panne     || 0;
+  document.getElementById('k-repos').textContent = statsJour.repos     || 0;
+  document.getElementById('k-inact').textContent = statsJour.inactif   || 0;
+  document.getElementById('k-ns').textContent    = statsJour.non_saisi || 0;
 
   // ── Alertes & Rappels ────────────────────────────────────
   var alertesTech = await genererAlertesTechniques();
@@ -3763,6 +3774,9 @@ function filtrerVehStatut(sj) {
       c.className = 'chip ' + (s === sj ? colors[s] : 'inactive');
     }
   });
+  // Transmettre le tag actif du dashboard
+  var tagActif2 = (document.getElementById('d-filter-tag')||{}).value || '';
+  if (tagActif2) { setTimeout(function(){ var vt=document.getElementById('v-tag'); if(vt) vt.value=tagActif2; }, 250); }
   const el = navEl('vehicules');
   goPage('vehicules', el);
 }

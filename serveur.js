@@ -174,15 +174,18 @@ async function handleAPI(req, res, body) {
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
     // Véhicules avec affectation active (présumés actifs si pas de saisie)
     const affActivesIds = new Set(db.affectations.filter(a=>!a.date_fin).map(a=>a.vehicule_id));
+    const activitesToday = [];
     vehs.forEach(v => {
       const act = db.activites.find(a => a.vehicule_id===v.id && a.date===tj);
       if (act) {
         stats[act.statut_jour] = (stats[act.statut_jour]||0)+1;
+        activitesToday.push({vehicule_id:v.id, statut_jour:act.statut_jour});
       } else if (affActivesIds.has(v.id)) {
-        // Pas de saisie mais affectation active → présumé actif
         stats.actif++;
+        activitesToday.push({vehicule_id:v.id, statut_jour:'actif', presume:true});
       } else {
         stats.non_saisi++;
+        activitesToday.push({vehicule_id:v.id, statut_jour:'non_saisi'});
       }
     });
     // Filtre par période si demandé
@@ -248,7 +251,7 @@ async function handleAPI(req, res, body) {
         retard_total:retardTotal,     // Somme retards par véhicule
         facture_total:facPeriode      // Total facturé
       },
-      stats_jour:stats, alertes:alertes||[], role:auth.role,
+      stats_jour:stats, activites_today:activitesToday, alertes:alertes||[], role:auth.role,
       periode:{date_debut,date_fin,active:!!(date_debut&&date_fin)}
     }));
     } catch(dashErr) {
