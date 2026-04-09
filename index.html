@@ -1523,50 +1523,36 @@ async function loadDashboard() {
   var totDep = depsFilt.reduce(function(s,d){ return s+d.montant; }, 0);
   var allAffsList = Array.isArray(affs) ? affs : [];
 
-  // Calcul imputation par véhicule
+  // ── Calculs KPIs par véhicule ────────────────────────────
+  // • Facturé/Encaissé : FIFO sur la période (imputation)
+  // • Retard : dette GLOBALE cumulée (tout l'historique)
+  //   → Évite les faux retards inter-périodes
   var totFac = 0;
-  var totEnc = 0; // Encaissé imputé sur la période
+  var totEnc = 0;
   var totRet = 0;
 
   vehs.forEach(function(v) {
     var vAffIds = allAffsList.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
+    var vFacsAll = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id===v.id; }) : [];
+    var vVersAll = Array.isArray(vers) ? vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }) : [];
 
-    // Toutes les facturations de ce véhicule (triées par date)
-    var vFacsAll = Array.isArray(facs) ? facs.filter(function(f){
-      return f.vehicule_id===v.id;
-    }).sort(function(a,b){ return a.date.localeCompare(b.date); }) : [];
-
-    // Tous les versements de ce véhicule (triés par date)
-    var vVersAll = Array.isArray(vers) ? vers.filter(function(vs){
-      return vAffIds.includes(vs.affectation_id);
-    }).sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); }) : [];
-
-    // Imputation FIFO : distribuer les versements sur les facturations
-    var restants = vVersAll.map(function(vs){ return { montant: vs.montant, date: vs.date_versement }; });
-
-    var imputations = {}; // fac.id → montant imputé
-    vFacsAll.forEach(function(fac) {
-      var dueFac = fac.montant_facture || 0;
-      var impute = 0;
-      for (var i = 0; i < restants.length && dueFac > 0; i++) {
-        var prise = Math.min(restants[i].montant, dueFac);
-        impute += prise;
-        restants[i].montant -= prise;
-        dueFac -= prise;
-      }
-      imputations[fac.id] = impute;
-    });
-
-    // Sommer sur la période sélectionnée
+    // Facturés sur la période
     var vFacPer = facsFilt.filter(function(f){ return f.vehicule_id===v.id; });
     var vFacMontant = vFacPer.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-    var vEncImpute = vFacPer.reduce(function(s,f){ return s+(imputations[f.id]||0); }, 0);
-    // L'encaissé imputé ne peut pas dépasser le facturé sur la période
-    vEncImpute = Math.min(vEncImpute, vFacMontant);
+
+    // Encaissé = FIFO imputé sur la période
+    var vImp = imputerVersements(vFacsAll, vVersAll, vFacPer.map(function(f){return f.id;}), vAffIds);
+    var vEncImpute = vImp.encImpute;
+
+    // Retard = dette globale (total facturé - total versé, tout historique)
+    var vFacGlob = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+    var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
+    var vRetard = Math.max(0, vFacGlob - vVersGlob);
 
     totFac += vFacMontant;
     totEnc += vEncImpute;
-    totRet += Math.max(0, vFacMontant - vEncImpute);
+    // Retard : ne compter que si le véhicule est actif sur la période
+    if (vFacMontant > 0) totRet += vRetard;
   });
 
   var marge = totFac - totDep;
@@ -2215,13 +2201,20 @@ async function renderFicheVeh() {
 
   // Calculs CORRECTS
   const totFac = facsFilt.reduce(function(s,fc){ return s + (fc.montant_facture||0); }, 0);
-  // Imputation FIFO pour la fiche véhicule
-  var vFacsAll2 = Array.isArray(facs) ? facs : [];
-  var impFiche = imputerVersements(vFacsAll2, Array.isArray(vers) ? vers : [], facsFilt.map(function(f){return f.id;}), affIds);
-  const totEnc = impFiche.encImpute;
   const totDep = depsFilt.reduce(function(s,d){ return s + d.montant; }, 0);
-  const retard = Math.max(0, totFac - totEnc);          // Manquant = Facturé - Encaissé
-  const marge  = totFac - totDep;                        // Marge = Encaissé - Dépenses
+
+  // ── Encaissé = FIFO imputé sur les factures de LA PÉRIODE de CE véhicule
+  var vFacsAll  = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id === _ficheVehIdCur; }) : [];
+  var vVersAll  = Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id); }) : [];
+  var impFiche  = imputerVersements(vFacsAll, vVersAll, facsFilt.map(function(f){ return f.id; }), affIds);
+  const totEnc  = impFiche.encImpute;
+
+  // ── Retard = dette GLOBALE de ce véhicule (tout l'historique)
+  var vFacGlob  = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
+  var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
+  const retard  = Math.max(0, vFacGlob - vVersGlob);
+
+  const marge   = totFac - totDep;   // Marge = Facturé période - Dépenses
   const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // KPIs
@@ -2284,11 +2277,16 @@ async function renderFicheVeh() {
   if (affActives.length) {
     chaufHTML = '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:5px">CHAUFFEUR(S)</div>' +
       affActives.map(function(a){
+        // Versements et facturations GLOBAUX (tout l'historique) pour ce chauffeur
+        var aVersGlob = Array.isArray(vers) ? vers.filter(function(vs){ return vs.affectation_id===a.id; }) : [];
+        var aFacsGlob = Array.isArray(facs) ? facs.filter(function(fc){ return fc.chauffeur_id===a.chauffeur_id && fc.vehicule_id===_ficheVehIdCur; }) : [];
+        var aEncGlob  = aVersGlob.reduce(function(s,vs){return s+vs.montant;},0);
+        var aFacGlob  = aFacsGlob.reduce(function(s,fc){return s+(fc.montant_facture||0);},0);
+        var aRet = Math.max(0, aFacGlob - aEncGlob);
+        // Versé sur la période (pour affichage)
         var aVers = versFilt.filter(function(vs){ return vs.affectation_id===a.id; });
-        var aFacs = facsFilt.filter(function(fc){ return fc.chauffeur_id===a.chauffeur_id; });
-        var aEnc = aVers.reduce(function(s,vs){return s+vs.montant;},0);
-        var aFac = aFacs.reduce(function(s,fc){return s+(fc.montant_facture||0);},0);
-        var aRet = Math.max(0,aFac-aEnc);
+        var aEnc  = aEncGlob; // Afficher le total global versé
+        var aFac  = aFacGlob; // Afficher le total global facturé
         return '<div onclick="ouvrirFicheChauf(\'' + a.chauffeur_id + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9f9f9;border:1px solid #e0dfd8;border-radius:8px;cursor:pointer;margin-bottom:4px">' +
           '<div><div style="font-weight:600">' + a.chauffeur + '</div>' +
           '<div style="font-size:11px;color:#6b6b67">' + a.montant_journalier.toLocaleString('fr-FR') + ' F/j' + (a.date_fin?' · Fin: '+a.date_fin:' · En cours') + '</div></div>' +
