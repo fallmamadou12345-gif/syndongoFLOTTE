@@ -601,10 +601,10 @@ tr:hover td{background:#fafaf8}
             <div class="field"><label>Montant reçu (FCFA) *</label><input id="em" type="number" placeholder="15000"></div>
             <div class="field"><label>Mode</label>
               <select id="emode">
-                <option value="especes">Espèces</option>
-                <option value="wave">Wave</option>
-                <option value="orange_money">Orange Money</option>
-                <option value="virement">Virement</option>
+                <option value="especes" translate="no">Espèces</option>
+                <option value="wave" translate="no">Wave 📱</option>
+                <option value="orange_money" translate="no">Orange Money 📱</option>
+                <option value="virement" translate="no">Virement</option>
               </select>
             </div>
           </div>
@@ -642,17 +642,18 @@ tr:hover td{background:#fafaf8}
 
         <!-- Filtres communs -->
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #f0efeb">
-          <input id="hist-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px;width:200px" oninput="loadCaisseTab()">
-          <select id="hist-veh" style="font-size:12px;width:160px" onchange="loadCaisseTab()"><option value="">Tous véhicules</option></select>
-          <input type="date" id="hist-debut" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
+          <input id="hist-q" placeholder="🔍 Véhicule / Chauffeur…" style="font-size:12px;width:180px" oninput="loadCaisseTab()">
+          <select id="hist-tag" style="font-size:12px;width:130px" onchange="loadCaisseTab()"><option value="">Tous tags</option></select>
+          <select id="hist-veh" style="font-size:12px;width:150px" onchange="loadCaisseTab()"><option value="">Tous véhicules</option></select>
+          <input type="date" id="hist-debut" style="font-size:12px;width:120px" onchange="loadCaisseTab()">
           <span style="font-size:11px;color:#6b6b67">au</span>
-          <input type="date" id="hist-fin" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
-          <select id="hist-type-fac" style="font-size:12px;width:130px" onchange="loadCaisseTab()">
+          <input type="date" id="hist-fin" style="font-size:12px;width:120px" onchange="loadCaisseTab()">
+          <select id="hist-type-fac" style="font-size:12px;width:120px" onchange="loadCaisseTab()">
             <option value="">Tous types</option>
-            <option value="complet">Complète</option>
-            <option value="demi_panne">Demi-panne</option>
-            <option value="repos">Repos</option>
-            <option value="inactif">Inactif</option>
+            <option value="complet" translate="no">Complète</option>
+            <option value="demi_panne" translate="no">Demi-panne</option>
+            <option value="repos" translate="no">Repos</option>
+            <option value="inactif" translate="no">Inactif</option>
           </select>
         </div>
 
@@ -1731,6 +1732,7 @@ async function loadTags() {
     { id: 'd-filter-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag2', placeholder: 'Tous tags', filter: true },
     { id: 'ret-tag', placeholder: 'Tous tags', filter: true },
+    { id: 'hist-tag', placeholder: 'Tous tags', filter: true },
     { id: 'gprop-tag', placeholder: '— Aucun tag —', filter: false },
     { id: 'rp-tag', placeholder: 'Tous tags', filter: true },
   ];
@@ -2269,8 +2271,8 @@ async function renderFicheVeh() {
       'data-vers-id="'+vs.id+'" onclick="delVersFromBtn(this)">🗑️</button></td>' : '';
     return '<tr><td style="color:#6b6b67">'+vs.date_versement+'</td>' +
       '<td style="color:#3B6D11;font-weight:700;text-align:right">'+fmt(vs.montant)+'</td>' +
-      '<td>'+vs.mode_paiement+'</td>' +
-      '<td>'+pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td>' +
+      '<td>'+((vs.mode_paiement==='wave'?'📱 Wave':vs.mode_paiement==='especes'?'💵 Espèces':vs.mode_paiement==='orange_money'?'📱 Orange Money':vs.mode_paiement==='virement'?'🏦 Virement':vs.mode_paiement||'—'))+'</td>' +
+      '<td>'+pill(vs.statut==='recu'?'✅ Reçu':vs.statut==='partiel'?'⚡ Partiel':'❌ Retard', vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td>' +
       action+'</tr>';
   }).join('');
 
@@ -2502,7 +2504,7 @@ async function renderFicheChauf() {
     versFilt.slice(0,30).map(function(vs){
       var action = isM2 ? '<td><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;padding:3px 8px" ' +
         'data-vers-id="'+vs.id+'" onclick="delVersFromBtn(this)">🗑️</button></td>' : '';
-      return '<tr><td style="color:#6b6b67">'+vs.date_versement+'</td><td style="color:#3B6D11;font-weight:700;text-align:right">'+fmt(vs.montant)+'</td><td>'+vs.mode_paiement+'</td><td>'+pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td>'+action+'</tr>';
+      return '<tr><td style="color:#6b6b67">'+vs.date_versement+'</td><td style="color:#3B6D11;font-weight:700;text-align:right">'+fmt(vs.montant)+'</td><td>'+((function(mp){return mp==='wave'?'📱 Wave':mp==='especes'?'💵 Espèces':mp==='orange_money'?'📱 Orange Money':mp==='virement'?'🏦 Virement':mp||'—';})(vs.mode_paiement))+'</td><td>'+pill(vs.statut==='recu'?'✅ Reçu':vs.statut==='partiel'?'⚡ Partiel':'❌ Retard', vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err')+'</td>'+action+'</tr>';
     }).join('')+'</tbody></table></div></div>' : '<div style="color:#6b6b67;font-size:12px;font-style:italic;margin-bottom:12px">Aucun versement sur cette période</div>';
 
   body.innerHTML = infoHTML + kpiHTML + vehsHTML + calHTML + versHTML;
@@ -2677,14 +2679,25 @@ async function loadRetards() {
   const retTag = (document.getElementById('ret-tag') || {}).value || '';
   const retQ = ((document.getElementById('ret-q') || {}).value || '').toLowerCase();
   let url = '/retards';
-  if (debut && fin) url += '?date_debut=' + debut + '&date_fin=' + fin;
+  var params = [];
+  if (debut && fin) { params.push('date_debut='+debut); params.push('date_fin='+fin); }
+  if (retTag) params.push('tag='+encodeURIComponent(retTag));
+  if (params.length) url += '?' + params.join('&');
   let ret = await api('GET', url);
   if (!Array.isArray(ret)) ret = [];
+  // Filtre local par recherche texte
+  if (retQ) ret = ret.filter(function(r){
+    return r.immatriculation.toLowerCase().includes(retQ) ||
+           r.chauffeur.toLowerCase().includes(retQ) ||
+           (r.tag||'').toLowerCase().includes(retQ);
+  });
   const el = document.getElementById('t-ret');
   const total = ret.reduce(function(s, r) { return s + r.retard; }, 0);
   if (!ret.length) { el.innerHTML = '<div class="empty" style="color:#3B6D11">✓ Aucun retard — tous les versements sont à jour</div>'; }
   else {
-    el.innerHTML = '<div class="err-box">Total retards : <strong>' + fmt(total) + '</strong> sur ' + ret.length + ' véhicule(s)</div>' +
+    var labelTag = retTag ? ' · ' + retTag : '';
+    var labelQ   = retQ   ? ' · "' + retQ + '"' : '';
+    el.innerHTML = '<div class="err-box">Total retards : <strong>' + fmt(total) + '</strong> sur ' + ret.length + ' véhicule(s)' + labelTag + labelQ + '</div>' +
       '<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Versé</th><th>Retard</th></tr></thead><tbody>' +
       ret.map(function(r) {
         return '<tr onclick="ouvrirFicheVeh(\'' + r.vehicule_id + '\')" style="cursor:pointer"><td><strong>' + r.immatriculation + '</strong> ' + r.marque + '</td>' +
@@ -4786,7 +4799,7 @@ async function chargerFicheChaufRapport() {
   var versHTML = versPer.length ? '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:6px">VERSEMENTS (' + versPer.length + ')</div>' +
     '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr></thead><tbody>' +
     versPer.slice(0,30).map(function(vs) {
-      return '<tr><td>' + vs.date_versement + '</td><td style="color:#3B6D11;font-weight:600">' + fmt(vs.montant) + '</td><td>' + vs.mode_paiement + '</td><td>' + pill(vs.statut,vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err') + '</td></tr>';
+      return '<tr><td>' + vs.date_versement + '</td><td style="color:#3B6D11;font-weight:600">' + fmt(vs.montant) + '</td><td>' + vs.mode_paiement + '</td><td>' + pill(vs.statut==='recu'?'✅ Reçu':vs.statut==='partiel'?'⚡ Partiel':'❌ Retard', vs.statut==='recu'?'ok':vs.statut==='partiel'?'warn':'err') + '</td></tr>';
     }).join('') + '</tbody></table></div></div>' : '';
 
   // Journées facturées (calendrier)
@@ -5925,14 +5938,23 @@ loadFac = async function() {
     // Si on est sur un autre onglet, ne pas rafraîchir t-fac
     return;
   }
-  const vid = (document.getElementById('hist-veh') || document.getElementById('ff-veh') || {}).value || '';
-  const ffQ = ((document.getElementById('hist-q') || document.getElementById('ff-q') || {}).value || '').toLowerCase();
-  const ffDebut = (document.getElementById('hist-debut') || document.getElementById('ff-debut') || {}).value || '';
-  const ffFin   = (document.getElementById('hist-fin')   || document.getElementById('ff-fin')   || {}).value || '';
-  const ffType  = (document.getElementById('hist-type-fac') || document.getElementById('ff-type') || {}).value || '';
+  const vid    = (document.getElementById('hist-veh') || document.getElementById('ff-veh') || {}).value || '';
+  const ffTag  = (document.getElementById('hist-tag') || {}).value || '';
+  const ffQ    = ((document.getElementById('hist-q') || document.getElementById('ff-q') || {}).value || '').toLowerCase();
+  const ffDebut= (document.getElementById('hist-debut') || document.getElementById('ff-debut') || {}).value || '';
+  const ffFin  = (document.getElementById('hist-fin')   || document.getElementById('ff-fin')   || {}).value || '';
+  const ffType = (document.getElementById('hist-type-fac') || document.getElementById('ff-type') || {}).value || '';
+
+  // Si filtre tag : charger les véhicules du tag d'abord
+  let vidsTag = null;
+  if (ffTag) {
+    var vehsTag = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
+    vidsTag = Array.isArray(vehsTag) ? vehsTag.map(function(v){ return v.id; }) : [];
+  }
 
   let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
   if (!Array.isArray(list)) list = [];
+  if (vidsTag) list = list.filter(function(f){ return vidsTag.includes(f.vehicule_id); });
   if (ffQ)     list = list.filter(function(f){ return (f.vehicule||'').toLowerCase().includes(ffQ)||(f.chauffeur||'').toLowerCase().includes(ffQ); });
   if (ffDebut) list = list.filter(function(f){ return f.date >= ffDebut; });
   if (ffFin)   list = list.filter(function(f){ return f.date <= ffFin; });
@@ -5985,15 +6007,24 @@ async function loadEncaissements() {
   if (!el) return;
   el.innerHTML = '<div class="empty">Chargement…</div>';
 
+  const ffTag   = (document.getElementById('hist-tag')||{}).value||'';
   const ffQ     = ((document.getElementById('hist-q')||{}).value||'').toLowerCase();
   const ffDebut = (document.getElementById('hist-debut')||{}).value||'';
   const ffFin   = (document.getElementById('hist-fin')||{}).value||'';
   const vid     = (document.getElementById('hist-veh')||{}).value||'';
 
+  // Filtre tag : récupérer les vehicule_ids du tag
+  var vidsTagEnc = null;
+  if (ffTag) {
+    var vehsTagEnc = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
+    vidsTagEnc = Array.isArray(vehsTagEnc) ? vehsTagEnc.map(function(v){ return v.id; }) : [];
+  }
+
   let list = await api('GET', '/versements' + (ffDebut&&ffFin ? '?date_debut='+ffDebut+'&date_fin='+ffFin : ''));
   if (!Array.isArray(list)) list = [];
+  if (vidsTagEnc) list = list.filter(function(v){ return vidsTagEnc.includes(v.vehicule_id||''); });
   if (ffQ) list = list.filter(function(v){ return (v.vehicule||'').toLowerCase().includes(ffQ)||(v.chauffeur||'').toLowerCase().includes(ffQ); });
-  if (vid) list = list.filter(function(v){ return v.vehicule === vid || (v.vehicule_id && v.vehicule_id === vid); });
+  if (vid) list = list.filter(function(v){ return v.vehicule_id === vid; });
 
   if (!list.length) { el.innerHTML = '<div class="empty">Aucun encaissement sur cette période</div>'; return; }
 
@@ -6002,7 +6033,7 @@ async function loadEncaissements() {
     '<span style="font-size:12px;color:#6b6b67">' + list.length + ' encaissement(s)</span>' +
     '<span style="font-size:14px;font-weight:800;color:#3B6D11">' + fmt(totEnc) + '</span></div>';
 
-  const modeLabels = { especes:'Espèces', wave:'Wave', orange_money:'Orange Money', virement:'Virement' };
+  const modeLabels = { especes:'💵 Espèces', wave:'📱 Wave', orange_money:'📱 Orange Money', virement:'🏦 Virement' };
   const rows = list.map(function(v) {
     const statutColor = v.statut==='recu'?'#3B6D11':v.statut==='partiel'?'#BA7517':'#A32D2D';
     return '<tr style="border-bottom:1px solid #f5f4f0">' +
@@ -6011,7 +6042,7 @@ async function loadEncaissements() {
       '<td style="font-size:12px">' + (v.chauffeur||'?') + '</td>' +
       '<td style="font-size:11px">' + (modeLabels[v.mode_paiement]||v.mode_paiement||'—') + '</td>' +
       '<td style="text-align:right;font-weight:700;color:#3B6D11">' + fmt(v.montant) + '</td>' +
-      '<td>' + pill(v.statut||'—', v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err') + '</td>' +
+      '<td>' + pill(v.statut==='recu'?'✅ Reçu':v.statut==='partiel'?'⚡ Partiel':'❌ Retard', v.statut==='recu'?'ok':v.statut==='partiel'?'warn':'err') + '</td>' +
     '</tr>';
   }).join('');
 
@@ -6644,6 +6675,27 @@ refreshSelects = async function() {
     });
   }
 };
+
+// ═══════════════════════════════════════════════════════
+// ANTI-TRADUCTION AUTOMATIQUE
+// ═══════════════════════════════════════════════════════
+(function() {
+  // Forcer lang=fr et notranslate sur tout le document
+  document.documentElement.lang = 'fr';
+  document.documentElement.setAttribute('translate', 'no');
+  document.documentElement.classList.add('notranslate');
+  // Bloquer Google Translate
+  var meta1 = document.createElement('meta');
+  meta1.name = 'google'; meta1.content = 'notranslate';
+  document.head.appendChild(meta1);
+  // Observer pour re-appliquer si le DOM change
+  if (window.MutationObserver) {
+    var obs = new MutationObserver(function() {
+      document.documentElement.setAttribute('translate', 'no');
+    });
+    obs.observe(document.body, { childList: true, subtree: false });
+  }
+})();
 </script>
 
 <!-- MODALE FICHE VÉHICULE RAPPORT -->

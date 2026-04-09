@@ -522,7 +522,9 @@ async function handleAPI(req, res, body) {
 
   // ── VERSEMENTS ────────────────────────────────────────────
   if(p==='/api/versements'&&method==='GET'){
-    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let visVehs=vehsVisibles(db,auth);
+    if(q.tag) visVehs=visVehs.filter(v=>v.tag===q.tag);
+    const myVehs=visVehs.map(v=>v.id);
     const myAffIds=db.affectations.filter(a=>myVehs.includes(a.vehicule_id)).map(a=>a.id);
     let list=db.versements.filter(v=>myAffIds.includes(v.affectation_id));
     if(q.date_debut&&q.date_fin) list=list.filter(v=>v.date_versement>=q.date_debut&&v.date_versement<=q.date_fin);
@@ -596,7 +598,9 @@ async function handleAPI(req, res, body) {
 
   // ── FACTURATIONS ──────────────────────────────────────────
   if(p==='/api/facturations'&&method==='GET'){
-    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let visVehsFac=vehsVisibles(db,auth);
+    if(q.tag) visVehsFac=visVehsFac.filter(v=>v.tag===q.tag);
+    const myVehs=visVehsFac.map(v=>v.id);
     let list=db.facturations.filter(f=>myVehs.includes(f.vehicule_id));
     if(q.vehicule_id) list=list.filter(f=>f.vehicule_id===q.vehicule_id);
     if(q.chauffeur_id) list=list.filter(f=>f.chauffeur_id===q.chauffeur_id);
@@ -710,9 +714,11 @@ async function handleAPI(req, res, body) {
 
   // ── RETARDS ───────────────────────────────────────────────
   if(p==='/api/retards'&&method==='GET'){
-    const vehs=vehsVisibles(db,auth);
+    let vehs=vehsVisibles(db,auth);
     const date_debut=q.date_debut||'';
     const date_fin=q.date_fin||'';
+    // Filtre par tag
+    if(q.tag) vehs=vehs.filter(v=>v.tag===q.tag);
 
     // ── Retard RÉEL = Dette cumulée globale ───────────────────
     // Retard = Total facturé depuis le début - Total versé depuis le début
