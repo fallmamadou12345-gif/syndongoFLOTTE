@@ -1648,13 +1648,18 @@ async function loadDashboard() {
   var rows = vehs
     .map(function(v) {
       var vAffIds = affsFilt.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
-      var vFac = facsFilt.filter(function(f){ return f.vehicule_id===v.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-      var vEnc = versFilt.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
+      var vFacPer = facsFilt.filter(function(f){ return f.vehicule_id===v.id; });
+      var vFacsAll = Array.isArray(facs) ? facs.filter(function(f){ return f.vehicule_id===v.id; }) : [];
+      var vVersAll = Array.isArray(vers) ? vers.filter(function(vs){ return vAffIds.includes(vs.affectation_id); }) : [];
+      var vFac = vFacPer.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
       var vDep = depsFilt.filter(function(d){ return d.vehicule_id===v.id; }).reduce(function(s,d){ return s+d.montant; }, 0);
-      var vRet = Math.max(0, vFac - vEnc);
-      var vMarge = vEnc - vDep;
+      // FIFO : encaissé imputé sur les factures de la période
+      var vImp = imputerVersements(vFacsAll, vVersAll, vFacPer.map(function(f){return f.id;}), vAffIds);
+      var vEnc = vImp.encImpute;
+      var vRet = vImp.retard;
+      var vMarge = vFac - vDep; // Marge = Facturé - Dépenses (pas Encaissé - Dépenses)
       var vTaux = vFac > 0 ? Math.round(vEnc/vFac*100) : 0;
-      if (vFac === 0 && vEnc === 0 && vDep === 0) return null; // Masquer les inactifs sur la période
+      if (vFac === 0 && vEnc === 0 && vDep === 0) return null;
       return { v, vFac, vEnc, vDep, vRet, vMarge, vTaux };
     })
     .filter(Boolean)
@@ -1673,15 +1678,21 @@ async function loadDashboard() {
     '</tr>';
   }).join('');
 
-  // Ligne totaux
+  // Ligne totaux — calculés à partir des lignes (cohérence FIFO)
+  var rowsTotFac = rows.reduce(function(s,r){return s+r.vFac;},0);
+  var rowsTotEnc = rows.reduce(function(s,r){return s+r.vEnc;},0);
+  var rowsTotDep = rows.reduce(function(s,r){return s+r.vDep;},0);
+  var rowsTotRet = rows.reduce(function(s,r){return s+r.vRet;},0);
+  var rowsTotMarge = rowsTotFac - rowsTotDep;
+  var rowsTaux = rowsTotFac > 0 ? Math.round(rowsTotEnc/rowsTotFac*100) : 0;
   var totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
     '<td>TOTAL ('+rows.length+' véhicules)</td>' +
-    '<td style="text-align:right;color:#185FA5">'+fmt(totFac)+'</td>' +
-    '<td style="text-align:right;color:#3B6D11">'+fmt(totEnc)+'</td>' +
-    '<td style="text-align:right;color:#A32D2D">'+fmt(totDep)+'</td>' +
-    '<td style="text-align:right;color:'+(totRet>0?'#A32D2D':'#3B6D11')+'">'+( totRet>0?fmt(totRet):'✓')+'</td>' +
-    '<td style="text-align:right;color:'+(marge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(marge)+'</td>' +
-    '<td style="text-align:center">'+taux+'%</td></tr>';
+    '<td style="text-align:right;color:#185FA5">'+fmt(rowsTotFac)+'</td>' +
+    '<td style="text-align:right;color:#3B6D11">'+fmt(rowsTotEnc)+'</td>' +
+    '<td style="text-align:right;color:#A32D2D">'+fmt(rowsTotDep)+'</td>' +
+    '<td style="text-align:right;color:'+(rowsTotRet>0?'#A32D2D':'#3B6D11')+'">'+( rowsTotRet>0?fmt(rowsTotRet):'✓')+'</td>' +
+    '<td style="text-align:right;color:'+(rowsTotMarge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(rowsTotMarge)+'</td>' +
+    '<td style="text-align:center">'+rowsTaux+'%</td></tr>';
 
   document.getElementById('d-rent').innerHTML =
     '<div style="overflow-x:auto"><table>' +
@@ -2210,7 +2221,7 @@ async function renderFicheVeh() {
   const totEnc = impFiche.encImpute;
   const totDep = depsFilt.reduce(function(s,d){ return s + d.montant; }, 0);
   const retard = Math.max(0, totFac - totEnc);          // Manquant = Facturé - Encaissé
-  const marge  = totEnc - totDep;                        // Marge = Encaissé - Dépenses
+  const marge  = totFac - totDep;                        // Marge = Encaissé - Dépenses
   const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // KPIs
@@ -3958,7 +3969,7 @@ async function loadRapports() {
   const totFac = _rapportData.reduce(function(s, r) { return s + r.fac; }, 0);
   const totEnc = _rapportData.reduce(function(s, r) { return s + r.enc; }, 0);
   const totDep = _rapportData.reduce(function(s, r) { return s + r.dep; }, 0);
-  const totMarge = totEnc - totDep;
+  const totMarge = totFac - totDep;
   const kf = document.getElementById('rp-k-fac');
   if (kf) kf.textContent = fmt(totFac);
   const ke = document.getElementById('rp-k-enc');
@@ -4680,7 +4691,7 @@ async function chargerFicheVehRapport() {
   var _vImp2 = imputerVersements(_vFacsAll2, _vVersAll2, facsPer.map(function(f){return f.id;}), affVeh.map(function(a){return a.id;}));
   var totEnc = _vImp2.encImpute;
   var retard = _vImp2.retard;
-  var marge = totEnc - totDep;
+  var marge = totFac - totDep;
   var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // Calendrier d'activité sur la période
@@ -5425,14 +5436,17 @@ function kpiAction(type) {
   }
 
   if (type === 'retards') {
-    // → Retards, filtré par tag si actif
+    // → Retards, filtré par tag ET période actifs
     goPage('retards', navEl('retards'));
     setTimeout(function() {
       if (per) {
         var rd = document.getElementById('ret-debut'); if (rd) rd.value = per.debut;
         var rf = document.getElementById('ret-fin');   if (rf) rf.value = per.fin;
       }
-      if (tag) { var rt = document.getElementById('ret-tag'); if (rt) rt.value = tag; }
+      // Transmettre le tag actif du dashboard
+      var tagActif = (document.getElementById('d-filter-tag')||{}).value || '';
+      var rt = document.getElementById('ret-tag');
+      if (rt && tagActif) rt.value = tagActif;
       loadRetards();
     }, 200);
     return;
