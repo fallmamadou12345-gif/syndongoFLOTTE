@@ -3566,10 +3566,25 @@ async function genererAlertesTechniques() {
   try {
     var retards = await api('GET', '/retards');
     if (Array.isArray(retards)) {
-      retards.filter(function(r){ return r.retard >= 30000; }).forEach(function(r) {
+      // Seuil = ≥ 2 factures impayées
+    // On calcule le tarif journalier moyen = total_facture / nb_factures
+    // En chargeant les affectations pour avoir montant_journalier
+    var affsList = await api('GET', '/affectations');
+    retards.forEach(function(r) {
+        if (!r.retard || r.retard <= 0) return;
+        // Trouver l'affectation active pour ce véhicule → montant journalier
+        var affActive = Array.isArray(affsList) ? affsList.find(function(a){
+          return a.vehicule_id === r.vehicule_id && !a.date_fin;
+        }) : null;
+        var tarifJour = affActive ? (affActive.montant_journalier || 12000) : 12000;
+        // Seuil : retard >= 2 factures journalières
+        if (r.retard < tarifJour * 2) return;
+        // Nb de factures impayées estimé
+        var nbFacImpayes = Math.floor(r.retard / tarifJour);
+        var urgenceRetard = nbFacImpayes >= 5 ? 3 : nbFacImpayes >= 3 ? 2 : 1;
         alertes.push({ type:'info', cat:'retard', vehicule_id:r.vehicule_id, immat:r.immatriculation, tag:r.tag||'',
-          message:'⏰ Retard de versement — <strong>'+r.immatriculation+'</strong> · '+r.chauffeur+' : <strong>'+fmt(r.retard)+'</strong>',
-          detail:'Total facturé: '+fmt(r.total_facture)+' / Versé: '+fmt(r.total_verse), urgence: 1 });
+          message:'⏰ '+nbFacImpayes+' facture(s) impayée(s) — <strong>'+r.immatriculation+'</strong> · '+r.chauffeur+' : <strong>'+fmt(r.retard)+'</strong>',
+          detail:'Tarif/j: '+fmt(tarifJour)+' | Facturé: '+fmt(r.total_facture)+' | Versé: '+fmt(r.total_verse), urgence: urgenceRetard });
       });
     }
   } catch(e) {}
