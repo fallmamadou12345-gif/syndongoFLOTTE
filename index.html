@@ -2484,11 +2484,15 @@ async function renderFicheChauf() {
     return d.chauffeur_id===c.id && (!per || (d.date_depense >= per.debut && d.date_depense <= per.fin));
   }) : [];
 
-  // Calculs CORRECTS
+  // Calculs FIFO — encaissé imputé sur les facturations de la période
   const totFac = facsFilt.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-  const totEnc = versFilt.reduce(function(s,vs){ return s+vs.montant; }, 0);
   const totDep = depsFilt.reduce(function(s,d){ return s+d.montant; }, 0);
-  const retard = Math.max(0, totFac - totEnc);
+  // Imputation FIFO : versements répartis sur toutes les factures, puis on somme sur la période
+  var _cFacsAll = Array.isArray(facs) ? facs.filter(function(f){ return f.chauffeur_id===c.id; }) : [];
+  var _cVersAll = Array.isArray(vers) ? vers.filter(function(vs){ return affIds.includes(vs.affectation_id); }) : [];
+  var _cImp = imputerVersements(_cFacsAll, _cVersAll, facsFilt.map(function(f){return f.id;}), affIds);
+  const totEnc = _cImp.encImpute;
+  const retard = _cImp.retard;
   const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // En-tête chauffeur
@@ -4021,8 +4025,11 @@ async function loadRapportChauf(versFilt, depsFilt, facsFilt, affs, vehs) {
     const aff = cAffs.find(function(a) { return !a.date_fin; });
     const veh = aff ? (Array.isArray(vehs) ? vehs.find(function(v) { return v.id === aff.vehicule_id; }) : null) : null;
     const fac = facsFilt.filter(function(f) { return f.chauffeur_id === c.id; }).reduce(function(s, f) { return s + (f.montant_facture || 0); }, 0);
-    const enc = versFilt.filter(function(vs) { return cAffIds.includes(vs.affectation_id); }).reduce(function(s, vs) { return s + vs.montant; }, 0);
-    const ret = Math.max(0, fac - enc);
+    var _cFacsA = Array.isArray(facs) ? facs.filter(function(f){return f.chauffeur_id===c.id;}) : [];
+    var _cVersA = Array.isArray(vers) ? vers.filter(function(vs){return cAffIds.includes(vs.affectation_id);}) : [];
+    var _cImpA = imputerVersements(_cFacsA, _cVersA, facsFilt.filter(function(f){return f.chauffeur_id===c.id;}).map(function(f){return f.id;}), cAffIds);
+    const enc = _cImpA.encImpute;
+    const ret = _cImpA.retard;
     const taux = fac > 0 ? Math.round(enc / fac * 100) : 0;
     if (fac === 0 && enc === 0) return null;
     return { id: c.id, nom: c.prenom + ' ' + c.nom, tel: c.telephone, vehicule: veh ? veh.immatriculation : 'Non affecté', fac, enc, ret, taux };
@@ -4359,8 +4366,11 @@ loadRapportChauf = async function(versFilt, depsFilt, facsFilt, affs, vehs) {
     const aff = cAffs.find(function(a){ return !a.date_fin; });
     const veh = aff ? (Array.isArray(vehs) ? vehs.find(function(v){ return v.id === aff.vehicule_id; }) : null) : null;
     const fac = facsFilt.filter(function(f){ return f.chauffeur_id === c.id; }).reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-    const enc = versFilt.filter(function(vs){ return cAffIds.includes(vs.affectation_id); }).reduce(function(s,vs){ return s+vs.montant; }, 0);
-    const ret = Math.max(0, fac - enc);
+    var _cFacsB = Array.isArray(facs) ? facs.filter(function(f){return f.chauffeur_id===c.id;}) : [];
+    var _cVersB = Array.isArray(vers) ? vers.filter(function(vs){return cAffIds.includes(vs.affectation_id);}) : [];
+    var _cImpB = imputerVersements(_cFacsB, _cVersB, facsFilt.filter(function(f){return f.chauffeur_id===c.id;}).map(function(f){return f.id;}), cAffIds);
+    const enc = _cImpB.encImpute;
+    const ret = _cImpB.retard;
     const taux = fac > 0 ? Math.round(enc/fac*100) : 0;
     if (fac === 0 && enc === 0) return null;
     return { id:c.id, nom:c.prenom+' '+c.nom, tel:c.telephone, vehicule:veh?veh.immatriculation:'Non affecté', fac, enc, ret, taux };
@@ -4663,9 +4673,13 @@ async function chargerFicheVehRapport() {
   }) : [];
 
   var totFac = facsPer.reduce(function(s,f){return s+(f.montant_facture||0);},0);
-  var totEnc = versPer.reduce(function(s,vs){return s+vs.montant;},0);
   var totDep = depsPer.reduce(function(s,d){return s+d.montant;},0);
-  var retard = Math.max(0, totFac - totEnc);
+  // FIFO
+  var _vFacsAll2 = Array.isArray(facs) ? facs.filter(function(f){return f.vehicule_id===_ficheVehId;}) : [];
+  var _vVersAll2 = Array.isArray(vers) ? vers.filter(function(vs){return affVeh.map(function(a){return a.id;}).includes(vs.affectation_id);}) : [];
+  var _vImp2 = imputerVersements(_vFacsAll2, _vVersAll2, facsPer.map(function(f){return f.id;}), affVeh.map(function(a){return a.id;}));
+  var totEnc = _vImp2.encImpute;
+  var retard = _vImp2.retard;
   var marge = totEnc - totDep;
   var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
@@ -4837,9 +4851,13 @@ async function chargerFicheChaufRapport() {
   }) : [];
 
   var totFac = facsPer.reduce(function(s,f){return s+(f.montant_facture||0);},0);
-  var totEnc = versPer.reduce(function(s,vs){return s+vs.montant;},0);
   var totDep = depsPer.reduce(function(s,d){return s+d.montant;},0);
-  var retard = Math.max(0, totFac - totEnc);
+  // FIFO : versements imputés sur les facturations de la période
+  var _cFacsAll3 = Array.isArray(facs) ? facs.filter(function(f){return f.chauffeur_id===c.id;}) : [];
+  var _cVersAll3 = Array.isArray(vers) ? vers.filter(function(vs){return affIds.includes(vs.affectation_id);}) : [];
+  var _cImp3 = imputerVersements(_cFacsAll3, _cVersAll3, facsPer.map(function(f){return f.id;}), affIds);
+  var totEnc = _cImp3.encImpute;
+  var retard = _cImp3.retard;
   var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   var statCards = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">' +
