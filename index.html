@@ -1398,6 +1398,12 @@ function demarrerApp() {
   });
   loadDashboard();
   refreshSelects();
+  // Auto-refresh et indicateur sync
+  startDashAutoRefresh();
+  var si = document.getElementById('sync-indicator');
+  if (si) si.style.display = 'flex';
+  // Styliser les selects
+  setTimeout(function(){ if(typeof styleAllSelects==='function') styleAllSelects(); }, 400);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1413,25 +1419,62 @@ function goPage(id, el) {
 }
 
 function loadPage(id) {
-  if (id === 'dashboard') loadDashboard();
-  else if (id === 'vehicules') { loadVehicules(); loadTags(); }
-  else if (id === 'chauffeurs') loadChauffeurs();
-  else if (id === 'affectations') loadAffectations();
-  else if (id === 'caisse') { loadFac(); refreshSelects(); }
-  else if (id === 'retards') { initRetardsDates(); loadRetards(); }
-  else if (id === 'depenses') loadDepenses();
-  else if (id === 'alertes') loadAlertes();
-  else if (id === 'proprietaires') {
+  if (id === 'dashboard') {
+    loadDashboard();
+  } else if (id === 'vehicules') {
+    loadVehicules(); loadTags();
+  } else if (id === 'chauffeurs') {
+    loadChauffeurs();
+  } else if (id === 'affectations') {
+    loadAffectations();
+  } else if (id === 'caisse') {
+    // Initialiser les dates par défaut
+    var hier = new Date(); hier.setDate(hier.getDate()-1);
+    var fd = document.getElementById('fd'); if (fd && !fd.value) fd.value = hier.toISOString().split('T')[0];
+    var smDate = document.getElementById('sm-date'); if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
+    var hd = document.getElementById('hist-debut');
+    var hf = document.getElementById('hist-fin');
+    if (hd && !hd.value) { var d30=new Date(); d30.setDate(d30.getDate()-30); hd.value=d30.toISOString().split('T')[0]; }
+    if (hf && !hf.value) { hf.value = new Date().toISOString().split('T')[0]; }
+    refreshSelects();
+    setTimeout(function() { syncFiltresCaisse(); initSaisieMultiple(); switchCaisseTab('fac'); }, 200);
+  } else if (id === 'retards') {
+    initRetardsDates(); loadRetards();
+  } else if (id === 'depenses') {
+    loadDepenses();
+  } else if (id === 'alertes') {
+    loadAlertes();
+  } else if (id === 'rapports') {
+    if (typeof filtrerRapport === 'function') filtrerRapport();
+    // Ajouter bouton CSV si absent
+    setTimeout(function() {
+      var exportZone = document.getElementById('btn-rp-pdf');
+      if (exportZone && !document.getElementById('btn-rp-csv')) {
+        var btn = document.createElement('button');
+        btn.id = 'btn-rp-csv'; btn.className = 'btn btn-gray';
+        btn.style.cssText = 'font-size:11px;padding:5px 14px';
+        btn.textContent = '📊 Export CSV';
+        btn.onclick = exportRentabiliteCSV;
+        exportZone.parentNode.insertBefore(btn, exportZone.nextSibling);
+      }
+    }, 300);
+  } else if (id === 'controle') {
+    /* analyse lancée manuellement */
+  } else if (id === 'historique') {
+    if (typeof loadHistorique === 'function') loadHistorique();
+  } else if (id === 'journal') {
+    initJournal(); loadJournal();
+  } else if (id === 'proprietaires') {
     loadProprietaires();
     if (ROLE === 'gestionnaire') {
-      // Afficher la sélection des véhicules
       var pvg = document.getElementById('prop-veh-select-gest');
       if (pvg) pvg.style.display = 'block';
       initPropVehCheckboxes();
     }
+  } else if (id === 'acces') {
+    loadGestionnaires(); loadProprietaires();
+    setTimeout(function(){ initGtagsCheckboxes(); }, 300);
   }
-  else if (id === 'journal') { initJournal(); loadJournal(); }
-  else if (id === 'acces') { loadGestionnaires(); loadProprietaires(); setTimeout(function(){ initGtagsCheckboxes(); }, 300); }
 }
 
 function rechGlobal(q) {
@@ -4089,17 +4132,6 @@ async function loadHistorique() {
 // ═══════════════════════════════════════════════════════
 // Surcharge loadPage pour ajouter rapports et historique
 const _origLoadPage = loadPage;
-loadPage = function(id) {
-  if (id === 'rapports') {
-    setRapportPeriode(_rapportPeriode || 'mois');
-    return;
-  }
-  if (id === 'historique') {
-    loadHistorique();
-    return;
-  }
-  _origLoadPage(id);
-};
 
 // ═══════════════════════════════════════════════════════
 // RAPPORTS — AMÉLIORATIONS
@@ -4398,13 +4430,6 @@ function nbFiltresActifs(page) {
 
 // Initialiser les améliorations visuelles après le démarrage de l'app
 const _origDemarrerApp = demarrerApp;
-demarrerApp = function() {
-  _origDemarrerApp();
-  setTimeout(function() {
-    styleAllSelects();
-    ajouterBoutonsReset();
-  }, 500);
-};
 
 // Confirmer tous les véhicules présumés actifs en un clic
 async function confirmerTousPresumes(btn) {
@@ -5096,19 +5121,6 @@ async function validerSaisieMultiple(btn) {
 }
 
 // Initialiser la saisie multiple à l'ouverture de la page caisse
-var _origLoadPage2 = loadPage;
-loadPage = function(id) {
-  if (id === 'caisse') {
-    var hier = new Date(); hier.setDate(hier.getDate()-1);
-    var fd = document.getElementById('fd'); if (fd && !fd.value) fd.value = hier.toISOString().split('T')[0];
-    var smDate = document.getElementById('sm-date'); if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
-    refreshSelects();
-    loadFac();
-    initSaisieMultiple();
-    return;
-  }
-  _origLoadPage2(id);
-};
 
 // ─── GESTION TAGS GESTIONNAIRES ──────────────────────────────────────────
 
@@ -5396,11 +5408,6 @@ setKpi = function(id, val, color) {
 
 // ── Enrichir loadDashboard pour mettre à jour les nb ──────────────────
 const _origLoadDashboard_kpi = loadDashboard;
-loadDashboard = async function() {
-  await _origLoadDashboard_kpi();
-  // Mettre à jour les compteurs après chargement
-  updateKpiCounters();
-};
 
 function updateKpiCounters() {
   // Compter à partir des données en cache
@@ -5851,25 +5858,6 @@ async function exportRentabiliteCSV() {
 }
 
 // Ajouter bouton export CSV dans la page rapports
-var _origLoadPage3 = loadPage;
-loadPage = function(id) {
-  _origLoadPage3(id);
-  if (id === 'rapports') {
-    // Ajouter bouton CSV si pas déjà là
-    setTimeout(function() {
-      var exportZone = document.getElementById('btn-rp-pdf');
-      if (exportZone && !document.getElementById('btn-rp-csv')) {
-        var btn = document.createElement('button');
-        btn.id = 'btn-rp-csv';
-        btn.className = 'btn btn-gray';
-        btn.style.cssText = 'font-size:11px;padding:5px 14px';
-        btn.textContent = '📊 Export CSV';
-        btn.onclick = exportRentabiliteCSV;
-        exportZone.parentNode.insertBefore(btn, exportZone.nextSibling);
-      }
-    }, 300);
-  }
-};
 
 // ═══════════════════════════════════════════════════════
 // AFFICHAGE NOTIFICATIONS TOAST AMÉLIORÉ
@@ -5901,13 +5889,6 @@ toast = function(msg, type, duration) {
 
 // Démarrer l'auto-refresh après le login
 var _origDemarrerApp3 = demarrerApp;
-demarrerApp = function() {
-  _origDemarrerApp3();
-  startDashAutoRefresh();
-  // Afficher indicateur sync
-  var si = document.getElementById('sync-indicator');
-  if (si) si.style.display = 'flex';
-};
 
 // ═══════════════════════════════════════════════════════
 // CAISSE UNIFIÉE — Onglets Facturations / Encaissements / Bilan
@@ -5945,77 +5926,7 @@ async function loadCaisseTab() {
   else await loadBilanCaisse();
 }
 
-// ── Historique Facturations (nouveau rendu dans caisse-tab-content) ────
-const _origLoadFac2 = loadFac;
-loadFac = async function() {
-  if (_caisseTab !== 'fac' && document.getElementById('caisse-tab-content')) {
-    // Si on est sur un autre onglet, ne pas rafraîchir t-fac
-    return;
-  }
-  const vid    = (document.getElementById('hist-veh') || document.getElementById('ff-veh') || {}).value || '';
-  const ffTag  = (document.getElementById('hist-tag') || {}).value || '';
-  const ffQ    = ((document.getElementById('hist-q') || document.getElementById('ff-q') || {}).value || '').toLowerCase();
-  const ffDebut= (document.getElementById('hist-debut') || document.getElementById('ff-debut') || {}).value || '';
-  const ffFin  = (document.getElementById('hist-fin')   || document.getElementById('ff-fin')   || {}).value || '';
-  const ffType = (document.getElementById('hist-type-fac') || document.getElementById('ff-type') || {}).value || '';
 
-  // Si filtre tag : charger les véhicules du tag d'abord
-  let vidsTag = null;
-  if (ffTag) {
-    var vehsTag = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
-    vidsTag = Array.isArray(vehsTag) ? vehsTag.map(function(v){ return v.id; }) : [];
-  }
-
-  let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
-  if (!Array.isArray(list)) list = [];
-  if (vidsTag) list = list.filter(function(f){ return vidsTag.includes(f.vehicule_id); });
-  if (ffQ)     list = list.filter(function(f){ return (f.vehicule||'').toLowerCase().includes(ffQ)||(f.chauffeur||'').toLowerCase().includes(ffQ); });
-  if (ffDebut) list = list.filter(function(f){ return f.date >= ffDebut; });
-  if (ffFin)   list = list.filter(function(f){ return f.date <= ffFin; });
-  if (ffType)  list = list.filter(function(f){ return f.type_journee === ffType; });
-
-  // Cibler soit t-fac (ancienne page) soit caisse-tab-content (nouvelle)
-  var tabEl = document.getElementById('caisse-tab-content');
-  var el = tabEl && _caisseTab === 'fac' ? tabEl : (document.getElementById('t-fac') || tabEl);
-  if (!el) return;
-
-  const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation sur cette période</div>'; return; }
-
-  const labels = { complet:'Journée complète', demi_panne:'Demi-panne', repos:'Repos', inactif:'Inactif' };
-  const totFac = list.reduce(function(s,f){ return s+(f.montant_facture||0); },0);
-
-  const resume = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;margin-bottom:8px">' +
-    '<span style="font-size:12px;color:#6b6b67">' + list.length + ' facturation(s)</span>' +
-    '<span style="font-size:14px;font-weight:800;color:#185FA5">' + fmt(totFac) + '</span></div>';
-
-  const rows = list.map(function(f) {
-    const typePill = pill(labels[f.type_journee]||f.type_journee, f.type_journee==='complet'?'ok':f.type_journee==='demi_panne'?'warn':'gray');
-    const actionsCol = isM ? '<td style="display:flex;gap:4px">' +
-      '<button class="btn-sm" style="background:#FAEEDA;color:#633806;padding:4px 9px" ' +
-        'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
-        'data-type="' + f.type_journee + '" data-montant="' + f.montant_facture + '" ' +
-        'onclick="editFacFromBtn(this)">✏️</button>' +
-      '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D;padding:4px 9px" ' +
-        'data-fac-id="' + f.id + '" data-veh="' + f.vehicule + '" data-date="' + f.date + '" ' +
-        'onclick="delFacFromBtn(this)">🗑️</button></td>' : '';
-    return '<tr style="border-bottom:1px solid #f5f4f0">' +
-      '<td style="color:#6b6b67;white-space:nowrap">' + f.date + '</td>' +
-      '<td><strong style="color:#185FA5">' + f.vehicule + '</strong></td>' +
-      '<td style="font-size:12px">' + f.chauffeur + '</td>' +
-      '<td>' + typePill + '</td>' +
-      '<td style="text-align:right;font-weight:700;color:' + (f.montant_facture>0?'#185FA5':'#aaa') + '">' + fmt(f.montant_facture) + '</td>' +
-      actionsCol + '</tr>';
-  }).join('');
-
-  el.innerHTML = '<div style="overflow-x:auto">' + resume +
-    '<table><thead><tr>' +
-    '<th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Type</th>' +
-    '<th style="text-align:right">Montant</th>' + (isM ? '<th></th>' : '') +
-    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-};
-
-// ── Historique Encaissements ──────────────────────────────────────────
 async function loadEncaissements() {
   var el = document.getElementById('caisse-tab-content');
   if (!el) return;
@@ -6150,27 +6061,6 @@ function syncFiltresCaisse() {
 }
 
 // Surcharge loadPage caisse
-var _origLoadPage4 = loadPage;
-loadPage = function(id) {
-  if (id === 'caisse') {
-    var hier = new Date(); hier.setDate(hier.getDate()-1);
-    var fd = document.getElementById('fd'); if (fd && !fd.value) fd.value = hier.toISOString().split('T')[0];
-    var smDate = document.getElementById('sm-date'); if (smDate && !smDate.value) smDate.value = hier.toISOString().split('T')[0];
-    // Initialiser les dates du filtre historique
-    var hd = document.getElementById('hist-debut');
-    var hf = document.getElementById('hist-fin');
-    if (hd && !hd.value) { var d30=new Date(); d30.setDate(d30.getDate()-30); hd.value=d30.toISOString().split('T')[0]; }
-    if (hf && !hf.value) { hf.value = new Date().toISOString().split('T')[0]; }
-    refreshSelects();
-    setTimeout(function() {
-      syncFiltresCaisse();
-      initSaisieMultiple();
-      switchCaisseTab('fac');
-    }, 200);
-    return;
-  }
-  _origLoadPage4(id);
-};
 
 // ═══════════════════════════════════════════════════════
 // SUPPRIMER UN VERSEMENT (depuis les fiches)
