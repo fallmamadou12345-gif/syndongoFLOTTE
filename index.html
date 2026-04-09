@@ -1134,8 +1134,11 @@ function imputerVersements(facsTout, versTout, facsPeriodeIds, affIds) {
   // Trier les facturations par date (du plus ancien au plus récent)
   var facsTriees = (facsTout||[]).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
   // Trier les versements par date
-  var versTriees = (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); })
-                                  .slice().sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
+  // Si affIds=null : tous les versements passés sont utilisés (déjà pré-filtrés par l'appelant)
+  var versTriees = affIds === null
+    ? (versTout||[]).slice().sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); })
+    : (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); })
+                    .slice().sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
 
   // Pool de versements disponibles (copie des montants)
   var pool = versTriees.map(function(vs){ return vs.montant; });
@@ -2183,9 +2186,9 @@ async function renderFicheVeh() {
   if (!f || !f.vehicule) { body.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }
   const v = f.vehicule;
 
-  // Filtrer par période
+  // Toutes les affectations de ce véhicule (historique complet)
   const affVeh = Array.isArray(affs) ? affs.filter(function(a){ return a.vehicule_id === _ficheVehIdCur; }) : [];
-  const affIds = affVeh.map(function(a){ return a.id; });
+  const affIds = affVeh.map(function(a){ return a.id; }); // Tous les affIds historiques du véhicule
 
   // vers = déjà filtrés par vehicule_id (chargés avec ?vehicule_id=...)
   // versFilt = filtre par période si sélectionnée
@@ -2210,7 +2213,9 @@ async function renderFicheVeh() {
   // vers = versements de ce véhicule (chargés avec ?vehicule_id=...)
   var vFacsAll  = Array.isArray(facs) ? facs : [];
   var vVersAll  = Array.isArray(vers) ? vers : [];
-  var impFiche  = imputerVersements(vFacsAll, vVersAll, facsFilt.map(function(f){ return f.id; }), affIds);
+  // affIds passé = null car vVersAll est déjà filtré par ce véhicule (via ?vehicule_id=)
+  // imputerVersements ne re-filtre pas si affIds=null
+  var impFiche  = imputerVersements(vFacsAll, vVersAll, facsFilt.map(function(f){ return f.id; }), null);
   const totEnc  = impFiche.encImpute;
 
   // ── Retard = dette GLOBALE (tout facturé - tout versé pour ce véhicule)
