@@ -742,8 +742,59 @@ tr:hover td{background:#fafaf8}
 
     <!-- ALERTES -->
     <div class="page" id="page-alertes">
+
+      <!-- Rappels automatiques -->
+      <div class="card" style="border-top:3px solid #DC2626;margin-bottom:12px">
+        <div class="card-title">
+          🚨 Rappels automatiques
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn btn-blue" style="font-size:11px;padding:5px 14px" onclick="loadAlertes()">🔄 Actualiser</button>
+            <button class="btn btn-gray" style="font-size:11px;padding:5px 14px" onclick="exportAlertesPDF()">📄 Export PDF</button>
+          </div>
+        </div>
+        <!-- KPIs alertes -->
+        <div id="al-kpis" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">
+          <div class="kpi-stat red"><div class="kpi-label">Assurances</div><div class="kpi-val" id="al-nb-assurance" style="color:#A32D2D;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #BA7517"><div class="kpi-label">Visites tech.</div><div class="kpi-val" id="al-nb-visite" style="color:#BA7517;font-size:22px">—</div></div>
+          <div class="kpi-stat orange" style="border-left:3px solid #633806"><div class="kpi-label">Vidanges</div><div class="kpi-val" id="al-nb-vidange" style="color:#633806;font-size:22px">—</div></div>
+          <div class="kpi-stat blue"><div class="kpi-label">Retards &gt;30j</div><div class="kpi-val" id="al-nb-retard" style="color:#185FA5;font-size:22px">—</div></div>
+          <div class="kpi-stat" style="border-left:3px solid #7C3AED"><div class="kpi-label">Dépenses freq.</div><div class="kpi-val" id="al-nb-dep" style="color:#7C3AED;font-size:22px">—</div></div>
+        </div>
+        <!-- Filtres -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="chip active-blue" id="al-chip-tous" onclick="filtrerAlertes('tous')">Tout</button>
+          <button class="chip inactive" id="al-chip-assurance" onclick="filtrerAlertes('assurance')">🛡️ Assurance</button>
+          <button class="chip inactive" id="al-chip-visite" onclick="filtrerAlertes('visite')">🔍 Visite tech.</button>
+          <button class="chip inactive" id="al-chip-vidange" onclick="filtrerAlertes('vidange')">🔧 Vidange</button>
+          <button class="chip inactive" id="al-chip-retard" onclick="filtrerAlertes('retard')">⏰ Retard</button>
+          <button class="chip inactive" id="al-chip-dep" onclick="filtrerAlertes('dep')">⚠️ Dépenses</button>
+          <input id="al-q" placeholder="🔍 Véhicule…" style="font-size:12px;width:160px;margin-left:auto" oninput="filtrerAlertes()">
+        </div>
+        <div id="al-rappels"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <!-- Saisie données véhicule pour les rappels -->
+      <div class="card manager-only" style="border-top:3px solid #BA7517">
+        <div class="card-title">📅 Mettre à jour les échéances véhicule</div>
+        <div class="info-box" style="margin-bottom:10px">Renseignez les dates d'expiration pour activer les rappels automatiques.</div>
+        <div class="form-row">
+          <div class="field"><label>Véhicule *</label><select id="al-veh" onchange="chargerEcheancesVeh()"><option value="">— choisir —</option></select></div>
+          <div class="field"><label>Km actuel</label><input id="al-km" type="number" placeholder="120000"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>🛡️ Expiration assurance</label><input id="al-assurance" type="date"></div>
+          <div class="field"><label>🔍 Prochaine visite technique</label><input id="al-visite" type="date"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>🔧 Km prochain vidange</label><input id="al-km-vidange" type="number" placeholder="130000"></div>
+          <div class="field"><label>📋 Expiration carte grise</label><input id="al-carte-grise" type="date"></div>
+        </div>
+        <button class="btn btn-blue" onclick="sauverEcheancesVeh(this)">💾 Sauvegarder</button>
+      </div>
+
+      <!-- Envoi alerte manuelle -->
       <div class="card">
-        <div class="card-title">Envoyer une alerte</div>
+        <div class="card-title">📤 Envoyer une alerte manuelle</div>
         <div class="form-row">
           <div class="field"><label>Type</label>
             <select id="altype">
@@ -761,7 +812,9 @@ tr:hover td{background:#fafaf8}
         </div>
         <button class="btn btn-blue" onclick="envoyerAlerte(this)">Envoyer</button>
       </div>
-      <div class="card"><div class="card-title">Journal alertes</div><div id="t-al"><div class="empty">Aucune alerte</div></div></div>
+
+      <!-- Journal alertes -->
+      <div class="card"><div class="card-title">📋 Journal des alertes envoyées</div><div id="t-al"><div class="empty">Aucune alerte</div></div></div>
     </div>
 
     <!-- PROPRIETAIRES -->
@@ -1799,6 +1852,7 @@ async function loadTags() {
     { id: 'd-filter-tag2', placeholder: 'Tous tags', filter: true },
     { id: 'ret-tag', placeholder: 'Tous tags', filter: true },
     { id: 'hist-tag', placeholder: 'Tous tags', filter: true },
+    { id: 'alerte-tag', placeholder: 'Tous tags', filter: true },
     { id: 'gprop-tag', placeholder: '— Aucun tag —', filter: false },
     { id: 'rp-tag', placeholder: 'Tous tags', filter: true },
   ];
@@ -3426,55 +3480,195 @@ let _rentData = [];
 // ═══════════════════════════════════════════════════════
 // ALERTES TECHNIQUES (vidange, assurance, visite tech)
 // ═══════════════════════════════════════════════════════
+// Variables globales alertes
+var _toutesAlertesTech = [];
+var _alerteFiltreType = 'tous';
+
 async function genererAlertesTechniques() {
   const vehs = await api('GET', '/vehicules');
   if (!Array.isArray(vehs)) return [];
   const alertes = [];
-  const today = new Date();
+  const todayD = new Date();
+  const todayStr = todayD.toISOString().split('T')[0];
 
-  vehs.forEach(v => {
-    // Alerte vidange (déjà dans serveur mais on l'enrichit)
-    if (v.alerte_vidange) {
-      alertes.push({ type:'warn', vehicule_id:v.id, message:`🔧 Vidange due — <strong>${v.immatriculation}</strong> (${(v.km_actuel||0).toLocaleString('fr-FR')} km / seuil ${(v.km_prochain_vidange||0).toLocaleString('fr-FR')} km)` });
-    }
-    // Alerte assurance
+  function joursAvant(dateStr) {
+    if (!dateStr) return null;
+    return Math.ceil((new Date(dateStr) - todayD) / (1000*60*60*24));
+  }
+
+  vehs.forEach(function(v) {
+    // ── Assurance ──────────────────────────────────────────
     if (v.date_expiration_assurance) {
-      const exp = new Date(v.date_expiration_assurance);
-      const joursRestants = Math.ceil((exp - today) / (1000*60*60*24));
-      if (joursRestants <= 30 && joursRestants >= 0) {
-        alertes.push({ type:'danger', vehicule_id:v.id, message:`🛡️ Assurance expire dans <strong>${joursRestants} jour(s)</strong> — ${v.immatriculation} (${v.date_expiration_assurance})` });
-      } else if (joursRestants < 0) {
-        alertes.push({ type:'danger', vehicule_id:v.id, message:`🛡️ Assurance EXPIRÉE — <strong>${v.immatriculation}</strong> depuis le ${v.date_expiration_assurance}` });
+      var j = joursAvant(v.date_expiration_assurance);
+      if (j < 0) {
+        alertes.push({ type:'danger', cat:'assurance', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🛡️ Assurance <strong>EXPIRÉE depuis '+(Math.abs(j))+' jour(s)</strong> — '+v.immatriculation,
+          detail:'Expirée le '+v.date_expiration_assurance, urgence: 3 });
+      } else if (j <= 7) {
+        alertes.push({ type:'danger', cat:'assurance', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🛡️ Assurance expire dans <strong>'+j+' jour(s)</strong> — '+v.immatriculation,
+          detail:'Expire le '+v.date_expiration_assurance, urgence: 3 });
+      } else if (j <= 30) {
+        alertes.push({ type:'warn', cat:'assurance', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🛡️ Assurance expire dans '+j+' jours — '+v.immatriculation,
+          detail:'Expire le '+v.date_expiration_assurance, urgence: 2 });
       }
     }
-    // Alerte visite technique
+
+    // ── Visite technique ───────────────────────────────────
     if (v.date_visite_technique) {
-      const exp = new Date(v.date_visite_technique);
-      const joursRestants = Math.ceil((exp - today) / (1000*60*60*24));
-      if (joursRestants <= 30 && joursRestants >= 0) {
-        alertes.push({ type:'warn', vehicule_id:v.id, message:`🔍 Visite technique dans <strong>${joursRestants} jour(s)</strong> — ${v.immatriculation}` });
-      } else if (joursRestants < 0) {
-        alertes.push({ type:'danger', vehicule_id:v.id, message:`🔍 Visite technique EXPIRÉE — <strong>${v.immatriculation}</strong>` });
+      var j2 = joursAvant(v.date_visite_technique);
+      if (j2 < 0) {
+        alertes.push({ type:'danger', cat:'visite', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔍 Visite technique <strong>EXPIRÉE depuis '+(Math.abs(j2))+' jour(s)</strong> — '+v.immatriculation,
+          detail:'Expirée le '+v.date_visite_technique, urgence: 3 });
+      } else if (j2 <= 7) {
+        alertes.push({ type:'danger', cat:'visite', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔍 Visite technique dans <strong>'+j2+' jour(s)</strong> — '+v.immatriculation,
+          detail:'Prévue le '+v.date_visite_technique, urgence: 3 });
+      } else if (j2 <= 30) {
+        alertes.push({ type:'warn', cat:'visite', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔍 Visite technique dans '+j2+' jours — '+v.immatriculation,
+          detail:'Prévue le '+v.date_visite_technique, urgence: 2 });
+      }
+    }
+
+    // ── Carte grise ────────────────────────────────────────
+    if (v.date_carte_grise) {
+      var j3 = joursAvant(v.date_carte_grise);
+      if (j3 < 0) {
+        alertes.push({ type:'danger', cat:'visite', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'📋 Carte grise <strong>EXPIRÉE depuis '+(Math.abs(j3))+' jour(s)</strong> — '+v.immatriculation,
+          detail:'Expirée le '+v.date_carte_grise, urgence: 3 });
+      } else if (j3 <= 30) {
+        alertes.push({ type:'warn', cat:'visite', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'📋 Carte grise expire dans '+j3+' jours — '+v.immatriculation,
+          detail:'Expire le '+v.date_carte_grise, urgence: 2 });
+      }
+    }
+
+    // ── Vidange ────────────────────────────────────────────
+    if (v.km_prochain_vidange && v.km_actuel) {
+      var restKm = v.km_prochain_vidange - v.km_actuel;
+      if (restKm <= 0) {
+        alertes.push({ type:'danger', cat:'vidange', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔧 Vidange <strong>DUE</strong> — '+v.immatriculation+' ('+v.km_actuel.toLocaleString('fr-FR')+' km)',
+          detail:'Seuil: '+v.km_prochain_vidange.toLocaleString('fr-FR')+' km — dépassé de '+(Math.abs(restKm)).toLocaleString('fr-FR')+' km', urgence: 3 });
+      } else if (restKm <= 500) {
+        alertes.push({ type:'warn', cat:'vidange', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔧 Vidange dans <strong>'+restKm.toLocaleString('fr-FR')+' km</strong> — '+v.immatriculation,
+          detail:'Actuel: '+v.km_actuel.toLocaleString('fr-FR')+' km / Seuil: '+v.km_prochain_vidange.toLocaleString('fr-FR')+' km', urgence: 2 });
       }
     }
   });
 
-  // Alerte dépenses fréquentes (même véhicule > 3 dépenses ce mois)
-  const deps = await api('GET', '/depenses');
-  if (Array.isArray(deps)) {
-    const mois = today.toISOString().slice(0,7);
-    const compteur = {};
-    deps.filter(d => d.date_depense && d.date_depense.startsWith(mois)).forEach(d => {
-      compteur[d.vehicule_id] = (compteur[d.vehicule_id] || 0) + 1;
-    });
-    Object.entries(compteur).forEach(([vid, nb]) => {
-      if (nb >= 3) {
-        const v = vehs.find(x => x.id === vid);
-        if (v) alertes.push({ type:'warn', vehicule_id:vid, message:`⚠️ Dépenses fréquentes — <strong>${v.immatriculation}</strong> a eu ${nb} dépenses ce mois` });
-      }
-    });
-  }
+  // ── Retards importants (> 30 000 F) ───────────────────────
+  try {
+    var retards = await api('GET', '/retards');
+    if (Array.isArray(retards)) {
+      retards.filter(function(r){ return r.retard >= 30000; }).forEach(function(r) {
+        alertes.push({ type:'info', cat:'retard', vehicule_id:r.vehicule_id, immat:r.immatriculation, tag:r.tag||'',
+          message:'⏰ Retard de versement — <strong>'+r.immatriculation+'</strong> · '+r.chauffeur+' : <strong>'+fmt(r.retard)+'</strong>',
+          detail:'Total facturé: '+fmt(r.total_facture)+' / Versé: '+fmt(r.total_verse), urgence: 1 });
+      });
+    }
+  } catch(e) {}
+
+  // ── Dépenses fréquentes ────────────────────────────────────
+  try {
+    var deps = await api('GET', '/depenses');
+    if (Array.isArray(deps)) {
+      var mois = todayStr.slice(0,7);
+      var compteur = {};
+      deps.filter(function(d){ return d.date_depense && d.date_depense.startsWith(mois); })
+          .forEach(function(d){ compteur[d.vehicule_id] = (compteur[d.vehicule_id]||0)+1; });
+      Object.keys(compteur).forEach(function(vid) {
+        if (compteur[vid] >= 3) {
+          var v2 = vehs.find(function(x){ return x.id===vid; });
+          if (v2) alertes.push({ type:'warn', cat:'dep', vehicule_id:vid, immat:v2.immatriculation, tag:v2.tag||'',
+            message:'⚠️ Dépenses fréquentes — <strong>'+v2.immatriculation+'</strong> : '+compteur[vid]+' dépenses ce mois',
+            detail:'', urgence: 1 });
+        }
+      });
+    }
+  } catch(e) {}
+
+  // Trier par urgence décroissante
+  alertes.sort(function(a,b){ return (b.urgence||0)-(a.urgence||0); });
   return alertes;
+}
+
+function filtrerAlertes(type) {
+  if (type) _alerteFiltreType = type;
+  var q = ((document.getElementById('al-q')||{}).value||'').toLowerCase();
+  ['tous','assurance','visite','vidange','retard','dep'].forEach(function(t) {
+    var c = document.getElementById('al-chip-' + t);
+    if (c) c.className = 'chip ' + (_alerteFiltreType===t ? 'active-blue' : 'inactive');
+  });
+  var filtered = _toutesAlertesTech.filter(function(a) {
+    if (_alerteFiltreType !== 'tous' && a.cat !== _alerteFiltreType) return false;
+    if (q && !(a.immat||'').toLowerCase().includes(q) && !(a.tag||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  var el = document.getElementById('al-rappels');
+  if (!el) return;
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty" style="color:#3B6D11">✅ Aucun rappel pour ce filtre</div>';
+    return;
+  }
+  var cols = { danger:'#FCEBEB', warn:'#FFF8E6', info:'#E6F1FB' };
+  var borders = { danger:'#A32D2D', warn:'#BA7517', info:'#185FA5' };
+  el.innerHTML = filtered.map(function(a) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f0efeb">' +
+      '<div style="width:8px;height:8px;border-radius:50%;background:'+borders[a.type||'warn']+';flex-shrink:0;margin-top:6px"></div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px">' + a.message + '</div>' +
+        (a.detail ? '<div style="font-size:11px;color:#6b6b67;margin-top:2px">'+a.detail+'</div>' : '') +
+        (a.tag ? '<div style="margin-top:3px">'+pill(a.tag,'purple')+'</div>' : '') +
+      '</div>' +
+      (a.vehicule_id ? '<button class="btn-sm" style="background:#E6F1FB;color:#0C447C;flex-shrink:0" onclick="ouvrirFicheVeh(\'' + a.vehicule_id + '\')">Voir</button>' : '') +
+    '</div>';
+  }).join('');
+}
+
+// Charger les échéances d'un véhicule dans le formulaire
+async function chargerEcheancesVeh() {
+  var vid = (document.getElementById('al-veh')||{}).value || '';
+  if (!vid) return;
+  var vehs = await api('GET', '/vehicules');
+  var v = Array.isArray(vehs) ? vehs.find(function(x){ return x.id===vid; }) : null;
+  if (!v) return;
+  var fields = {
+    'al-km': v.km_actuel || '',
+    'al-assurance': v.date_expiration_assurance || '',
+    'al-visite': v.date_visite_technique || '',
+    'al-km-vidange': v.km_prochain_vidange || '',
+    'al-carte-grise': v.date_carte_grise || ''
+  };
+  Object.keys(fields).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = fields[id];
+  });
+}
+
+// Sauvegarder les échéances
+async function sauverEcheancesVeh(btn) {
+  var vid = (document.getElementById('al-veh')||{}).value || '';
+  if (!vid) { toast('Sélectionnez un véhicule', 'err'); return; }
+  setBtnLoad(btn, true);
+  var data = {
+    km_actuel: parseInt(document.getElementById('al-km').value) || undefined,
+    date_expiration_assurance: document.getElementById('al-assurance').value || undefined,
+    date_visite_technique: document.getElementById('al-visite').value || undefined,
+    km_prochain_vidange: parseInt(document.getElementById('al-km-vidange').value) || undefined,
+    date_carte_grise: document.getElementById('al-carte-grise').value || undefined
+  };
+  // Supprimer les champs undefined
+  Object.keys(data).forEach(function(k){ if (!data[k]) delete data[k]; });
+  await api('PATCH', '/vehicules/' + vid, data);
+  setBtnLoad(btn, false);
+  toast('✅ Échéances sauvegardées');
+  loadAlertes(); // Recharger les alertes
 }
 
 // ═══════════════════════════════════════════════════════
