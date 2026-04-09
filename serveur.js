@@ -216,14 +216,20 @@ async function handleAPI(req, res, body) {
       ft.forEach(fac=>{if(perSet.has(fac.id)){facM+=fac.montant_facture||0;encI+=imp[fac.id]||0;}});
       return Math.max(0,facM-Math.min(encI,facM));
     }
+    // Retard = dette globale par véhicule (cohérent avec la page Retards)
     let retardTotal=0;
     vehs.forEach(v=>{
       const vAffIds=db.affectations.filter(a=>a.vehicule_id===v.id).map(a=>a.id);
       const facsAll=db.facturations.filter(f=>f.vehicule_id===v.id);
       const versAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
-      let facsPer=facsAll;
-      if(date_debut&&date_fin) facsPer=facsAll.filter(f=>f.date>=date_debut&&f.date<=date_fin);
-      retardTotal+=imputerFIFODash(facsAll,versAll,facsPer.map(f=>f.id));
+      // Filtre période : ne compter que les véhicules actifs sur la période
+      if(date_debut&&date_fin){
+        const facsPer=facsAll.filter(f=>f.date>=date_debut&&f.date<=date_fin);
+        if(facsPer.length===0) return; // Pas actif sur la période
+      }
+      const totFacGlob=facsAll.reduce((s,f)=>s+(f.montant_facture||0),0);
+      const totVersGlob=versAll.reduce((s,v)=>s+v.montant,0);
+      retardTotal+=Math.max(0,totFacGlob-totVersGlob);
     });
     // Cohérence des KPIs :
     // recettes = versements reçus (encaissé réel)

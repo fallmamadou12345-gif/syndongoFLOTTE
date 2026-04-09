@@ -2,6 +2,8 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+  <meta name="google" content="notranslate">
+  <meta name="google-site-verification" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SyNdongo</title>
 <style>
@@ -204,9 +206,12 @@ tr:hover td{background:#fafaf8}
 .kpi-val { font-size:20px; font-weight:800; line-height:1.1; }
 .kpi-stat2 { background:#fff; border:1px solid #e0dfd8; border-radius:10px; padding:9px 10px; }
 .gs-result-item:hover{background:#f5f4f0}
+
+/* Désactiver la traduction automatique du navigateur */
+.notranslate, [translate="no"] { /* marqueur pour les outils de traduction */ }
 </style>
 </head>
-<body>
+<body translate="no" class="notranslate">
 
 <div class="toast-area" id="toast-area"></div>
 
@@ -225,7 +230,7 @@ tr:hover td{background:#fafaf8}
 </div>
 
 <!-- APP -->
-<div class="app" id="app">
+<div class="app" id="app" translate="no">
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="logo">Sy<span>Ndongo</span></div>
@@ -1131,19 +1136,20 @@ tr:hover td{background:#fafaf8}
  * - retard    : montant non encore payé pour la période
  */
 function imputerVersements(facsTout, versTout, facsPeriodeIds, affIds) {
-  // Trier les facturations par date (du plus ancien au plus récent)
+  // Trier les facturations par date (plus ancien en premier)
   var facsTriees = (facsTout||[]).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
-  // Trier les versements par date
-  // Si affIds=null : tous les versements passés sont utilisés (déjà pré-filtrés par l'appelant)
-  var versTriees = affIds === null
-    ? (versTout||[]).slice().sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); })
-    : (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); })
-                    .slice().sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
 
-  // Pool de versements disponibles (copie des montants)
+  // Trier les versements par date
+  // affIds=null signifie que versTout est déjà filtré par le bon véhicule
+  var versFiltrés = affIds === null
+    ? (versTout||[]).slice()
+    : (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); });
+  var versTriees = versFiltrés.sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
+
+  // Pool FIFO : chaque versement est utilisé une seule fois
   var pool = versTriees.map(function(vs){ return vs.montant; });
 
-  // Imputer séquentiellement
+  // Imputer séquentiellement sur chaque facture (ordre chronologique)
   var imputations = {};
   facsTriees.forEach(function(fac) {
     var due = fac.montant_facture || 0;
@@ -1157,22 +1163,19 @@ function imputerVersements(facsTout, versTout, facsPeriodeIds, affIds) {
     imputations[fac.id] = impute;
   });
 
-  // Sommer uniquement sur les factures de la période
-  var facsPeriodeSet = new Set(facsPeriodeIds||[]);
-  var encImpute = 0;
-  var facPeriodeMontant = 0;
+  // Sommer uniquement sur les factures de la période demandée
+  var periodeSet = new Set(facsPeriodeIds || []);
+  var facMontant = 0, encImpute = 0;
   facsTriees.forEach(function(fac) {
-    if (facsPeriodeSet.has(fac.id)) {
-      facPeriodeMontant += (fac.montant_facture||0);
-      encImpute += (imputations[fac.id]||0);
+    if (periodeSet.has(fac.id)) {
+      facMontant += (fac.montant_facture || 0);
+      encImpute  += (imputations[fac.id] || 0);
     }
   });
+
   // Cap : l'encaissé imputé ne peut pas dépasser le facturé de la période
-  encImpute = Math.min(encImpute, facPeriodeMontant);
-  return {
-    encImpute: encImpute,
-    retard: Math.max(0, facPeriodeMontant - encImpute)
-  };
+  encImpute = Math.min(encImpute, facMontant);
+  return { encImpute: encImpute, retard: Math.max(0, facMontant - encImpute) };
 }
 
 
@@ -1830,87 +1833,6 @@ function renderTagsDash() {
   });
 }
 
-function renderTagsList(tags) {
-  const tl = document.getElementById('tags-list');
-  if (!tl) return;
-  const cnt = document.getElementById('tags-count');
-  if (cnt) cnt.textContent = tags.length + ' tag(s)';
-  if (!tags.length) {
-    tl.innerHTML = '<div style="text-align:center;padding:20px;color:#6b6b67;font-size:13px;border:2px dashed #e0dfd8;border-radius:10px;margin-top:4px">Aucun tag créé.<br><small>Saisissez un nom ci-dessus et cliquez Ajouter</small></div>';
-    return;
-  }
-  // Vider et construire via DOM (pas de string concatenation complexe)
-  tl.innerHTML = '';
-  tags.forEach(function(t) {
-    const nb = Array.isArray(_vehsCache) ? _vehsCache.filter(function(v){return v.tag===t;}).length : 0;
-    const row = document.createElement('div');
-    row.id = 'tagi-' + t;
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid #e0dfd8;border-radius:10px;margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)';
-
-    const dot = document.createElement('span');
-    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#185FA5;flex-shrink:0';
-    row.appendChild(dot);
-
-    const label = document.createElement('span');
-    label.id = 'tagl-' + t;
-    label.textContent = t;
-    label.style.cssText = 'flex:1;font-size:13px;font-weight:600;color:#1a1a18';
-    row.appendChild(label);
-
-    if (nb > 0) {
-      const badge = document.createElement('span');
-      badge.textContent = nb + ' véh.';
-      badge.style.cssText = 'font-size:10px;font-weight:600;background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:99px';
-      row.appendChild(badge);
-    }
-
-    const input = document.createElement('input');
-    input.id = 'taginp-' + t;
-    input.value = t;
-    input.style.cssText = 'display:none;flex:1;font-size:13px;padding:5px 10px;border:1.5px solid #185FA5;border-radius:7px;background:#fff;outline:none';
-    input.addEventListener('keypress', function(e) { if (e.key === 'Enter') confirmerRenomTag(t, this); });
-    input.addEventListener('keydown',  function(e) { if (e.key === 'Escape') annulerRenomTag(t); });
-    row.appendChild(input);
-
-    const btns = document.createElement('div');
-    btns.style.cssText = 'display:flex;gap:5px';
-
-    var bEdit = document.createElement('button');
-    bEdit.id = 'tagbtn-edit-' + t;
-    bEdit.className = 'btn-sm';
-    bEdit.textContent = '✏️ Renommer';
-    bEdit.style.cssText = 'background:#f0f0f0;color:#444;padding:5px 10px;font-size:12px';
-    bEdit.addEventListener('click', function() { startEditTag(t); });
-    btns.appendChild(bEdit);
-
-    var bSave = document.createElement('button');
-    bSave.id = 'tagbtn-save-' + t;
-    bSave.className = 'btn-sm';
-    bSave.textContent = '✓ Sauver';
-    bSave.style.cssText = 'display:none;background:#185FA5;color:#fff;padding:5px 10px;font-size:12px';
-    bSave.addEventListener('click', function() { confirmerRenomTag(t, document.getElementById('taginp-' + t)); });
-    btns.appendChild(bSave);
-
-    var bCan = document.createElement('button');
-    bCan.id = 'tagbtn-cancel-' + t;
-    bCan.className = 'btn-sm';
-    bCan.textContent = '✕';
-    bCan.style.cssText = 'display:none;background:#e0dfd8;color:#444;padding:5px 10px;font-size:12px';
-    bCan.addEventListener('click', function() { annulerRenomTag(t); });
-    btns.appendChild(bCan);
-
-    var bDel = document.createElement('button');
-    bDel.className = 'btn-sm';
-    bDel.textContent = '🗑️';
-    bDel.title = 'Supprimer ce tag';
-    bDel.style.cssText = 'background:#FCEBEB;color:#A32D2D;padding:5px 10px;font-size:12px';
-    bDel.addEventListener('click', function() { delTagPro(t, bDel); });
-    btns.appendChild(bDel);
-
-    row.appendChild(btns);
-    tl.appendChild(row);
-  });
-}
 
 function startEditTag(t) {
   const enc = encodeURIComponent(t);
@@ -2797,7 +2719,7 @@ async function exportRetardsPDF(btn) {
   if (!Array.isArray(ret)) ret = [];
   const total = ret.reduce(function(s, r) { return s + r.retard; }, 0);
   const w = window.open('', '_blank');
-  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Retards SyNdongo</title><style>body{font-family:Arial,sans-serif;padding:30px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px;border:1px solid #ddd;font-size:12px}th{background:#f5f4f0}.total{font-weight:bold;background:#FCEBEB}</style></head><body><h1 style="color:#A32D2D">Rapport des retards</h1><div style="color:#666;margin-bottom:16px">Transport Ndongo Fall · ' + new Date().toLocaleDateString('fr-FR') + '</div><div style="background:#FCEBEB;padding:12px;border-radius:6px;font-size:14px;font-weight:bold;color:#A32D2D;margin-bottom:16px">Total retards : ' + total.toLocaleString('fr-FR') + ' FCFA</div><table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Versé</th><th>Retard</th></tr></thead><tbody>' +
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Retards SyNdongo</title><style>body{font-family:Arial,sans-serif;padding:30px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px;border:1px solid #ddd;font-size:12px}th{background:#f5f4f0}.total{font-weight:bold;background:#FCEBEB}</style></head><body><h1 style="color:#A32D2D">Rapport des retards</h1><div style="color:#666;margin-bottom:16px">Transport Ndongo Fall · ' + new Date().toLocaleDateString('fr-FR') + '</div><div style="background:#FCEBEB;padding:12px;border-radius:6px;font-size:14px;font-weight:bold;color:#A32D2D;margin-bottom:16px">Total retards : ' + total.toLocaleString('fr-FR') + ' FCFA</div><table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Versé</th><th>Retard</th></tr></thead><tbody>' +
     ret.map(function(r) { return '<tr><td><strong>' + r.immatriculation + '</strong> ' + r.marque + '</td><td>' + (r.tag || '—') + '</td><td>' + r.chauffeur + '</td><td>' + r.total_facture.toLocaleString('fr-FR') + ' F</td><td>' + r.total_verse.toLocaleString('fr-FR') + ' F</td><td style="color:#A32D2D;font-weight:bold">' + r.retard.toLocaleString('fr-FR') + ' F</td></tr>'; }).join('') +
     '<tr class="total"><td colspan="5">TOTAL</td><td style="color:#A32D2D">' + total.toLocaleString('fr-FR') + ' F</td></tr></tbody></table></body></html>');
   w.document.close(); setTimeout(function() { w.print(); }, 500);
@@ -3697,52 +3619,7 @@ function enrichirFicheVeh(v) {
 // ═══════════════════════════════════════════════════════
 // EXPORT PDF corrigé avec bouton réactif
 // ═══════════════════════════════════════════════════════
-async function exportPDF(btn) {
-  setBtnLoad(btn, true);
-  const [rapport, ret] = await Promise.all([
-    api('GET', '/rapport'),
-    api('GET', '/retards')
-  ]);
-  setBtnLoad(btn, false);
-  const totalF = rapport.reduce((s,v) => s+(v.facture||0), 0);
-  const totalR = rapport.reduce((s,v) => s+v.recettes, 0);
-  const totalD = rapport.reduce((s,v) => s+v.depenses, 0);
-  const totalRet = ret.reduce((s,r) => s+r.retard, 0);
-  const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport SyNdongo</title>
-  <style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a18}h1{color:#185FA5}
-  table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f5f4f0;padding:8px;text-align:left;border:1px solid #ddd;font-size:12px}
-  td{padding:8px;border:1px solid #ddd;font-size:12px}.total{font-weight:bold;background:#EAF3DE}
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
-  .kpi{background:#f5f4f0;padding:12px;border-radius:6px;border-left:3px solid #185FA5}
-  .kval{font-size:18px;font-weight:bold}.klabel{font-size:11px;color:#666;margin-top:3px}</style></head>
-  <body>
-  <h1>SyNdongo — Rapport de flotte</h1>
-  <div style="font-size:13px;color:#666;margin-bottom:16px">Transport Ndongo Fall · ${new Date().toLocaleDateString('fr-FR')}</div>
-  <div class="kpis">
-    <div class="kpi"><div class="kval" style="color:#185FA5">${totalF.toLocaleString('fr-FR')} F</div><div class="klabel">Total Facturé</div></div>
-    <div class="kpi"><div class="kval" style="color:#3B6D11">${totalR.toLocaleString('fr-FR')} F</div><div class="klabel">Total Encaissé</div></div>
-    <div class="kpi"><div class="kval" style="color:#A32D2D">${totalD.toLocaleString('fr-FR')} F</div><div class="klabel">Dépenses</div></div>
-    <div class="kpi"><div class="kval" style="color:#A32D2D">${totalRet.toLocaleString('fr-FR')} F</div><div class="klabel">Total Retards</div></div>
-  </div>
-  <table><thead><tr><th>Véhicule</th><th>Tag</th><th>Chauffeur</th><th>Facturé</th><th>Encaissé</th><th>Dépenses</th><th>Marge</th></tr></thead>
-  <tbody>${rapport.map(v => `<tr><td><strong>${v.immatriculation}</strong> ${v.marque}</td><td>${v.tag||'—'}</td><td>${v.chauffeur}</td>
-    <td style="color:#185FA5">${(v.facture||0).toLocaleString('fr-FR')} F</td>
-    <td style="color:#3B6D11">${v.recettes.toLocaleString('fr-FR')} F</td>
-    <td style="color:#A32D2D">${v.depenses.toLocaleString('fr-FR')} F</td>
-    <td style="color:${v.recettes-v.depenses>=0?'#3B6D11':'#A32D2D'};font-weight:bold">${(v.recettes-v.depenses).toLocaleString('fr-FR')} F</td></tr>`).join('')}
-  <tr class="total"><td colspan="3">TOTAL</td><td style="color:#185FA5">${totalF.toLocaleString('fr-FR')} F</td><td style="color:#3B6D11">${totalR.toLocaleString('fr-FR')} F</td><td style="color:#A32D2D">${totalD.toLocaleString('fr-FR')} F</td><td>${(totalR-totalD).toLocaleString('fr-FR')} F</td></tr>
-  </tbody></table></body></html>`);
-  w.document.close();
-  setTimeout(() => w.print(), 500);
-}
 
-// Spin CSS pour boutons
-const _spinStyle = document.createElement('style');
-_spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-document.head.appendChild(_spinStyle);
-
-// ── Tags Dashboard — edit inline ──────────────────────────
 function startEditTagDash(ancien) {
   const enc = encodeURIComponent(ancien);
   const label = document.getElementById('dastagl-' + enc);
@@ -3821,20 +3698,6 @@ function editerTag(tag) {
   input.select();
 }
 
-async function confirmerRenomTag(ancien, input) {
-  const nouveau = input.value.trim();
-  if (!nouveau || nouveau === ancien) { annulerEditTag(ancien); return; }
-  if (allTags.includes(nouveau)) { toast('Ce tag existe déjà', 'err'); return; }
-  // Mettre à jour le serveur : supprimer l'ancien, créer le nouveau
-  await api('POST', '/tags', { tag: nouveau, ancien });
-  // Mettre à jour les véhicules qui avaient l'ancien tag
-  const vehs = await api('GET', '/vehicules');
-  const promises = vehs.filter(v => v.tag === ancien).map(v => api('PATCH', '/vehicules/' + v.id, { tag: nouveau }));
-  if (promises.length) await Promise.all(promises);
-  toast('"' + ancien + '" renommé en "' + nouveau + '" (' + promises.length + ' véhicule(s) mis à jour)');
-  await loadTags();
-  loadVehicules();
-}
 
 function editerTagDash(tag) {
   const nouveau = prompt('Renommer le tag "' + tag + '" en :', tag);
