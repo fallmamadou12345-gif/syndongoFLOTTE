@@ -2879,13 +2879,52 @@ async function delDep(id) { if (!confirm('Supprimer ?')) return; await api('DELE
 // ALERTES
 // ═══════════════════════════════════════════════════════
 async function loadAlertes() {
-  let list = await api('GET', '/alertes');
+  // ── 1. Rappels automatiques ──────────────────────────────
+  var rappelsEl = document.getElementById('al-rappels');
+  if (rappelsEl) rappelsEl.innerHTML = '<div class="empty">Chargement des rappels…</div>';
+
+  _toutesAlertesTech = await genererAlertesTechniques();
+
+  // Mettre à jour les KPIs
+  var counts = { assurance:0, visite:0, vidange:0, retard:0, dep:0 };
+  _toutesAlertesTech.forEach(function(a){ if (counts[a.cat]!==undefined) counts[a.cat]++; });
+  ['assurance','visite','vidange','retard','dep'].forEach(function(cat) {
+    var kpiEl = document.getElementById('al-nb-'+cat);
+    if (kpiEl) {
+      kpiEl.textContent = counts[cat] > 0 ? counts[cat] : '✓';
+      kpiEl.style.color = counts[cat] > 0 ? (cat==='retard'?'#185FA5':cat==='dep'?'#7C3AED':'#A32D2D') : '#3B6D11';
+    }
+  });
+
+  filtrerAlertes('tous');
+
+  // ── 2. Peupler le select véhicules pour les échéances ────
+  var alveh = document.getElementById('al-veh');
+  if (alveh) {
+    var vehsData = await api('GET', '/vehicules');
+    if (Array.isArray(vehsData)) {
+      var cur = alveh.value;
+      alveh.innerHTML = '<option value="">— choisir —</option>' +
+        vehsData.sort(function(a,b){ return a.immatriculation.localeCompare(b.immatriculation); })
+                .map(function(v){
+                  return '<option value="'+v.id+'">'+v.immatriculation+' — '+v.marque+(v.tag?' ('+v.tag+')':'')+'</option>';
+                }).join('');
+      if (cur) alveh.value = cur;
+    }
+  }
+
+  // ── 3. Journal alertes envoyées ──────────────────────────
+  var list = await api('GET', '/alertes');
   if (!Array.isArray(list)) list = [];
-  const el = document.getElementById('t-al');
-  if (!list.length) { el.innerHTML = '<div class="empty">Aucune alerte</div>'; return; }
+  var el = document.getElementById('t-al');
+  if (!el) return;
+  if (!list.length) { el.innerHTML = '<div class="empty">Aucune alerte envoyée</div>'; return; }
   el.innerHTML = '<table><thead><tr><th>Date</th><th>Type</th><th>Canal</th><th>Message</th></tr></thead><tbody>' +
-    list.map(function(a) {
-      return '<tr><td>' + (a.created_at ? a.created_at.slice(0, 16).replace('T', ' ') : '—') + '</td><td>' + pill(a.type_alerte, 'gray') + '</td><td>' + pill(a.canal, 'blue') + '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + a.message + '</td></tr>';
+    list.slice().reverse().map(function(a) {
+      return '<tr><td style="font-size:11px;color:#6b6b67;white-space:nowrap">' + (a.created_at ? a.created_at.slice(0,16).replace('T',' ') : '—') + '</td>' +
+        '<td>' + pill(a.type_alerte,'gray') + '</td>' +
+        '<td>' + pill(a.canal,'blue') + '</td>' +
+        '<td style="font-size:12px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + a.message + '</td></tr>';
     }).join('') + '</tbody></table>';
 }
 
