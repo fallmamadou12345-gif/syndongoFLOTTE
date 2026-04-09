@@ -170,22 +170,29 @@ async function handleAPI(req, res, body) {
     const totalRec = db.versements.filter(v => affIds.includes(v.affectation_id)).reduce((s,v)=>s+v.montant,0);
     const totalDep = db.depenses.filter(d => vIds.includes(d.vehicule_id)).reduce((s,d)=>s+d.montant,0);
     const totalFac = db.facturations.filter(f => vIds.includes(f.vehicule_id)).reduce((s,f)=>s+f.montant_facture,0);
-    const tj = today();
+    // Jour de référence = dernier jour de la période, ou aujourd'hui si pas de période
+    const tj = date_fin && date_fin <= today() ? date_fin : today();
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
-    // Véhicules avec affectation active (présumés actifs si pas de saisie)
-    const affActivesIds = new Set(db.affectations.filter(a=>!a.date_fin).map(a=>a.vehicule_id));
+    // Affectations actives AU JOUR DE RÉFÉRENCE (pas forcément aujourd'hui)
+    const affActivesIds = new Set(
+      db.affectations.filter(a => {
+        const debut = a.date_debut || '2000-01-01';
+        const fin   = a.date_fin   || '2099-12-31';
+        return debut <= tj && fin >= tj;
+      }).map(a => a.vehicule_id)
+    );
     const activitesToday = [];
     vehs.forEach(v => {
       const act = db.activites.find(a => a.vehicule_id===v.id && a.date===tj);
       if (act) {
         stats[act.statut_jour] = (stats[act.statut_jour]||0)+1;
-        activitesToday.push({vehicule_id:v.id, statut_jour:act.statut_jour});
+        activitesToday.push({vehicule_id:v.id, statut_jour:act.statut_jour, date_ref:tj});
       } else if (affActivesIds.has(v.id)) {
         stats.actif++;
-        activitesToday.push({vehicule_id:v.id, statut_jour:'actif', presume:true});
+        activitesToday.push({vehicule_id:v.id, statut_jour:'actif', presume:true, date_ref:tj});
       } else {
         stats.non_saisi++;
-        activitesToday.push({vehicule_id:v.id, statut_jour:'non_saisi'});
+        activitesToday.push({vehicule_id:v.id, statut_jour:'non_saisi', date_ref:tj});
       }
     });
     // Filtre par période si demandé

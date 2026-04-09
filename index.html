@@ -332,6 +332,8 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <!-- KPIs statuts journaliers -->
+      <!-- Date de référence des statuts -->
+      <div id="k-stats-date" style="display:none;font-size:11px;color:#BA7517;background:#FFF8E6;border:1px solid #FAC775;border-radius:6px;padding:4px 10px;margin-bottom:6px;font-weight:600">Statuts aujourd'hui</div>
       <div class="kpi-row2-wrap">
         <div class="kpi-stat2 kpi-link" onclick="kpiAction('vehicules')" style="border-left:3px solid #185FA5">
           <div class="kpi-label" style="font-size:10px">Parc total</div>
@@ -1653,11 +1655,10 @@ async function loadDashboard() {
       : '';
   }
 
-  // ── Stats journalières — recalculées sur les véhicules filtrés (tag + statut) ──
+  // ── Stats journalières — basées sur le dernier jour de la période ──────
   document.getElementById('k-total').textContent = vehs.length;
 
-  // d.activites_today contient le statut de CHAQUE véhicule filtré par le serveur
-  // On recompte sur les véhicules visibles seulement
+  // d.activites_today contient les statuts du dernier jour de la période (date_fin)
   var statsJour = { actif:0, panne:0, repos:0, inactif:0, non_saisi:0 };
   var actMap = {};
   if (d.activites_today) {
@@ -1673,6 +1674,17 @@ async function loadDashboard() {
   document.getElementById('k-repos').textContent = statsJour.repos     || 0;
   document.getElementById('k-inact').textContent = statsJour.inactif   || 0;
   document.getElementById('k-ns').textContent    = statsJour.non_saisi || 0;
+
+  // Afficher la date de référence sous les KPIs statuts
+  var dateRef = (d.activites_today && d.activites_today[0]) ? d.activites_today[0].date_ref : null;
+  var dateRefEl = document.getElementById('k-stats-date');
+  if (dateRefEl) {
+    var today3 = new Date().toISOString().split('T')[0];
+    dateRefEl.textContent = dateRef && dateRef !== today3
+      ? 'Statuts au ' + dateRef
+      : "Statuts : aujourd'hui";
+    dateRefEl.style.display = 'block';
+  }
 
   // ── Alertes & Rappels ────────────────────────────────────
   var alertesTech = await genererAlertesTechniques();
