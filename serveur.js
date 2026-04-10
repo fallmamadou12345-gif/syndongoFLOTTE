@@ -1070,7 +1070,12 @@ async function handleAPI(req, res, body) {
   // ── JOURNAL DE BORD ──────────────────────────────────────────
   // ── RAPPELS PERSONNALISÉS ─────────────────────────────────
   if(p==='/api/rappels_custom'&&method==='GET'){
-    return res.end(JSON.stringify(db.rappels_custom||[]));
+    // Filtrer par véhicules visibles (gestionnaire ne voit que ses véhicules)
+    const myVehIds = vehsVisibles(db,auth).map(v=>v.id);
+    const rcVisible = (db.rappels_custom||[]).filter(r=>
+      !r.vehicule_id || myVehIds.includes(r.vehicule_id)
+    );
+    return res.end(JSON.stringify(rcVisible));
   }
   if(p==='/api/rappels_custom'&&method==='POST'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
