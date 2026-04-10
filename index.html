@@ -777,7 +777,7 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <!-- Saisie données véhicule pour les rappels -->
-      <div class="card manager-only" style="border-top:3px solid #BA7517">
+      <div class="card" style="border-top:3px solid #BA7517">
         <div class="card-title">📅 Mettre à jour les échéances véhicule</div>
         <div class="info-box" style="margin-bottom:10px">Renseignez les dates d'expiration pour activer les rappels automatiques.</div>
         <div class="form-row">
@@ -2758,21 +2758,29 @@ async function validerEnc(btn) {
 }
 
 async function loadFac() {
-  const vid = (document.getElementById('ff-veh') || {}).value || '';
-  const ffQ = ((document.getElementById('ff-q') || {}).value || '').toLowerCase();
-  const ffDebut = (document.getElementById('ff-debut') || {}).value || '';
-  const ffFin = (document.getElementById('ff-fin') || {}).value || '';
-  const ffType = (document.getElementById('ff-type') || {}).value || '';
-  const date = (document.getElementById('ff-date') || {}).value || '';
+  // Lire les filtres depuis les vrais IDs de la page caisse
+  const vid    = (document.getElementById('hist-veh')      || {}).value || '';
+  const ffTag  = (document.getElementById('hist-tag')      || {}).value || '';
+  const ffQ    = ((document.getElementById('hist-q')       || {}).value || '').toLowerCase();
+  const ffDebut= (document.getElementById('hist-debut')    || {}).value || '';
+  const ffFin  = (document.getElementById('hist-fin')      || {}).value || '';
+  const ffType = (document.getElementById('hist-type-fac') || {}).value || '';
+
+  // Filtre tag : récupérer les vehicule_ids du tag si actif
+  var vidsTagFac = null;
+  if (ffTag) {
+    var vehsTagFac = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
+    vidsTagFac = Array.isArray(vehsTagFac) ? vehsTagFac.map(function(v){ return v.id; }) : [];
+  }
+
   let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
   if (!Array.isArray(list)) list = [];
-  if (date) list = list.filter(function(f) { return f.date === date; });
-  // Nouveaux filtres intelligents
-  if (ffQ) list = list.filter(function(f) { return (f.vehicule || '').toLowerCase().includes(ffQ) || (f.chauffeur || '').toLowerCase().includes(ffQ); });
-  if (ffDebut) list = list.filter(function(f) { return f.date >= ffDebut; });
-  if (ffFin) list = list.filter(function(f) { return f.date <= ffFin; });
-  if (ffType) list = list.filter(function(f) { return f.type_journee === ffType; });
-  const el = document.getElementById('t-fac');
+  if (vidsTagFac) list = list.filter(function(f){ return vidsTagFac.includes(f.vehicule_id); });
+  if (ffQ)    list = list.filter(function(f){ return (f.vehicule||'').toLowerCase().includes(ffQ)||(f.chauffeur||'').toLowerCase().includes(ffQ); });
+  if (ffDebut)list = list.filter(function(f){ return f.date >= ffDebut; });
+  if (ffFin)  list = list.filter(function(f){ return f.date <= ffFin; });
+  if (ffType) list = list.filter(function(f){ return f.type_journee === ffType; });
+  const el = document.getElementById('caisse-tab-content');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucune facturation sur cette période</div>'; return; }
   const labels = { complet:'Journée complète', demi_panne:'Demi-panne', repos:'Repos', inactif:'Inactif' };
   const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
