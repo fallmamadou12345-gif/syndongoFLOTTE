@@ -603,7 +603,16 @@ async function handleAPI(req, res, body) {
     db.depenses.push(d);saveDB(db);return res.end(JSON.stringify({id:d.id,message:'Dépense enregistrée'}));
   }
   const dM=p.match(/^\/api\/depenses\/([^/]+)$/);
-  if(dM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}db.depenses=db.depenses.filter(d=>d.id!==dM[1]);saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));}
+  if(dM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    // Gestionnaire : vérifier que la dépense appartient à un de ses véhicules
+    if(isGest){
+      const dep=db.depenses.find(d=>d.id===dM[1]);
+      if(dep&&!auth.gest.vehicules_ids.includes(dep.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Accès refusé'}));}
+    }
+    db.depenses=db.depenses.filter(d=>d.id!==dM[1]);
+    saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+  }
   if(dM&&method==='PATCH'){if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.depenses.findIndex(d=>d.id===dM[1]);if(idx!==-1){db.depenses[idx]={...db.depenses[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
 
   // ── FACTURATIONS ──────────────────────────────────────────

@@ -690,7 +690,7 @@ tr:hover td{background:#fafaf8}
 
     <!-- DEPENSES -->
     <div class="page" id="page-depenses">
-      <div class="card manager-only">
+      <div class="card">
         <div class="card-title">Enregistrer une dépense</div>
         <div class="form-row">
           <div class="field"><label>Véhicule *</label><select id="dv"><option value="">— choisir —</option></select></div>
@@ -3264,6 +3264,7 @@ async function refreshSelects() {
   set('ac', '<option value="">— chauffeur libre —</option>' + cLibOpts);
   set('fv', '<option value="">— choisir —</option>' + vOpts);
   set('ff-veh', '<option value="">Tous véhicules</option>' + vOpts);
+  set('hist-veh', '<option value="">Tous véhicules</option>' + vOpts);
   set('ec', '<option value="">— choisir —</option>' + affs.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + ' — ' + a.vehicule + '</option>'; }).join(''));
   set('dv', '<option value="">— choisir —</option>' + vOpts);
   set('alc', '<option value="">— choisir —</option>' + cOpts);
@@ -5377,6 +5378,7 @@ async function initSaisieMultiple() {
   _smAffs = Array.isArray(affs) ? affs : [];
 
   // Seulement les véhicules avec affectation active
+  // Pour gestionnaire : filtrer aussi par ses véhicules (déjà filtrés par l'API /vehicules)
   var vehsActifs = Array.isArray(vehs) ? vehs.filter(function(v){
     return _smAffs.some(function(a){ return a.vehicule_id===v.id && !a.date_fin; });
   }) : [];
