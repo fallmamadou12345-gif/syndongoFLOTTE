@@ -292,9 +292,7 @@ tr:hover td{background:#fafaf8}
             <div class="ac-drop" id="d-filter-drop"></div>
           </div>
           <select id="d-filter-tag" style="font-size:12px;width:130px" onchange="onChangeDashTag()"><option value="">Tous tags</option></select>
-          <select id="d-filter-gest" style="font-size:12px;width:160px;border-color:#3C3489;color:#3C3489" onchange="onChangeDashGest()" title="Filtrer par gestionnaire">
-            <option value="">👤 Tous gestionnaires</option>
-          </select>
+
           <select id="d-filter-sj" style="font-size:12px;width:130px" onchange="loadDashboard()">
             <option value="">Tous statuts</option>
             <option value="actif">Actifs aujourd'hui</option>
@@ -1638,15 +1636,10 @@ async function loadDashboard() {
 
   // ── Charger TOUTES les données en parallèle ──────────────
   // ── Construction des URLs avec filtre gestionnaire multi-tags ──────
-  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
 
-  // Tags actifs : si gestionnaire sélectionné → ses tags ; sinon le filtre tag normal
-  var _activeTags = [];
-  if (gestId && _dashGestTags.length) {
-    _activeTags = _dashGestTags; // Tags du gestionnaire sélectionné
-  } else if (tag) {
-    _activeTags = [tag]; // Tag du filtre dropdown
-  }
+  // Tags actifs — depuis getActiveTagsFilter() (barre filtre global)
+  var _activeTags = getActiveTagsFilter();
+  if (!_activeTags.length && tag) _activeTags = [tag];
 
   // dashUrl avec ?tags= pour multi-tags ou ?tag= pour un seul
   var dashUrl = '/dashboard';
@@ -1947,8 +1940,6 @@ function onChangeDashTag() {
   // Manager : reset le filtre gestionnaire
   // Gestionnaire : ne pas toucher (ses tags sont fixes)
   if (ROLE !== 'gestionnaire') {
-    var gestEl = document.getElementById('d-filter-gest');
-    if (gestEl) gestEl.value = '';
     _dashGestTags = [];
     _dashGestNom = '';
   }
@@ -1956,29 +1947,7 @@ function onChangeDashTag() {
 }
 
 function onChangeDashGest() {
-  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
-  if (!gestId) {
-    // Réinitialiser le filtre tag
-    var tagEl = document.getElementById('d-filter-tag');
-    if (tagEl) tagEl.value = '';
-    loadDashboard();
-    return;
-  }
-  // Trouver le gestionnaire et ses tags
-  var gest = _allGestionnaires.find(function(g){ return g.id === gestId; });
-  if (!gest) { loadDashboard(); return; }
-  // Appliquer ses tags dans le filtre tag (premier tag)
-  // Le dashboard sera rechargé avec les tags de ce gestionnaire
-  // On stocke les tags du gestionnaire pour filtrer dans loadDashboard
-  _dashGestTags = gest.tags && gest.tags.length ? gest.tags : (gest.tag ? [gest.tag] : []);
-  _dashGestNom = gest.nom;
-  // Mettre à jour le select tag avec le premier tag
-  var tagEl = document.getElementById('d-filter-tag');
-  if (tagEl && _dashGestTags.length === 1) {
-    tagEl.value = _dashGestTags[0];
-  } else if (tagEl) {
-    tagEl.value = ''; // Multi-tags : pas de tag unique sélectionné
-  }
+  // Remplacé par onGlobalFilterChange via la barre filtre global
   loadDashboard();
 }
 
@@ -2330,10 +2299,18 @@ async function supprimerTag(t, btn) { await delTagPro(t, btn); }
 // ═══════════════════════════════════════════════════════
 async function loadVehicules() {
   const q = (document.getElementById('v-q') || {}).value || '';
-  const tag = _globalTag || (document.getElementById('v-tag') || {}).value || '';
-  // Sync select tag avec filtre global
-  if (_globalTag) { var vtEl=document.getElementById('v-tag'); if(vtEl) vtEl.value=_globalTag; }
-  let list = await api('GET', '/vehicules?q=' + encodeURIComponent(q) + '&tag=' + encodeURIComponent(tag));
+  // Filtre global actif
+  var _lvActiveTags = getActiveTagsFilter();
+  var tag = _lvActiveTags.length === 1 ? _lvActiveTags[0] : (_globalTag || (document.getElementById('v-tag')||{}).value||'');
+  if (tag) { var vtEl=document.getElementById('v-tag'); if(vtEl) vtEl.value=tag; }
+  // Construire l'URL avec filtre multi-tags si nécessaire
+  var _lvParams = [];
+  if (q) _lvParams.push('q='+encodeURIComponent(q));
+  var _lvTags = getActiveTagsFilter();
+  if (_lvTags.length === 1) _lvParams.push('tag='+encodeURIComponent(_lvTags[0]));
+  else if (_lvTags.length > 1) _lvParams.push('tags='+encodeURIComponent(_lvTags.join(',')));
+  else if (tag) _lvParams.push('tag='+encodeURIComponent(tag));
+  let list = await api('GET', '/vehicules' + (_lvParams.length ? '?'+_lvParams.join('&') : ''));
   if (!Array.isArray(list)) list = [];
   // Filtrer par chips actifs (nouveaux filtres intelligents)
   if (typeof _activeChips !== 'undefined' && _activeChips.size > 0) {
@@ -3014,9 +2991,16 @@ async function loadFac() {
 
   // Filtre tag : récupérer les vehicule_ids du tag si actif
   var vidsTagFac = null;
-  if (ffTag) {
-    var vehsTagFac = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
+  var _lfActiveTagsNow = getActiveTagsFilter();
+  if (_lfActiveTagsNow.length) {
+    var _lfUrl = _lfActiveTagsNow.length === 1
+      ? '/vehicules?tag=' + encodeURIComponent(_lfActiveTagsNow[0])
+      : '/vehicules?tags=' + encodeURIComponent(_lfActiveTagsNow.join(','));
+    var vehsTagFac = await api('GET', _lfUrl);
     vidsTagFac = Array.isArray(vehsTagFac) ? vehsTagFac.map(function(v){ return v.id; }) : [];
+  } else if (ffTag) {
+    var vehsTagFac2 = await api('GET', '/vehicules?tag=' + encodeURIComponent(ffTag));
+    vidsTagFac = Array.isArray(vehsTagFac2) ? vehsTagFac2.map(function(v){ return v.id; }) : [];
   }
 
   let list = await api('GET', '/facturations' + (vid ? '?vehicule_id=' + vid : ''));
@@ -3090,6 +3074,31 @@ function initRetardsDates() {
   }
 }
 
+
+// Retourne les paramètres de filtre actifs (tags ou gestionnaire)
+// Utilisé par toutes les pages pour filtrer de façon cohérente
+function getActiveTagsFilter() {
+  // Priorité : filtre gestionnaire global > filtre tag global > rien
+  if (_dashGestTags && _dashGestTags.length) {
+    return _dashGestTags; // Tags du gestionnaire sélectionné (ou gestionnaire connecté)
+  }
+  if (_globalTag) {
+    return [_globalTag];
+  }
+  return [];
+}
+
+// Construit les paramètres URL pour filtrer par tags actifs
+function buildTagsParams(extraParams) {
+  var tags = getActiveTagsFilter();
+  var params = extraParams ? extraParams.slice() : [];
+  if (tags.length === 1) {
+    params.push('tag=' + encodeURIComponent(tags[0]));
+  } else if (tags.length > 1) {
+    params.push('tags=' + encodeURIComponent(tags.join(',')));
+  }
+  return params;
+}
 async function loadRetards() {
   const debut  = (document.getElementById('ret-debut') || {}).value || '';
   const fin    = (document.getElementById('ret-fin')   || {}).value || '';
@@ -3098,17 +3107,19 @@ async function loadRetards() {
   const retQ   = ((document.getElementById('ret-q')    || {}).value || '').toLowerCase();
 
   let url = '/retards';
-  var params = [];
-  if (debut && fin) { params.push('date_debut='+debut); params.push('date_fin='+fin); }
-  // Gestionnaire : toujours filtrer sur ses tags
-  if (ROLE === 'gestionnaire' && _dashGestTags.length) {
-    if (_dashGestTags.length === 1) {
-      params.push('tag='+encodeURIComponent(_dashGestTags[0]));
-    } else {
-      params.push('tags='+encodeURIComponent(_dashGestTags.join(',')));
-    }
-  } else if (retTag) {
-    params.push('tag='+encodeURIComponent(retTag));
+  var baseParams = [];
+  if (debut && fin) { baseParams.push('date_debut='+debut); baseParams.push('date_fin='+fin); }
+  // Filtre global (manager ou gestionnaire) — priorité sur le select tag local
+  var activeTags = getActiveTagsFilter();
+  var params;
+  if (activeTags.length) {
+    params = buildTagsParams(baseParams);
+    // Sync le select ret-tag avec le filtre actif (si un seul tag)
+    var retTagEl = document.getElementById('ret-tag');
+    if (retTagEl && activeTags.length === 1) retTagEl.value = activeTags[0];
+  } else {
+    params = baseParams.slice();
+    if (retTag) params.push('tag='+encodeURIComponent(retTag));
   }
   if (params.length) url += '?' + params.join('&');
 
@@ -4322,7 +4333,7 @@ async function loadDepenses() {
   const depCat   = (document.getElementById('dep-cat')   || {}).value || '';
   const depQ     = ((document.getElementById('dep-q')    || {}).value || '').toLowerCase();
   // Filtre global tag/gestionnaire
-  var depGestTags = _dashGestTags.length ? _dashGestTags : (_globalTag ? [_globalTag] : []);
+  var depGestTags = getActiveTagsFilter();
   if (depDebut) list = list.filter(d => d.date_depense >= depDebut);
   if (depFin)   list = list.filter(d => d.date_depense <= depFin);
   if (depCat)   list = list.filter(d => d.categorie === depCat);
@@ -4551,8 +4562,11 @@ function getRapportPeriode() {
 
 async function loadRapports() {
   const per = getRapportPeriode();
-  const tag = _globalTag || (document.getElementById('rp-tag') || {}).value || '';
-  if (_globalTag) { var rpEl=document.getElementById('rp-tag'); if(rpEl) rpEl.value=_globalTag; }
+  var _rpTags = getActiveTagsFilter();
+  var tag = _rpTags.length === 1 ? _rpTags[0] : (_globalTag || (document.getElementById('rp-tag')||{}).value||'');
+  if (_rpTags.length === 1) { var rpEl=document.getElementById('rp-tag'); if(rpEl) rpEl.value=tag; }
+  // Pour multi-tags : charger les véhicules filtrés
+  var _rpMultiTags = _rpTags.length > 1 ? _rpTags : null;
 
   // Charger toutes les données
   const [vehs, affs, vers, deps, facs] = await Promise.all([
