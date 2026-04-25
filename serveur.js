@@ -785,12 +785,20 @@ async function handleAPI(req, res, body) {
 
       if(retard===0) return null;
 
+      // Trouver le gestionnaire responsable de ce véhicule (par tag ou par vehicules_ids)
+      const gestResp = db.gestionnaires.find(g => {
+        const gTags = g.tags || (g.tag ? [g.tag] : []);
+        return gTags.includes(v.tag) || (g.vehicules_ids||[]).includes(v.id);
+      });
+
       return{
         vehicule_id:v.id,
         immatriculation:v.immatriculation,
         marque:v.marque,
         tag:v.tag||'',
         chauffeur:chauffeur?chauffeur.prenom+' '+chauffeur.nom:'Non affecté',
+        gestionnaire:gestResp?gestResp.nom:'—',
+        gestionnaire_id:gestResp?gestResp.id:null,
         total_facture:totFac,
         total_verse:totVers,
         retard

@@ -2932,22 +2932,47 @@ function initRetardsDates() {
 }
 
 async function loadRetards() {
-  const debut = (document.getElementById('ret-debut') || {}).value || '';
-  const fin = (document.getElementById('ret-fin') || {}).value || '';
-  const retTag = (document.getElementById('ret-tag') || {}).value || '';
-  const retQ = ((document.getElementById('ret-q') || {}).value || '').toLowerCase();
+  const debut  = (document.getElementById('ret-debut') || {}).value || '';
+  const fin    = (document.getElementById('ret-fin')   || {}).value || '';
+  const retTag = (document.getElementById('ret-tag')   || {}).value || '';
+  const retGest= (document.getElementById('ret-gest')  || {}).value || '';
+  const retQ   = ((document.getElementById('ret-q')    || {}).value || '').toLowerCase();
+
   let url = '/retards';
   var params = [];
   if (debut && fin) { params.push('date_debut='+debut); params.push('date_fin='+fin); }
   if (retTag) params.push('tag='+encodeURIComponent(retTag));
   if (params.length) url += '?' + params.join('&');
+
   let ret = await api('GET', url);
   if (!Array.isArray(ret)) ret = [];
-  // Filtre local par recherche texte
+
+  // Peupler le select gestionnaire avec les gestionnaires présents dans les retards
+  var retGestEl = document.getElementById('ret-gest');
+  if (retGestEl && retGestEl.options.length <= 1) {
+    var gests = {};
+    ret.forEach(function(r) {
+      if (r.gestionnaire && r.gestionnaire !== '—' && !gests[r.gestionnaire_id]) {
+        gests[r.gestionnaire_id] = r.gestionnaire;
+      }
+    });
+    var curGest = retGestEl.value;
+    retGestEl.innerHTML = '<option value="">👤 Tous gestionnaires</option>' +
+      Object.keys(gests).map(function(id) {
+        return '<option value="'+id+'">👤 '+gests[id]+'</option>';
+      }).join('');
+    if (curGest) retGestEl.value = curGest;
+  }
+
+  // Filtre local : gestionnaire
+  if (retGest) ret = ret.filter(function(r){ return r.gestionnaire_id === retGest; });
+
+  // Filtre local : recherche texte
   if (retQ) ret = ret.filter(function(r){
     return r.immatriculation.toLowerCase().includes(retQ) ||
            r.chauffeur.toLowerCase().includes(retQ) ||
-           (r.tag||'').toLowerCase().includes(retQ);
+           (r.tag||'').toLowerCase().includes(retQ) ||
+           (r.gestionnaire||'').toLowerCase().includes(retQ);
   });
   const el = document.getElementById('t-ret');
   const total = ret.reduce(function(s, r) { return s + r.retard; }, 0);
