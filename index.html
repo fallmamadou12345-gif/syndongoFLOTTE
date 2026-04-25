@@ -279,7 +279,10 @@ tr:hover td{background:#fafaf8}
             <input id="d-filter-q" placeholder="🔍 Véhicule / Tag…" oninput="filterDashboard()" style="font-size:12px">
             <div class="ac-drop" id="d-filter-drop"></div>
           </div>
-          <select id="d-filter-tag" style="font-size:12px;width:130px" onchange="loadDashboard()"><option value="">Tous tags</option></select>
+          <select id="d-filter-tag" style="font-size:12px;width:130px" onchange="onChangeDashTag()"><option value="">Tous tags</option></select>
+          <select id="d-filter-gest" style="font-size:12px;width:160px;border-color:#3C3489;color:#3C3489" onchange="onChangeDashGest()" title="Filtrer par gestionnaire">
+            <option value="">👤 Tous gestionnaires</option>
+          </select>
           <select id="d-filter-sj" style="font-size:12px;width:130px" onchange="loadDashboard()">
             <option value="">Tous statuts</option>
             <option value="actif">Actifs aujourd'hui</option>
@@ -1086,7 +1089,7 @@ tr:hover td{background:#fafaf8}
     <div class="page" id="page-acces">
       <div class="info-box"><strong>Manager</strong> — contrôle total · <strong>Gestionnaires</strong> — écriture sur leurs véhicules · <strong>Propriétaires</strong> — lecture seule</div>
       <div class="card manager-only" style="border-top:3px solid #3C3489">
-        <div class="card-title">Créer un gestionnaire</div>
+        <div class="card-title">Créer un accès (Gestionnaire ou Manager de tag)</div>
         <div class="form-row">
           <div class="field"><label>Nom *</label><input id="gnom" placeholder="Ibrahima Sy"></div>
           <div class="field"><label>Téléphone</label><input id="gtel" placeholder="+221771234567"></div>
@@ -1354,7 +1357,7 @@ window.addEventListener('load', async function() {
       const d = await r.json();
       TOKEN = d.token; ROLE = d.role; USER = d.nom;
       if (d.role === 'gestionnaire') {
-        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'' };
+        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire' };
       } else {
         const savedGest = localStorage.getItem('snd_gest');
         if (savedGest) try { GEST_INFO = JSON.parse(savedGest); } catch(e) {}
@@ -1429,7 +1432,8 @@ function demarrerApp() {
     ]
   };
 
-  const items = NAVS[ROLE] || NAVS.manager;
+  // Si gestionnaire is_manager : utiliser la nav manager complète
+  const items = (ROLE === 'gestionnaire' && GEST_INFO.is_manager) ? NAVS.manager : (NAVS[ROLE] || NAVS.manager);
   const nav = document.getElementById('nav');
   nav.innerHTML = items.map(function(item, i) {
     return '<div class="nav-item' + (i === 0 ? ' active' : '') + '" onclick="goPage(\'' + item.id + '\',this)">' + item.label + '</div>';
@@ -1437,7 +1441,8 @@ function demarrerApp() {
 
   // Cacher manager-only pour les autres
   if (ROLE === 'proprietaire') {
-    document.querySelectorAll('.manager-only').forEach(function(el) { el.style.display = 'none'; });
+    // Cacher manager-only seulement pour les gestionnaires normaux (pas is_manager)
+    if (!GEST_INFO.is_manager) { document.querySelectorAll('.manager-only').forEach(function(el) { el.style.display = 'none'; }); }
     // Propriétaire : cacher aussi les formulaires d'ajout
     ['veh-form-card','chauf-form-card','prop-form-card','card-tags-manager'].forEach(function(id){
       var e = document.getElementById(id); if (e) e.style.display = 'none';
@@ -1479,6 +1484,8 @@ function demarrerApp() {
   });
   loadDashboard();
   refreshSelects();
+  // Charger les gestionnaires dans le select (pour le Directeur)
+  loadGestSelect();
   // Auto-refresh et indicateur sync
   startDashAutoRefresh();
   var si = document.getElementById('sync-indicator');
@@ -1579,7 +1586,8 @@ async function loadDashboard() {
   if (perLabel) {
     if (per) {
       const modeLabels = { mois:'Ce mois', '7j':'7 jours', '30j':'30 jours', libre:'Période libre' };
-      perLabel.textContent = (modeLabels[_periodeMode] || _periodeMode) + ' : ' + per.debut + ' → ' + per.fin;
+      var gestLabel = _dashGestNom ? ' · 👤 ' + _dashGestNom : '';
+      perLabel.textContent = (modeLabels[_periodeMode] || _periodeMode) + ' : ' + per.debut + ' → ' + per.fin + gestLabel;
       perLabel.style.display = 'block';
     } else {
       perLabel.style.display = 'none';
@@ -1600,15 +1608,45 @@ async function loadDashboard() {
   if (sj)  dp.push('statut_jour='+sj);
   if (dp.length) dashUrl += '?' + dp.join('&');
 
-  var [d, affs, vers, deps, facs] = await Promise.all([
+  // Filtre gestionnaire multi-tags : si un gestionnaire est sélectionné avec plusieurs tags
+  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
+  var dashUrls = [];
+  if (gestId && _dashGestTags.length > 1) {
+    // Multi-tags : charger un dashboard par tag et combiner
+    dashUrls = _dashGestTags.map(function(t) {
+      var u = '/dashboard';
+      var ps = [];
+      if (per) { ps.push('date_debut='+per.debut); ps.push('date_fin='+per.fin); }
+      ps.push('tag='+encodeURIComponent(t));
+      if (ps.length) u += '?' + ps.join('&');
+      return u;
+    });
+  }
+
+  // Construire l'URL retards (même filtre tag que le dashboard, sans filtre période)
+  var retUrl = '/retards';
+  if (gestId && _dashGestTags.length) {
+    // Pour multi-tags gestionnaire, on filtre la page retards sans tag (on filtrera par véhicules)
+    if (_dashGestTags.length === 1) retUrl += '?tag=' + encodeURIComponent(_dashGestTags[0]);
+  } else if (tag) {
+    retUrl += '?tag=' + encodeURIComponent(tag);
+  }
+
+  var [d, affs, vers, deps, facs, retardsData] = await Promise.all([
     api('GET', dashUrl),
     api('GET', '/affectations'),
     api('GET', '/versements'),
     api('GET', '/depenses'),
-    api('GET', '/facturations')
+    api('GET', '/facturations'),
+    api('GET', retUrl)
   ]);
 
   if (!d || !d.kpis) return;
+
+  // Calculer totRet et nbRetVehs depuis /api/retards (source de vérité unique)
+  var _retards = Array.isArray(retardsData) ? retardsData : [];
+  var _totRetGlobal = _retards.reduce(function(s,r){ return s+r.retard; }, 0);
+  var _nbRetVehs = _retards.length;
 
   // ── Filtrer TOUS les tableaux par période ─────────────────
   function enPeriode(date) {
@@ -1660,7 +1698,7 @@ async function loadDashboard() {
   //   → Évite les faux retards inter-périodes
   var totFac = 0;
   var totEnc = 0;
-  var totRet = d.kpis ? (d.kpis.retard_total || 0) : 0; // Depuis serveur — cohérent avec page Retards
+  var totRet = _totRetGlobal; // Depuis /api/retards — source de vérité unique
 
   vehs.forEach(function(v) {
     var vAffIds = allAffsList.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
@@ -1716,7 +1754,7 @@ async function loadDashboard() {
   var nbDepEl = document.getElementById('k-dep-nb');
   if (nbDepEl) { nbDepEl.textContent = depsFilt.length + ' dép.'; nbDepEl.style.display = depsFilt.length>0?'inline':'none'; }
   // Nb véhicules en retard
-  var nbRetVehs = d.kpis.retard_nb_vehs || 0; // Depuis serveur : tous véhicules en dette
+  var nbRetVehs = _nbRetVehs; // Depuis /api/retards — source de vérité unique
   var nbRetEl = document.getElementById('k-retard-nb');
   if (nbRetEl) { nbRetEl.textContent = nbRetVehs + ' véh.'; nbRetEl.style.display = nbRetVehs>0?'inline':'none'; }
 
@@ -1794,10 +1832,9 @@ async function loadDashboard() {
       // Encaissé = FIFO imputé sur les factures de la période
       var vImp = imputerVersements(vFacsAll, vVersAll, vFacPer.map(function(f){return f.id;}), vAffIds);
       var vEnc = vImp.encImpute;
-      // Retard = dette GLOBALE (tout facturé - tout versé depuis le début)
-      var vFacGlobTot = vFacsAll.reduce(function(s,f){return s+(f.montant_facture||0);},0);
-      var vVersGlobTot = vVersAll.reduce(function(s,vs){return s+vs.montant;},0);
-      var vRet = Math.max(0, vFacGlobTot - vVersGlobTot);
+      // Retard = depuis /api/retards (source de vérité unique)
+      var vRetInfo = _retards.find(function(r){ return r.vehicule_id === v.id; });
+      var vRet = vRetInfo ? vRetInfo.retard : 0;
       var vMarge = vFac - vDep; // Marge = Facturé - Dépenses (pas Encaissé - Dépenses)
       var vTaux = vFac > 0 ? Math.round(vEnc/vFac*100) : 0;
       if (vFac === 0 && vEnc === 0 && vDep === 0) return null;
@@ -1856,6 +1893,64 @@ async function loadDashboard() {
 // ═══════════════════════════════════════════════════════
 // TAGS
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// FILTRE GESTIONNAIRE (vue Directeur)
+// ═══════════════════════════════════════════════════════
+var _allGestionnaires = [];
+
+function onChangeDashTag() {
+  // Quand on change le tag, reset le filtre gestionnaire
+  var gestEl = document.getElementById('d-filter-gest');
+  if (gestEl) gestEl.value = '';
+  loadDashboard();
+}
+
+function onChangeDashGest() {
+  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
+  if (!gestId) {
+    // Réinitialiser le filtre tag
+    var tagEl = document.getElementById('d-filter-tag');
+    if (tagEl) tagEl.value = '';
+    loadDashboard();
+    return;
+  }
+  // Trouver le gestionnaire et ses tags
+  var gest = _allGestionnaires.find(function(g){ return g.id === gestId; });
+  if (!gest) { loadDashboard(); return; }
+  // Appliquer ses tags dans le filtre tag (premier tag)
+  // Le dashboard sera rechargé avec les tags de ce gestionnaire
+  // On stocke les tags du gestionnaire pour filtrer dans loadDashboard
+  _dashGestTags = gest.tags && gest.tags.length ? gest.tags : (gest.tag ? [gest.tag] : []);
+  _dashGestNom = gest.nom;
+  // Mettre à jour le select tag avec le premier tag
+  var tagEl = document.getElementById('d-filter-tag');
+  if (tagEl && _dashGestTags.length === 1) {
+    tagEl.value = _dashGestTags[0];
+  } else if (tagEl) {
+    tagEl.value = ''; // Multi-tags : pas de tag unique sélectionné
+  }
+  loadDashboard();
+}
+
+var _dashGestTags = [];
+var _dashGestNom = '';
+
+// Charger les gestionnaires dans le select du dashboard
+async function loadGestSelect() {
+  if (ROLE !== 'manager') return; // Seulement pour le Directeur
+  var gests = await api('GET', '/gestionnaires');
+  if (!Array.isArray(gests)) return;
+  _allGestionnaires = gests;
+  var el = document.getElementById('d-filter-gest');
+  if (!el) return;
+  el.innerHTML = '<option value="">👤 Tous gestionnaires</option>' +
+    gests.map(function(g) {
+      var tags = g.tags && g.tags.length ? g.tags.join(', ') : (g.tag || '');
+      var badge = g.is_manager ? '⭐ ' : '👤 ';
+      return '<option value="'+g.id+'">'+badge+g.nom+(tags?' ('+tags+')':'')+'</option>';
+    }).join('');
+}
+
 async function loadTags() {
   const raw = await api('GET', '/tags');
   if (!Array.isArray(raw)) return;
@@ -3094,7 +3189,7 @@ async function loadGestionnaires() {
     const propLie = g.proprio_id ? props.find(function(p) { return p.id === g.proprio_id; }) : null;
     return '<div style="border:1px solid #e0dfd8;border-left:3px solid #3C3489;border-radius:10px;padding:14px;margin-bottom:10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
-      '<div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-weight:700;font-size:14px">' + g.nom + '</span>' + pill('Gestionnaire', 'purple') + '</div>' +
+      '<div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-weight:700;font-size:14px">' + g.nom + '</span>' + (g.is_manager ? pill('Manager','blue') : pill('Gestionnaire','purple')) + '</div>' +
       (g.telephone ? '<div style="font-size:12px;color:#6b6b67;margin-bottom:6px">' + g.telephone + '</div>' : '') +
       // Afficher tags assignés
       (g.tags && g.tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">' + g.tags.map(function(t) { return '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;background:#EEEDFE;color:#3C3489">🏷️ ' + t + '</span>'; }).join('') + '</div>' :
@@ -3156,7 +3251,8 @@ async function addGestionnaire(btn) {
     proprio_id: proprio_id || null,
     tags: tagsFinaux,
     tag: tagsFinaux[0] || '',
-    vehicules_ids: vehicules_ids
+    vehicules_ids: vehicules_ids,
+    is_manager: (document.getElementById('g-is-manager')||{}).checked || false
   });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
