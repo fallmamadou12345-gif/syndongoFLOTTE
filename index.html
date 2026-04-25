@@ -253,6 +253,18 @@ tr:hover td{background:#fafaf8}
     </div>
   </div>
   <div class="nav" id="nav"></div>
+  <!-- Barre de filtre global — visible sur toutes les pages pour le Manager -->
+  <div id="global-filter-bar" style="display:none;background:#f5f4f0;border-bottom:1px solid #e0dfd8;padding:6px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px">
+    <span style="color:#6b6b67;font-weight:600">🔍 Filtre :</span>
+    <select id="gf-tag" style="font-size:12px;width:130px;border-color:#ccc" onchange="onGlobalFilterChange()">
+      <option value="">Tous tags</option>
+    </select>
+    <select id="gf-gest" style="font-size:12px;width:170px;border-color:#3C3489;color:#3C3489" onchange="onGlobalFilterChange()">
+      <option value="">👤 Tous gestionnaires</option>
+    </select>
+    <button class="btn-sm" style="background:#fff;color:#A32D2D;border:1px solid #A32D2D;font-size:11px" onclick="resetGlobalFilter()">✕ Réinitialiser</button>
+    <span id="gf-label" style="font-size:11px;color:#6b6b67;font-style:italic"></span>
+  </div>
   <div class="main">
 
     <!-- DASHBOARD -->
@@ -1476,16 +1488,39 @@ function demarrerApp() {
   loadTags().then(function() {
     initFiltresTags();
     // Pour les gestionnaires : pré-filtrer sur leur tag principal
-    if (ROLE === 'gestionnaire' && (GEST_INFO.tags.length || GEST_INFO.tag)) {
-      var myTag = GEST_INFO.tags.length ? GEST_INFO.tags[0] : GEST_INFO.tag;
-      var dtag = document.getElementById('d-filter-tag');
-      if (dtag && myTag) dtag.value = myTag;
+    if (ROLE === 'gestionnaire') {
+      // Fixer les tags actifs pour tout le dashboard — ne peuvent pas être changés
+      var myTags = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags : (GEST_INFO.tag ? [GEST_INFO.tag] : []);
+      if (myTags.length) {
+        _dashGestTags = myTags;
+        _dashGestNom = USER;
+        // Select tag : afficher le tag si un seul, ou indiquer "Mes tags" si plusieurs
+        var dtag = document.getElementById('d-filter-tag');
+        if (dtag) {
+          if (myTags.length === 1) {
+            dtag.value = myTags[0];
+          } else {
+            // Ajouter une option "Mes tags" pour les gestionnaires multi-tags
+            var optMesTags = document.createElement('option');
+            optMesTags.value = '__mes_tags__';
+            optMesTags.textContent = '🔒 Mes tags (' + myTags.length + ')';
+            optMesTags.selected = true;
+            dtag.insertBefore(optMesTags, dtag.firstChild);
+          }
+          dtag.disabled = true; // Gestionnaire ne peut pas changer le filtre tag
+          dtag.style.opacity = '0.7';
+          dtag.title = 'Filtré sur : ' + myTags.join(', ');
+        }
+        // Cacher le select gestionnaire (inutile pour le gestionnaire lui-même)
+        var dgestEl = document.getElementById('d-filter-gest');
+        if (dgestEl) dgestEl.style.display = 'none';
+      }
     }
   });
   loadDashboard();
   refreshSelects();
   // Charger les gestionnaires dans le select (pour le Directeur)
-  loadGestSelect();
+  loadGestSelect().then(function(){ initGlobalFilterBar(); });
   // Auto-refresh et indicateur sync
   startDashAutoRefresh();
   var si = document.getElementById('sync-indicator');
@@ -1578,7 +1613,8 @@ function rechGlobal(q) {
 async function loadDashboard() {
   // ── Récupérer la période et les filtres ──────────────────
   const per  = getPeriodeDash();                       // { debut, fin } ou null
-  const tag  = (document.getElementById('d-filter-tag') || {}).value || '';
+  // Utiliser le filtre global s'il est actif (synchronisé avec la barre globale)
+  const tag  = _globalTag || (document.getElementById('d-filter-tag') || {}).value || '';
   const sj   = (document.getElementById('d-filter-sj')  || {}).value || '';
 
   // ── Afficher le label de la période active ───────────────
@@ -1908,9 +1944,14 @@ async function loadDashboard() {
 var _allGestionnaires = [];
 
 function onChangeDashTag() {
-  // Quand on change le tag, reset le filtre gestionnaire
-  var gestEl = document.getElementById('d-filter-gest');
-  if (gestEl) gestEl.value = '';
+  // Manager : reset le filtre gestionnaire
+  // Gestionnaire : ne pas toucher (ses tags sont fixes)
+  if (ROLE !== 'gestionnaire') {
+    var gestEl = document.getElementById('d-filter-gest');
+    if (gestEl) gestEl.value = '';
+    _dashGestTags = [];
+    _dashGestNom = '';
+  }
   loadDashboard();
 }
 
@@ -1944,9 +1985,106 @@ function onChangeDashGest() {
 var _dashGestTags = [];
 var _dashGestNom = '';
 
+// ═══════════════════════════════════════════════════════
+// FILTRE GLOBAL — mémorisé entre toutes les pages
+// ═══════════════════════════════════════════════════════
+var _globalTag   = '';   // Tag actif sur toutes les pages
+var _globalGest  = '';   // ID gestionnaire actif
+var _globalGestTags = []; // Tags du gestionnaire sélectionné
+
+function onGlobalFilterChange() {
+  var tagEl  = document.getElementById('gf-tag');
+  var gestEl = document.getElementById('gf-gest');
+  _globalTag  = tagEl  ? tagEl.value  : '';
+  _globalGest = gestEl ? gestEl.value : '';
+
+  // Si gestionnaire sélectionné : prendre ses tags
+  if (_globalGest) {
+    var g = _allGestionnaires.find(function(x){ return x.id === _globalGest; });
+    _globalGestTags = g ? (g.tags && g.tags.length ? g.tags : (g.tag ? [g.tag] : [])) : [];
+    _dashGestTags = _globalGestTags;
+    _dashGestNom  = g ? g.nom : '';
+    // Mettre à jour le select tag si un seul tag
+    if (tagEl && _globalGestTags.length === 1) tagEl.value = _globalGestTags[0];
+    else if (tagEl) tagEl.value = '';
+  } else {
+    _globalGestTags = _globalTag ? [_globalTag] : [];
+    _dashGestTags   = _globalTag ? [_globalTag] : [];
+    _dashGestNom    = '';
+  }
+
+  // Mettre à jour le label
+  updateGlobalFilterLabel();
+
+  // Recharger la page active
+  rechargerPageActive();
+}
+
+function resetGlobalFilter() {
+  _globalTag = ''; _globalGest = ''; _globalGestTags = [];
+  _dashGestTags = []; _dashGestNom = '';
+  var tagEl = document.getElementById('gf-tag'); if (tagEl) tagEl.value = '';
+  var gestEl = document.getElementById('gf-gest'); if (gestEl) gestEl.value = '';
+  updateGlobalFilterLabel();
+  rechargerPageActive();
+}
+
+function updateGlobalFilterLabel() {
+  var lbl = document.getElementById('gf-label');
+  if (!lbl) return;
+  var parts = [];
+  if (_dashGestNom) parts.push('👤 ' + _dashGestNom);
+  else if (_globalTag) parts.push('🏷️ ' + _globalTag);
+  lbl.textContent = parts.length ? '→ ' + parts.join(' · ') : '';
+}
+
+function rechargerPageActive() {
+  // Détecter la page active et la recharger
+  var activePage = document.querySelector('.page.active');
+  if (!activePage) return;
+  var pageId = activePage.id.replace('page-','');
+  switch(pageId) {
+    case 'dashboard':   loadDashboard(); break;
+    case 'vehicules':   loadVehicules(); break;
+    case 'chauffeurs':  loadChauffeurs(); break;
+    case 'caisse':      loadCaisseTab(); break;
+    case 'retards':     loadRetards(); break;
+    case 'depenses':    loadDepenses(); break;
+    case 'alertes':     loadAlertes(); break;
+    case 'rapports':    if(typeof filtrerRapport==='function') filtrerRapport(); break;
+    case 'historique':  if(typeof loadHistorique==='function') loadHistorique(); break;
+  }
+}
+
+// Peupler la barre filtre global avec les tags et gestionnaires
+function initGlobalFilterBar() {
+  if (ROLE !== 'manager') return; // Seulement pour le Manager/Directeur
+  var bar = document.getElementById('global-filter-bar');
+  if (bar) bar.style.display = 'flex';
+
+  // Peupler les tags
+  var tagEl = document.getElementById('gf-tag');
+  if (tagEl && allTags.length) {
+    tagEl.innerHTML = '<option value="">Tous tags</option>' +
+      allTags.map(function(t){ return '<option value="'+esc(t)+'">'+t+'</option>'; }).join('');
+    if (_globalTag) tagEl.value = _globalTag;
+  }
+
+  // Peupler les gestionnaires
+  var gestEl = document.getElementById('gf-gest');
+  if (gestEl && _allGestionnaires.length) {
+    gestEl.innerHTML = '<option value="">👤 Tous gestionnaires</option>' +
+      _allGestionnaires.map(function(g){
+        var tags = g.tags && g.tags.length ? g.tags.join(', ') : (g.tag || '');
+        return '<option value="'+g.id+'">'+(g.is_manager?'⭐ ':'👤 ')+g.nom+(tags?' ('+tags+')':'')+'</option>';
+      }).join('');
+    if (_globalGest) gestEl.value = _globalGest;
+  }
+}
+
 // Charger les gestionnaires dans le select du dashboard
 async function loadGestSelect() {
-  if (ROLE !== 'manager') return; // Seulement pour le Directeur
+  if (ROLE !== 'manager') return Promise.resolve(); // Seulement pour le Directeur
   var gests = await api('GET', '/gestionnaires');
   if (!Array.isArray(gests)) return;
   _allGestionnaires = gests;
@@ -2000,6 +2138,8 @@ async function loadTags() {
   renderTagsList();
   // Rendu liste tags dans le Dashboard
   renderTagsDash();
+  // Mettre à jour la barre filtre global
+  if (ROLE === 'manager') initGlobalFilterBar();
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -2190,7 +2330,9 @@ async function supprimerTag(t, btn) { await delTagPro(t, btn); }
 // ═══════════════════════════════════════════════════════
 async function loadVehicules() {
   const q = (document.getElementById('v-q') || {}).value || '';
-  const tag = (document.getElementById('v-tag') || {}).value || '';
+  const tag = _globalTag || (document.getElementById('v-tag') || {}).value || '';
+  // Sync select tag avec filtre global
+  if (_globalTag) { var vtEl=document.getElementById('v-tag'); if(vtEl) vtEl.value=_globalTag; }
   let list = await api('GET', '/vehicules?q=' + encodeURIComponent(q) + '&tag=' + encodeURIComponent(tag));
   if (!Array.isArray(list)) list = [];
   // Filtrer par chips actifs (nouveaux filtres intelligents)
@@ -2929,6 +3071,23 @@ function initRetardsDates() {
   const rf = document.getElementById('ret-fin');
   if (rd && !rd.value) { const d = new Date(); d.setDate(1); rd.value = d.toISOString().split('T')[0]; }
   if (rf && !rf.value) rf.value = new Date().toISOString().split('T')[0];
+  // Gestionnaire : forcer le filtre tag sur ses tags
+  if (ROLE === 'gestionnaire') {
+    var myTags = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags : (GEST_INFO.tag ? [GEST_INFO.tag] : []);
+    var retTagEl = document.getElementById('ret-tag');
+    if (retTagEl && myTags.length === 1) {
+      retTagEl.value = myTags[0];
+      retTagEl.disabled = true;
+      retTagEl.style.opacity = '0.7';
+    } else if (retTagEl && myTags.length > 1) {
+      retTagEl.disabled = true;
+      retTagEl.style.opacity = '0.7';
+      retTagEl.title = 'Filtré sur : ' + myTags.join(', ');
+    }
+    // Cacher le filtre gestionnaire pour les gestionnaires eux-mêmes
+    var retGestEl = document.getElementById('ret-gest');
+    if (retGestEl) retGestEl.style.display = 'none';
+  }
 }
 
 async function loadRetards() {
@@ -2941,7 +3100,16 @@ async function loadRetards() {
   let url = '/retards';
   var params = [];
   if (debut && fin) { params.push('date_debut='+debut); params.push('date_fin='+fin); }
-  if (retTag) params.push('tag='+encodeURIComponent(retTag));
+  // Gestionnaire : toujours filtrer sur ses tags
+  if (ROLE === 'gestionnaire' && _dashGestTags.length) {
+    if (_dashGestTags.length === 1) {
+      params.push('tag='+encodeURIComponent(_dashGestTags[0]));
+    } else {
+      params.push('tags='+encodeURIComponent(_dashGestTags.join(',')));
+    }
+  } else if (retTag) {
+    params.push('tag='+encodeURIComponent(retTag));
+  }
   if (params.length) url += '?' + params.join('&');
 
   let ret = await api('GET', url);
@@ -4139,11 +4307,22 @@ async function loadDepenses() {
   let list = await api('GET', '/depenses');
   if (!Array.isArray(list)) list = [];
   _depsCache = list;
+  // Filtrer par tags actifs (gestionnaire ou filtre global)
+  if (depGestTags.length) {
+    // Charger les véhicules de ces tags pour filtrer
+    var _depVehsUrl = '/vehicules?tags=' + encodeURIComponent(depGestTags.join(','));
+    if (depGestTags.length === 1) _depVehsUrl = '/vehicules?tag=' + encodeURIComponent(depGestTags[0]);
+    var _depVehs = await api('GET', _depVehsUrl);
+    var _depVidsSet = new Set(Array.isArray(_depVehs) ? _depVehs.map(function(v){return v.id;}) : []);
+    list = list.filter(function(d){ return _depVidsSet.has(d.vehicule_id); });
+  }
   // Filtres
   const depDebut = (document.getElementById('dep-debut') || {}).value || '';
   const depFin   = (document.getElementById('dep-fin')   || {}).value || '';
   const depCat   = (document.getElementById('dep-cat')   || {}).value || '';
   const depQ     = ((document.getElementById('dep-q')    || {}).value || '').toLowerCase();
+  // Filtre global tag/gestionnaire
+  var depGestTags = _dashGestTags.length ? _dashGestTags : (_globalTag ? [_globalTag] : []);
   if (depDebut) list = list.filter(d => d.date_depense >= depDebut);
   if (depFin)   list = list.filter(d => d.date_depense <= depFin);
   if (depCat)   list = list.filter(d => d.categorie === depCat);
@@ -4372,7 +4551,8 @@ function getRapportPeriode() {
 
 async function loadRapports() {
   const per = getRapportPeriode();
-  const tag = (document.getElementById('rp-tag') || {}).value || '';
+  const tag = _globalTag || (document.getElementById('rp-tag') || {}).value || '';
+  if (_globalTag) { var rpEl=document.getElementById('rp-tag'); if(rpEl) rpEl.value=_globalTag; }
 
   // Charger toutes les données
   const [vehs, affs, vers, deps, facs] = await Promise.all([
