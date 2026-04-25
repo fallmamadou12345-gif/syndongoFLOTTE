@@ -1660,7 +1660,7 @@ async function loadDashboard() {
   //   → Évite les faux retards inter-périodes
   var totFac = 0;
   var totEnc = 0;
-  var totRet = 0;
+  var totRet = d.kpis ? (d.kpis.retard_total || 0) : 0; // Depuis serveur — cohérent avec page Retards
 
   vehs.forEach(function(v) {
     var vAffIds = allAffsList.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
@@ -1676,14 +1676,14 @@ async function loadDashboard() {
     var vEncImpute = vImp.encImpute;
 
     // Retard = dette globale (tout facturé - tout versé)
-    var vFacGlob  = vFacsAll.reduce(function(s,f){ return s+(f.montant_facture||0); }, 0);
-    var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
-    var vRetard   = Math.max(0, vFacGlob - vVersGlob);
+    // Retard = depuis serveur (pas calculé ici)
+
+
 
     totFac += vFacMontant;
     totEnc += vEncImpute;
-    // Compter le retard seulement pour les véhicules actifs sur la période
-    if (vFacMontant > 0) totRet += vRetard;
+    // totRet vient du serveur
+
   });
 
   var marge = totFac - totDep;
@@ -1716,7 +1716,7 @@ async function loadDashboard() {
   var nbDepEl = document.getElementById('k-dep-nb');
   if (nbDepEl) { nbDepEl.textContent = depsFilt.length + ' dép.'; nbDepEl.style.display = depsFilt.length>0?'inline':'none'; }
   // Nb véhicules en retard
-  var nbRetVehs = vehs.filter(function(v){ var vAffIds=affsFilt.filter(function(a){return a.vehicule_id===v.id;}).map(function(a){return a.id;}); var vFac=facsFilt.filter(function(f){return f.vehicule_id===v.id;}).reduce(function(s,f){return s+(f.montant_facture||0);},0); var vEnc=versFilt.filter(function(vs){return vAffIds.includes(vs.affectation_id);}).reduce(function(s,vs){return s+vs.montant;},0); return vFac>vEnc; }).length;
+  var nbRetVehs = d.kpis.retard_nb_vehs || 0; // Depuis serveur : tous véhicules en dette
   var nbRetEl = document.getElementById('k-retard-nb');
   if (nbRetEl) { nbRetEl.textContent = nbRetVehs + ' véh.'; nbRetEl.style.display = nbRetVehs>0?'inline':'none'; }
 

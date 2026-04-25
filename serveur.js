@@ -173,12 +173,14 @@ async function handleAPI(req, res, body) {
     // Jour de référence = dernier jour de la période, ou aujourd'hui si pas de période
     const tj = date_fin && date_fin <= today() ? date_fin : today();
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
-    // Affectations actives AU JOUR DE RÉFÉRENCE (pas forcément aujourd'hui)
+    // Affectations actives AU JOUR DE RÉFÉRENCE
+    // Une affectation est active si : date_debut <= tj ET (pas de date_fin OU date_fin >= tj)
     const affActivesIds = new Set(
       db.affectations.filter(a => {
         const debut = a.date_debut || '2000-01-01';
-        const fin   = a.date_fin   || '2099-12-31';
-        return debut <= tj && fin >= tj;
+        // Affectation active = pas de date_fin (en cours) OU date_fin dans le futur par rapport à tj
+        if (!a.date_fin) return debut <= tj; // Affectation en cours
+        return debut <= tj && a.date_fin >= tj; // Affectation terminée mais active sur tj
       }).map(a => a.vehicule_id)
     );
     const activitesToday = [];
@@ -226,20 +228,17 @@ async function handleAPI(req, res, body) {
       ft.forEach(fac=>{if(perSet.has(fac.id)){facM+=fac.montant_facture||0;encI+=imp[fac.id]||0;}});
       return Math.max(0,facM-Math.min(encI,facM));
     }
-    // Retard = dette globale par véhicule (cohérent avec la page Retards)
+    // Retard = dette globale de TOUS les véhicules visibles (cohérent avec page Retards sans filtre)
     let retardTotal=0;
+    let retardNbVehs=0;
     vehs.forEach(v=>{
       const vAffIds=db.affectations.filter(a=>a.vehicule_id===v.id).map(a=>a.id);
       const facsAll=db.facturations.filter(f=>f.vehicule_id===v.id);
       const versAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
-      // Filtre période : ne compter que les véhicules actifs sur la période
-      if(date_debut&&date_fin){
-        const facsPer=facsAll.filter(f=>f.date>=date_debut&&f.date<=date_fin);
-        if(facsPer.length===0) return; // Pas actif sur la période
-      }
       const totFacGlob=facsAll.reduce((s,f)=>s+(f.montant_facture||0),0);
       const totVersGlob=versAll.reduce((s,v)=>s+v.montant,0);
-      retardTotal+=Math.max(0,totFacGlob-totVersGlob);
+      const ret=Math.max(0,totFacGlob-totVersGlob);
+      if(ret>0){retardTotal+=ret;retardNbVehs++;}
     });
     // Cohérence des KPIs :
     // recettes = versements reçus (encaissé réel)
@@ -255,7 +254,7 @@ async function handleAPI(req, res, body) {
         marge:recPeriode-depPeriode,  // Marge = encaissé - dépenses
         taux_marge:tauxRecouvrement,  // Taux de recouvrement
         vehicules_total:vehs.length,
-        retard_total:retardTotal,     // Somme retards par véhicule
+        retard_total:retardTotal,retard_nb_vehs:retardNbVehs,
         facture_total:facPeriode      // Total facturé
       },
       stats_jour:stats, activites_today:activitesToday, alertes:alertes||[], role:auth.role,
