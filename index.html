@@ -1601,36 +1601,38 @@ async function loadDashboard() {
   });
 
   // ── Charger TOUTES les données en parallèle ──────────────
+  // ── Construction des URLs avec filtre gestionnaire multi-tags ──────
+  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
+
+  // Tags actifs : si gestionnaire sélectionné → ses tags ; sinon le filtre tag normal
+  var _activeTags = [];
+  if (gestId && _dashGestTags.length) {
+    _activeTags = _dashGestTags; // Tags du gestionnaire sélectionné
+  } else if (tag) {
+    _activeTags = [tag]; // Tag du filtre dropdown
+  }
+
+  // dashUrl avec ?tags= pour multi-tags ou ?tag= pour un seul
   var dashUrl = '/dashboard';
   var dp = [];
   if (per) { dp.push('date_debut='+per.debut); dp.push('date_fin='+per.fin); }
-  if (tag) dp.push('tag='+encodeURIComponent(tag));
-  if (sj)  dp.push('statut_jour='+sj);
+  if (_activeTags.length === 1) {
+    dp.push('tag='+encodeURIComponent(_activeTags[0]));
+  } else if (_activeTags.length > 1) {
+    dp.push('tags='+encodeURIComponent(_activeTags.join(',')));
+  }
+  if (sj) dp.push('statut_jour='+sj);
   if (dp.length) dashUrl += '?' + dp.join('&');
 
-  // Filtre gestionnaire multi-tags : si un gestionnaire est sélectionné avec plusieurs tags
-  var gestId = (document.getElementById('d-filter-gest')||{}).value || '';
-  var dashUrls = [];
-  if (gestId && _dashGestTags.length > 1) {
-    // Multi-tags : charger un dashboard par tag et combiner
-    dashUrls = _dashGestTags.map(function(t) {
-      var u = '/dashboard';
-      var ps = [];
-      if (per) { ps.push('date_debut='+per.debut); ps.push('date_fin='+per.fin); }
-      ps.push('tag='+encodeURIComponent(t));
-      if (ps.length) u += '?' + ps.join('&');
-      return u;
-    });
-  }
-
-  // Construire l'URL retards (même filtre tag que le dashboard, sans filtre période)
+  // retUrl : même filtre tags
   var retUrl = '/retards';
-  if (gestId && _dashGestTags.length) {
-    // Pour multi-tags gestionnaire, on filtre la page retards sans tag (on filtrera par véhicules)
-    if (_dashGestTags.length === 1) retUrl += '?tag=' + encodeURIComponent(_dashGestTags[0]);
-  } else if (tag) {
-    retUrl += '?tag=' + encodeURIComponent(tag);
+  var rp = [];
+  if (_activeTags.length === 1) {
+    rp.push('tag='+encodeURIComponent(_activeTags[0]));
+  } else if (_activeTags.length > 1) {
+    rp.push('tags='+encodeURIComponent(_activeTags.join(',')));
   }
+  if (rp.length) retUrl += '?' + rp.join('&');
 
   var [d, affs, vers, deps, facs, retardsData] = await Promise.all([
     api('GET', dashUrl),
@@ -1659,7 +1661,14 @@ async function loadDashboard() {
   var facsFilt = Array.isArray(facs) ? facs.filter(function(f){ return enPeriode(f.date); }) : [];
 
   // ── Filtrer par tag si actif ──────────────────────────────
-  var vehs = await api('GET', '/vehicules' + (tag ? '?tag='+encodeURIComponent(tag) : ''));
+  // Charger les véhicules filtrés par tags actifs
+  var _vehsUrl = '/vehicules';
+  if (_activeTags.length === 1) {
+    _vehsUrl += '?tag=' + encodeURIComponent(_activeTags[0]);
+  } else if (_activeTags.length > 1) {
+    _vehsUrl += '?tags=' + encodeURIComponent(_activeTags.join(','));
+  }
+  var vehs = await api('GET', _vehsUrl);
   if (!Array.isArray(vehs)) vehs = [];
   var vIds = vehs.map(function(v){ return v.id; });
 

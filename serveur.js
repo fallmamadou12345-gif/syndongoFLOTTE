@@ -154,7 +154,17 @@ async function handleAPI(req, res, body) {
     const pr = db.proprietaires.find(x => x.password === data.password);
     if (pr) return res.end(JSON.stringify({ role:'proprietaire', token:data.password, nom:pr.nom, proprio_id:pr.id }));
     const gt = db.gestionnaires.find(x => x.password === data.password);
-    if (gt) return res.end(JSON.stringify({ role:'gestionnaire', token:data.password, nom:gt.nom, gest_id:gt.id, tags:gt.tags||[], tag:gt.tag||'', vehicules_ids:gt.vehicules_ids||[] }));
+    if (gt) return res.end(JSON.stringify({
+      role:'gestionnaire',
+      token:data.password,
+      nom:gt.nom,
+      gest_id:gt.id,
+      tags:gt.tags||[],
+      tag:gt.tag||'',
+      vehicules_ids:gt.vehicules_ids||[],
+      is_manager: gt.is_manager || false,         // Affiche comme Manager dans l'UI
+      affiche_comme: gt.is_manager ? 'Manager' : 'Gestionnaire'
+    }));
     res.writeHead(401); return res.end(JSON.stringify({ detail:'Mot de passe incorrect' }));
   }
 
@@ -164,6 +174,11 @@ async function handleAPI(req, res, body) {
     let vehs = vehsVisibles(db, auth);
     // Filtres optionnels
     if(q.tag) vehs=vehs.filter(v=>v.tag===q.tag);
+    // Filtre multi-tags : ?tags=TNDF,Mmd,SY TRANSPORT
+    if(q.tags) {
+      const tagList = q.tags.split(',').map(t=>t.trim()).filter(Boolean);
+      if(tagList.length) vehs=vehs.filter(v=>tagList.includes(v.tag));
+    }
     if(q.vehicule_id) vehs=vehs.filter(v=>v.id===q.vehicule_id);
     const vIds = vehs.map(v => v.id);
     const affIds = db.affectations.filter(a => vIds.includes(a.vehicule_id)).map(a => a.id);
@@ -174,14 +189,12 @@ async function handleAPI(req, res, body) {
     const tj = date_fin && date_fin <= today() ? date_fin : today();
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
     // Affectations actives AU JOUR DE RÉFÉRENCE
-    // Une affectation est active si : date_debut <= tj ET (pas de date_fin OU date_fin >= tj)
+    // Règle : affectation active = pas de date_fin (en cours) = chauffeur toujours affecté
+    // Si date_fin existe, l'affectation est terminée → le véhicule n'est plus présumé actif
     const affActivesIds = new Set(
-      db.affectations.filter(a => {
-        const debut = a.date_debut || '2000-01-01';
-        // Affectation active = pas de date_fin (en cours) OU date_fin dans le futur par rapport à tj
-        if (!a.date_fin) return debut <= tj; // Affectation en cours
-        return debut <= tj && a.date_fin >= tj; // Affectation terminée mais active sur tj
-      }).map(a => a.vehicule_id)
+      db.affectations
+        .filter(a => !a.date_fin) // Affectations en cours (sans date de fin)
+        .map(a => a.vehicule_id)
     );
     const activitesToday = [];
     vehs.forEach(v => {
@@ -319,6 +332,7 @@ async function handleAPI(req, res, body) {
     let list = vehsVisibles(db, auth);
     if(q.q){const sq=q.q.toLowerCase();list=list.filter(v=>(v.immatriculation||'').toLowerCase().includes(sq)||(v.marque||'').toLowerCase().includes(sq)||(v.tag||'').toLowerCase().includes(sq));}
     if(q.tag) list=list.filter(v=>v.tag===q.tag);
+    if(q.tags){const tl=q.tags.split(',').map(t=>t.trim()).filter(Boolean);if(tl.length)list=list.filter(v=>tl.includes(v.tag));}
     if(q.statut_jour){const tj2=today();list=list.filter(v=>{const act=db.activites.find(a=>a.vehicule_id===v.id&&a.date===tj2);return (act?act.statut_jour:'non_saisi')===q.statut_jour;});}
     const tj=today();
     list=list.map(v=>{
@@ -735,8 +749,12 @@ async function handleAPI(req, res, body) {
     let vehs=vehsVisibles(db,auth);
     const date_debut=q.date_debut||'';
     const date_fin=q.date_fin||'';
-    // Filtre par tag
+    // Filtre par tag (simple ou multi)
     if(q.tag) vehs=vehs.filter(v=>v.tag===q.tag);
+    if(q.tags) {
+      const tagList=q.tags.split(',').map(t=>t.trim()).filter(Boolean);
+      if(tagList.length) vehs=vehs.filter(v=>tagList.includes(v.tag));
+    }
 
     // ── Retard RÉEL = Dette cumulée globale ───────────────────
     // Retard = Total facturé depuis le début - Total versé depuis le début
