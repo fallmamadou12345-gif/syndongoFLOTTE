@@ -291,7 +291,7 @@ tr:hover td{background:#fafaf8}
             <input id="d-filter-q" placeholder="🔍 Véhicule / Tag…" oninput="filterDashboard()" style="font-size:12px">
             <div class="ac-drop" id="d-filter-drop"></div>
           </div>
-          <select id="d-filter-tag" style="font-size:12px;width:130px" onchange="onChangeDashTag()"><option value="">Tous tags</option></select>
+<!-- d-filter-tag supprimé — remplacé par barre globale gf-tag -->
 
           <select id="d-filter-sj" style="font-size:12px;width:130px" onchange="loadDashboard()">
             <option value="">Tous statuts</option>
@@ -1736,7 +1736,9 @@ async function loadDashboard() {
   //   → Évite les faux retards inter-périodes
   var totFac = 0;
   var totEnc = 0;
-  var totRet = _totRetGlobal; // Depuis /api/retards — source de vérité unique
+  // totRet = Facturé - Encaissé sur la période (cohérence mathématique garantie)
+  // Note : diffère de la dette globale (page Retards) qui couvre tout l'historique
+  var totRet = 0; // Calculé après totFac et totEnc
 
   vehs.forEach(function(v) {
     var vAffIds = allAffsList.filter(function(a){ return a.vehicule_id===v.id; }).map(function(a){ return a.id; });
@@ -1763,6 +1765,7 @@ async function loadDashboard() {
   });
 
   var marge = totFac - totDep;
+  totRet = Math.max(0, totFac - totEnc); // Retard période = Facturé - Encaissé
 
   // Taux de recouvrement sur la période (imputation FIFO)
   // totFac = facturé période, totEnc = encaissé imputé sur période
@@ -1792,7 +1795,7 @@ async function loadDashboard() {
   var nbDepEl = document.getElementById('k-dep-nb');
   if (nbDepEl) { nbDepEl.textContent = depsFilt.length + ' dép.'; nbDepEl.style.display = depsFilt.length>0?'inline':'none'; }
   // Nb véhicules en retard
-  var nbRetVehs = _nbRetVehs; // Depuis /api/retards — source de vérité unique
+  var nbRetVehs = 0; // Calculé depuis le tableau rentabilité (même période)
   var nbRetEl = document.getElementById('k-retard-nb');
   if (nbRetEl) { nbRetEl.textContent = nbRetVehs + ' véh.'; nbRetEl.style.display = nbRetVehs>0?'inline':'none'; }
 
@@ -1818,6 +1821,15 @@ async function loadDashboard() {
   var actMap = {};
   if (d.activites_today) {
     d.activites_today.forEach(function(a){ actMap[a.vehicule_id] = a.statut_jour; });
+  }
+  // vehs est déjà filtré par les tags actifs — compter les statuts sur ces véhicules
+  var vehsIds = new Set(vehs.map(function(v){ return v.id; }));
+  // Aussi compter depuis les affectations actives (présumés actifs)
+  if (Array.isArray(affs)) {
+    affs.filter(function(a){ return !a.date_fin && vehsIds.has(a.vehicule_id); })
+        .forEach(function(a) {
+          if (!actMap[a.vehicule_id]) actMap[a.vehicule_id] = 'actif'; // présumé actif
+        });
   }
   vehs.forEach(function(v) {
     var sj = actMap[v.id] || 'non_saisi';
@@ -1881,6 +1893,9 @@ async function loadDashboard() {
     .filter(Boolean)
     .sort(function(a,b){ return b.vRet - a.vRet; }); // Trier par retard décroissant
 
+  // Compter les véhicules en retard sur la période (cohérent avec totRet)
+  nbRetVehs = rows.filter(function(r){ return r.vRet > 0; }).length;
+
   var rowsHtml = rows.map(function(r) {
     return '<tr data-id="'+r.v.id+'" onclick="ouvrirFicheVeh(this.dataset.id)" style="cursor:pointer">' +
       '<td><strong style="color:#185FA5">'+r.v.immatriculation+'</strong> <span style="color:#6b6b67;font-size:11px">'+r.v.marque+'</span>'+(r.v.tag?' '+pill(r.v.tag,'purple'):'')+' '+(r.v.statut_presume?'<span style="font-size:9px;color:#BA7517">*</span>':'')+
@@ -1937,10 +1952,11 @@ async function loadDashboard() {
 var _allGestionnaires = [];
 
 function onChangeDashTag() {
-  // Manager : reset le filtre gestionnaire
-  // Gestionnaire : ne pas toucher (ses tags sont fixes)
-  if (ROLE !== 'gestionnaire') {
-    _dashGestTags = [];
+  // Synchroniser gf-tag → _globalTag
+  var gfTag = document.getElementById('gf-tag');
+  if (gfTag && ROLE !== 'gestionnaire') {
+    _globalTag = gfTag.value;
+    _dashGestTags = _globalTag ? [_globalTag] : [];
     _dashGestNom = '';
   }
   loadDashboard();
