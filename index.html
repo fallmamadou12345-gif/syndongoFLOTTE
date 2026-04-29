@@ -1764,8 +1764,8 @@ async function loadDashboard() {
 
   });
 
-  var marge = totFac - totDep;
-  totRet = Math.max(0, totFac - totEnc); // Retard période = Facturé - Encaissé
+  var marge = totEnc - totDep; // Marge nette = Encaissé - Dépenses
+  totRet = Math.max(0, totFac - totEnc); // Total Retard = Facturé - Encaissé
 
   // Taux de recouvrement sur la période (imputation FIFO)
   // totFac = facturé période, totEnc = encaissé imputé sur période
@@ -2535,7 +2535,7 @@ async function renderFicheVeh() {
   var vVersGlob = vVersAll.reduce(function(s,vs){ return s+vs.montant; }, 0);
   const retard  = Math.max(0, vFacGlob - vVersGlob);
 
-  const marge   = totFac - totDep;   // Marge = Facturé période - Dépenses
+  const marge   = totEnc - totDep;   // Marge nette = Encaissé - Dépenses
   const taux   = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // KPIs
@@ -4632,7 +4632,7 @@ async function loadRapports() {
   const totFac = _rapportData.reduce(function(s, r) { return s + r.fac; }, 0);
   const totEnc = _rapportData.reduce(function(s, r) { return s + r.enc; }, 0);
   const totDep = _rapportData.reduce(function(s, r) { return s + r.dep; }, 0);
-  const totMarge = totFac - totDep;
+  const totMarge = totEnc - totDep; // Marge nette = Encaissé - Dépenses
   const kf = document.getElementById('rp-k-fac');
   if (kf) kf.textContent = fmt(totFac);
   const ke = document.getElementById('rp-k-enc');
@@ -4865,8 +4865,10 @@ let _rapportChaufData = [];
 const _origLoadRapports = loadRapports;
 loadRapports = async function() {
   await _origLoadRapports();
-  // Calculer total retards
-  const totRet = _rapportData.reduce(function(s,r){ return s + r.ret; }, 0);
+  // Calculer total retards : TOTAL RETARD = TOTAL FACTURE - TOTAL ENCAISSE
+  const totFacR = _rapportData.reduce(function(s,r){ return s + (r.fac||0); }, 0);
+  const totEncR = _rapportData.reduce(function(s,r){ return s + (r.enc||0); }, 0);
+  const totRet = Math.max(0, totFacR - totEncR);
   const krRet = document.getElementById('rp-k-ret');
   if (krRet) krRet.textContent = fmt(totRet);
 };
@@ -5336,7 +5338,7 @@ async function chargerFicheVehRapport() {
   var _vImp2 = imputerVersements(_vFacsAll2, _vVersAll2, facsPer.map(function(f){return f.id;}), affVeh.map(function(a){return a.id;}));
   var totEnc = _vImp2.encImpute;
   var retard = _vImp2.retard;
-  var marge = totFac - totDep;
+  var marge = totEnc - totDep; // Marge nette = Encaissé - Dépenses
   var taux = totFac > 0 ? Math.round(totEnc/totFac*100) : 0;
 
   // Calendrier d'activité sur la période
