@@ -2001,6 +2001,9 @@ function onGlobalFilterChange() {
   // Mettre à jour le label
   updateGlobalFilterLabel();
 
+  // Rafraîchir les selects (notamment dropdown chauffeur Encaissement filtré par gestionnaire)
+  if (typeof refreshSelects === 'function') refreshSelects();
+
   // Recharger la page active
   rechargerPageActive();
 }
@@ -2011,6 +2014,7 @@ function resetGlobalFilter() {
   var tagEl = document.getElementById('gf-tag'); if (tagEl) tagEl.value = '';
   var gestEl = document.getElementById('gf-gest'); if (gestEl) gestEl.value = '';
   updateGlobalFilterLabel();
+  if (typeof refreshSelects === 'function') refreshSelects();
   rechargerPageActive();
 }
 
@@ -3598,7 +3602,27 @@ async function refreshSelects() {
   set('fv', '<option value="">— choisir —</option>' + vOpts);
   set('ff-veh', '<option value="">Tous véhicules</option>' + vOpts);
   set('hist-veh', '<option value="">Tous véhicules</option>' + vOpts);
-  set('ec', '<option value="">— choisir —</option>' + affs.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + ' — ' + a.vehicule + '</option>'; }).join(''));
+  // Filtre Encaissement : si un gestionnaire est actif, ne garder que ses chauffeurs (via tags ou vehicules_ids)
+  var _affsForEnc = affs;
+  if (typeof _globalGest !== 'undefined' && _globalGest) {
+    var _curGest = (typeof _allGestionnaires !== 'undefined' && _allGestionnaires.length)
+      ? _allGestionnaires.find(function(g){ return g.id === _globalGest; }) : null;
+    if (_curGest) {
+      var _gTags  = _curGest.tags && _curGest.tags.length ? _curGest.tags : (_curGest.tag ? [_curGest.tag] : []);
+      var _gVehs  = _curGest.vehicules_ids || [];
+      var _allowedVehIds = new Set();
+      vehs.forEach(function(v){
+        if (_gVehs.indexOf(v.id) !== -1) _allowedVehIds.add(v.id);
+        else if (_gTags.length && _gTags.indexOf(v.tag) !== -1) _allowedVehIds.add(v.id);
+      });
+      _affsForEnc = affs.filter(function(a){ return _allowedVehIds.has(a.vehicule_id); });
+    }
+  } else if (typeof _globalTag !== 'undefined' && _globalTag) {
+    // Sinon si juste un tag est actif, filtrer par tag
+    var _vIdsTag = new Set(vehs.filter(function(v){ return v.tag === _globalTag; }).map(function(v){ return v.id; }));
+    _affsForEnc = affs.filter(function(a){ return _vIdsTag.has(a.vehicule_id); });
+  }
+  set('ec', '<option value="">— choisir —</option>' + _affsForEnc.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + ' — ' + a.vehicule + '</option>'; }).join(''));
   set('dv', '<option value="">— choisir —</option>' + vOpts);
   set('alc', '<option value="">— choisir —</option>' + cOpts);
 
