@@ -168,7 +168,7 @@ function apiCall(baseUrl, password, method, path, body) {
       method,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + password
+        'X-Token': password
       }
     };
     const req = lib.request(u, opts, (res) => {
