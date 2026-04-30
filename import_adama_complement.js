@@ -51,7 +51,7 @@ function parseArgs() {
   return args;
 }
 
-function apiCall(baseUrl, password, method, path, body) {
+function _rawApiCall(baseUrl, password, method, path, body) {
   return new Promise((resolve, reject) => {
     const u = new URL(path, baseUrl);
     const lib = u.protocol === 'https:' ? https : http;
@@ -82,6 +82,36 @@ function apiCall(baseUrl, password, method, path, body) {
     if (body) req.write(JSON.stringify(body));
     req.end();
   });
+}
+
+// Retry automatique : 3 essais avec backoff (2s, 5s, 10s) sur erreurs réseau ou 502/503/504
+async function apiCall(baseUrl, password, method, path, body) {
+  const delays = [2000, 5000, 10000];
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await _rawApiCall(baseUrl, password, method, path, body);
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && e.message) || '';
+      const code = (e && e.code) || '';
+      const isRetryable =
+        code === 'ECONNRESET' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ENOTFOUND' ||
+        code === 'EAI_AGAIN' ||
+        msg.includes('socket hang up') ||
+        msg.includes('Timeout') ||
+        msg.includes('HTTP 502') ||
+        msg.includes('HTTP 503') ||
+        msg.includes('HTTP 504');
+      if (!isRetryable || attempt === delays.length) throw e;
+      const wait = delays[attempt];
+      console.log(`      ⏳ Erreur réseau (${msg.slice(0, 80)}) — nouvelle tentative dans ${wait/1000}s...`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
 }
 
 (async () => {
