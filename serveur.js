@@ -612,7 +612,7 @@ async function handleAPI(req, res, body) {
   if(p==='/api/depenses'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
-    const d={id:uid(),...data,montant:Number(data.montant),justificatif:data.justificatif||null,date_depense:today(),created_at:new Date().toISOString()};
+    const d={id:uid(),...data,montant:Number(data.montant),justificatif:data.justificatif||null,date_facture:data.date_facture||null,payeur:data.payeur==='tiers'?'tiers':'gestionnaire',date_depense:today(),created_at:new Date().toISOString()};
     db.depenses.push(d);saveDB(db);return res.end(JSON.stringify({id:d.id,message:'Dépense enregistrée'}));
   }
   const dM=p.match(/^\/api\/depenses\/([^/]+)$/);

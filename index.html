@@ -721,6 +721,16 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Montant (FCFA) *</label><input id="dm" type="number" placeholder="15000"></div>
           <div class="field"><label>Description</label><input id="dd" placeholder="Ex: vidange"></div>
         </div>
+        <div class="form-row">
+          <div class="field"><label>Date de la facture (si antérieure)</label><input id="dfacture" type="date"></div>
+          <div class="field"><label>Payé par</label>
+            <select id="dpayeur">
+              <option value="gestionnaire">Gestionnaire</option>
+              <option value="tiers">Tiers</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6b6b67;margin:-4px 0 10px">La dépense est comptabilisée à la date d'aujourd'hui dans les totaux, quelle que soit la date de la facture.</div>
         <div class="field" style="margin-bottom:10px">
           <label>Justificatif (photo/facture) — visible par le propriétaire</label>
           <input type="file" id="djust" accept="image/*,.pdf" style="font-size:12px;padding:6px">
@@ -4321,6 +4331,8 @@ addDepense = async function(btn) {
     categorie: (document.getElementById('dc') || {}).value || 'autre',
     montant: +montant,
     description: (document.getElementById('dd') || {}).value || '',
+    date_facture: (document.getElementById('dfacture') || {}).value || null,
+    payeur: (document.getElementById('dpayeur') || {}).value || 'gestionnaire',
     justificatif
   });
   setBtnLoad(btn, false);
@@ -4328,6 +4340,8 @@ addDepense = async function(btn) {
   toast('Dépense de ' + fmt(+montant) + ' enregistrée');
   document.getElementById('dm').value = '';
   document.getElementById('dd').value = '';
+  if (document.getElementById('dfacture')) document.getElementById('dfacture').value = '';
+  if (document.getElementById('dpayeur')) document.getElementById('dpayeur').value = 'gestionnaire';
   if (fileInput) fileInput.value = '';
   const prev = document.getElementById('djust-preview');
   if (prev) { prev.style.display = 'none'; prev.innerHTML = ''; }
@@ -4340,11 +4354,16 @@ const _origLoadDepenses_render = loadDepenses;
 // Surcharge partielle pour afficher justificatif
 async function renderDepenseItem(d) {
   const hasJust = d.justificatif && d.justificatif.data;
+  const dateCell = d.date_facture && d.date_facture !== d.date_depense
+    ? `${d.date_depense}<br><span style="font-size:10px;color:#6b6b67">Facture : ${d.date_facture}</span>`
+    : d.date_depense;
+  const payeurCell = d.payeur === 'tiers' ? pill('Tiers', 'purple') : pill('Gestionnaire', 'blue');
   return `<tr>
-    <td>${d.date_depense}</td>
+    <td>${dateCell}</td>
     <td>${pill(d.categorie, 'gray')}</td>
     <td style="color:#A32D2D;font-weight:700">${fmt(d.montant)}</td>
     <td>${d.description || '—'}</td>
+    <td>${payeurCell}</td>
     <td>${hasJust ? `<button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="voirJustificatif('${d.id}')">📎 Voir</button>` : '—'}</td>
     ${ROLE !== 'proprietaire' ? `<td style="display:flex;gap:3px">
       <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delDep('${d.id}')">Suppr.</button>
@@ -4382,7 +4401,7 @@ async function loadDepenses() {
   if (!el) return;
   if (!list.length) { el.innerHTML = '<div class="empty">Aucune dépense</div>'; return; }
   const rows = await Promise.all(list.map(renderDepenseItem));
-  el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Justificatif</th><th>Action</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Montant</th><th>Description</th><th>Payé par</th><th>Justificatif</th><th>Action</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 
 function voirJustificatif(depId) {
