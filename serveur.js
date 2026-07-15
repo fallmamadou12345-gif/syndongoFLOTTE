@@ -185,6 +185,9 @@ async function handleAPI(req, res, body) {
     const totalRec = db.versements.filter(v => affIds.includes(v.affectation_id)).reduce((s,v)=>s+v.montant,0);
     const totalDep = db.depenses.filter(d => vIds.includes(d.vehicule_id)).reduce((s,d)=>s+d.montant,0);
     const totalFac = db.facturations.filter(f => vIds.includes(f.vehicule_id)).reduce((s,f)=>s+f.montant_facture,0);
+    // Filtre par période si demandé
+    const date_debut = q.date_debut || '';
+    const date_fin = q.date_fin || '';
     // Jour de référence = dernier jour de la période, ou aujourd'hui si pas de période
     const tj = date_fin && date_fin <= today() ? date_fin : today();
     const stats = {actif:0,panne:0,repos:0,inactif:0,non_saisi:0};
@@ -210,9 +213,6 @@ async function handleAPI(req, res, body) {
         activitesToday.push({vehicule_id:v.id, statut_jour:'non_saisi', date_ref:tj});
       }
     });
-    // Filtre par période si demandé
-    const date_debut = q.date_debut || '';
-    const date_fin = q.date_fin || '';
     let recPeriode = totalRec, depPeriode = totalDep, facPeriode = totalFac;
     if (date_debut && date_fin) {
       recPeriode = db.versements.filter(v=>affIds.includes(v.affectation_id)&&v.date_versement>=date_debut&&v.date_versement<=date_fin).reduce((s,v)=>s+v.montant,0);
