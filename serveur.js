@@ -836,7 +836,13 @@ async function handleAPI(req, res, body) {
     const parJour={};
     recettes.forEach(r=>{ parJour[r.date]=parJour[r.date]||{date:r.date,heures:0,verse:0}; parJour[r.date].heures+=r.heures; });
     versements.forEach(vs=>{ parJour[vs.date_versement]=parJour[vs.date_versement]||{date:vs.date_versement,heures:0,verse:0}; parJour[vs.date_versement].verse+=vs.montant; });
-    const detail_jours=Object.values(parJour).sort((a,b)=>b.date.localeCompare(a.date));
+    const primeParDate={};
+    calc.detail_primes.forEach(d=>{ primeParDate[d.date]=d.prime; });
+    const detail_jours=Object.values(parJour).sort((a,b)=>b.date.localeCompare(a.date)).map(j=>{
+      const prime=primeParDate[j.date]||0;
+      const salaire=Math.round(j.heures*calc.taux_horaire);
+      return Object.assign({},j,{prime,montant_a_payer:salaire+prime});
+    });
     return res.end(JSON.stringify(Object.assign({},calc,{detail_jours})));
   }
   if(p==='/api/livreur/paiements'&&method==='GET'){

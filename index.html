@@ -5011,9 +5011,11 @@ async function loadMonEspaceLivreur() {
 
   if (!elJ) return;
   if (!r.detail_jours || !r.detail_jours.length) { elJ.innerHTML = '<div class="empty">Aucune donnée sur cette période</div>'; return; }
-  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th></tr></thead><tbody>' +
+  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th><th>Prime</th><th>Montant à payer</th></tr></thead><tbody>' +
     r.detail_jours.map(function(j) {
-      return '<tr><td>' + j.date + '</td><td>' + formatHeures(j.heures) + '</td><td>' + fmt(j.verse) + '</td></tr>';
+      return '<tr><td>' + j.date + '</td><td>' + formatHeures(j.heures) + '</td><td>' + fmt(j.verse) + '</td>' +
+        '<td' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
+        '<td style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 
