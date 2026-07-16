@@ -1904,13 +1904,15 @@ async function loadDashboard() {
   }
   if (rp.length) retUrl += '?' + rp.join('&');
 
-  var [d, affs, vers, deps, facs, retardsData] = await Promise.all([
+  var [d, affs, vers, deps, facs, retardsData, livreursData, paiementsLvData] = await Promise.all([
     api('GET', dashUrl),
     api('GET', '/affectations'),
     api('GET', '/versements'),
     api('GET', '/depenses'),
     api('GET', '/facturations'),
-    api('GET', retUrl)
+    api('GET', retUrl),
+    api('GET', '/livreurs'),
+    api('GET', '/paiements_livreurs')
   ]);
 
   if (!d || !d.kpis) return;
@@ -1929,6 +1931,15 @@ async function loadDashboard() {
   var versFilt = Array.isArray(vers) ? vers.filter(function(v){ return enPeriode(v.date_versement); }) : [];
   var depsFilt = Array.isArray(deps) ? deps.filter(function(d){ return enPeriode(d.date_depense); }) : [];
   var facsFilt = Array.isArray(facs) ? facs.filter(function(f){ return enPeriode(f.date); }) : [];
+
+  // ── Paie des livreurs (moto affectée actuelle) sur la période ──
+  var _livreurs = Array.isArray(livreursData) ? livreursData : [];
+  var paiementsLvFilt = Array.isArray(paiementsLvData) ? paiementsLvData.filter(function(pm){ return enPeriode(pm.date_paiement); }) : [];
+  var paieLvParMoto = {};
+  paiementsLvFilt.forEach(function(pm) {
+    var lv = _livreurs.find(function(l){ return l.id === pm.livreur_id; });
+    if (lv && lv.moto_immat) paieLvParMoto[lv.moto_immat] = (paieLvParMoto[lv.moto_immat] || 0) + pm.montant;
+  });
 
   // ── Filtrer par tag si actif ──────────────────────────────
   // Charger les véhicules filtrés par tags actifs
@@ -2126,10 +2137,11 @@ async function loadDashboard() {
       // Retard = depuis /api/retards (source de vérité unique)
       var vRetInfo = _retards.find(function(r){ return r.vehicule_id === v.id; });
       var vRet = vRetInfo ? vRetInfo.retard : 0;
-      var vMarge = vFac - vDep; // Marge = Facturé - Dépenses (pas Encaissé - Dépenses)
+      var vPaieLv = paieLvParMoto[v.immatriculation] || 0;
+      var vMarge = vFac - vDep - vPaieLv; // Marge = Facturé - Dépenses - Paie livreurs
       var vTaux = vFac > 0 ? Math.round(vEnc/vFac*100) : 0;
-      if (vFac === 0 && vEnc === 0 && vDep === 0) return null;
-      return { v, vFac, vEnc, vDep, vRet, vMarge, vTaux };
+      if (vFac === 0 && vEnc === 0 && vDep === 0 && vPaieLv === 0) return null;
+      return { v, vFac, vEnc, vDep, vRet, vPaieLv, vMarge, vTaux };
     })
     .filter(Boolean)
     .sort(function(a,b){ return b.vRet - a.vRet; }); // Trier par retard décroissant
@@ -2144,6 +2156,7 @@ async function loadDashboard() {
       '<td style="text-align:right;color:#185FA5;font-weight:600">'+fmt(r.vFac)+'</td>' +
       '<td style="text-align:right;color:#3B6D11;font-weight:600">'+fmt(r.vEnc)+'</td>' +
       '<td style="text-align:right;color:#A32D2D">'+fmt(r.vDep)+'</td>' +
+      '<td style="text-align:right;color:#8B5CF6">'+(r.vPaieLv>0?fmt(r.vPaieLv):'—')+'</td>' +
       '<td style="text-align:right;color:'+(r.vRet>0?'#A32D2D':'#3B6D11')+';font-weight:'+(r.vRet>0?'700':'400')+'">'+(r.vRet>0?fmt(r.vRet):'✓')+'</td>' +
       '<td style="text-align:right;color:'+(r.vMarge>=0?'#3B6D11':'#A32D2D')+';font-weight:600">'+fmt(r.vMarge)+'</td>' +
       '<td style="text-align:center">'+pill(r.vTaux+'%', r.vTaux>=90?'ok':r.vTaux>=70?'warn':'err')+'</td>' +
@@ -2155,13 +2168,15 @@ async function loadDashboard() {
   var rowsTotEnc = rows.reduce(function(s,r){return s+r.vEnc;},0);
   var rowsTotDep = rows.reduce(function(s,r){return s+r.vDep;},0);
   var rowsTotRet = rows.reduce(function(s,r){return s+r.vRet;},0);
-  var rowsTotMarge = rowsTotFac - rowsTotDep;
+  var rowsTotPaieLv = rows.reduce(function(s,r){return s+r.vPaieLv;},0);
+  var rowsTotMarge = rowsTotFac - rowsTotDep - rowsTotPaieLv;
   var rowsTaux = rowsTotFac > 0 ? Math.round(rowsTotEnc/rowsTotFac*100) : 0;
   var totRow = '<tr style="background:#f5f4f0;font-weight:700;border-top:2px solid #e0dfd8">' +
     '<td>TOTAL ('+rows.length+' véhicules)</td>' +
     '<td style="text-align:right;color:#185FA5">'+fmt(rowsTotFac)+'</td>' +
     '<td style="text-align:right;color:#3B6D11">'+fmt(rowsTotEnc)+'</td>' +
     '<td style="text-align:right;color:#A32D2D">'+fmt(rowsTotDep)+'</td>' +
+    '<td style="text-align:right;color:#8B5CF6">'+(rowsTotPaieLv>0?fmt(rowsTotPaieLv):'—')+'</td>' +
     '<td style="text-align:right;color:'+(rowsTotRet>0?'#A32D2D':'#3B6D11')+'">'+( rowsTotRet>0?fmt(rowsTotRet):'✓')+'</td>' +
     '<td style="text-align:right;color:'+(rowsTotMarge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(rowsTotMarge)+'</td>' +
     '<td style="text-align:center">'+rowsTaux+'%</td></tr>';
@@ -2173,6 +2188,7 @@ async function loadDashboard() {
       '<th style="text-align:right;color:#185FA5">Facturé</th>' +
       '<th style="text-align:right;color:#3B6D11">Encaissé</th>' +
       '<th style="text-align:right;color:#A32D2D">Dépenses</th>' +
+      '<th style="text-align:right;color:#8B5CF6">Paie livreurs</th>' +
       '<th style="text-align:right;color:#DC2626">Retard</th>' +
       '<th style="text-align:right">Marge</th>' +
       '<th style="text-align:center">Taux</th>' +
