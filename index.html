@@ -841,25 +841,6 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <div class="card">
-        <div class="card-title">Enregistrer les heures du jour</div>
-        <div style="font-size:11px;color:#6b6b67;margin-bottom:8px">Le montant versé se saisit dans <b>Caisse &amp; Facturation</b> (facturation du jour + versement) comme pour les VTC — le manquant est suivi automatiquement dans <b>Retards</b>.</div>
-        <div class="form-row">
-          <div class="field"><label>Livreur *</label><select id="rl-livreur"><option value="">— choisir —</option></select></div>
-          <div class="field"><label>Date *</label><input id="rl-date" type="date"></div>
-        </div>
-        <div class="form-row">
-          <div class="field"><label>Heures travaillées</label>
-            <div style="display:flex;gap:6px">
-              <input id="rl-heures-h" type="number" min="0" placeholder="H" style="width:70px">
-              <input id="rl-heures-m" type="number" min="0" max="59" placeholder="mn" style="width:70px">
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-red" onclick="addRecetteLivreur(this)">Enregistrer</button>
-        <div id="t-recettes-lv" style="margin-top:12px"><div class="empty">Aucune heure saisie</div></div>
-      </div>
-
-      <div class="card">
         <div class="card-title">
           Calcul de paie & paiement
         </div>
@@ -4631,12 +4612,9 @@ function formatHeures(decimal) {
 }
 
 async function initLivreursPage() {
-  const rlDate = document.getElementById('rl-date');
-  if (rlDate && !rlDate.value) rlDate.value = new Date().toISOString().split('T')[0];
   await loadConfigLivreurs();
   await loadLivreursList();
   await loadLivreurSelects();
-  await loadRecettesLivreursList();
   await loadPaiementsLivreursList();
 }
 
@@ -4707,49 +4685,8 @@ async function loadLivreurSelects() {
   const opts = '<option value="">— choisir —</option>' + _livreursCache.map(function(l) {
     return '<option value="' + l.id + '">' + l.prenom + ' ' + l.nom + (l.moto_immat ? ' (' + l.moto_immat + ')' : '') + '</option>';
   }).join('');
-  ['rl-livreur', 'pl-livreur'].forEach(function(id) {
-    const el = document.getElementById(id);
-    if (el) { const cur = el.value; el.innerHTML = opts; if (cur) el.value = cur; }
-  });
-}
-
-// ── Heures journalières (le montant est géré via Facturation/Versement) ──
-async function loadRecettesLivreursList() {
-  const list = await api('GET', '/recettes_livreurs');
-  const el = document.getElementById('t-recettes-lv');
-  if (!el) return;
-  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune heure saisie</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Livreur</th><th>Heures</th><th>Action</th></tr></thead><tbody>' +
-    list.slice(0, 60).map(function(r) {
-      const l = _livreursCache.find(function(x) { return x.id === r.livreur_id; });
-      return '<tr><td>' + r.date + '</td><td>' + (l ? l.prenom + ' ' + l.nom : '—') + '</td>' +
-        '<td>' + formatHeures(r.heures) + '</td>' +
-        '<td><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delRecetteLivreur(\'' + r.id + '\')">Suppr.</button></td></tr>';
-    }).join('') + '</tbody></table></div>';
-}
-
-async function addRecetteLivreur(btn) {
-  const livreurId = document.getElementById('rl-livreur').value;
-  const date = document.getElementById('rl-date').value;
-  if (!livreurId || !date) { toast('Livreur et date obligatoires', 'err'); return; }
-  const h = +(document.getElementById('rl-heures-h').value || 0);
-  const m = +(document.getElementById('rl-heures-m').value || 0);
-  const heures = h + m / 60;
-  if (!heures) { toast('Renseigne les heures travaillées', 'err'); return; }
-  setBtnLoad(btn, true);
-  await api('POST', '/recettes_livreurs', { livreur_id: livreurId, date: date, heures: heures });
-  setBtnLoad(btn, false);
-  toast('Heures enregistrées');
-  document.getElementById('rl-heures-h').value = '';
-  document.getElementById('rl-heures-m').value = '';
-  await loadRecettesLivreursList();
-}
-
-async function delRecetteLivreur(id) {
-  if (!confirm('Supprimer ?')) return;
-  await api('DELETE', '/recettes_livreurs/' + id);
-  toast('Supprimé', 'info');
-  await loadRecettesLivreursList();
+  const el = document.getElementById('pl-livreur');
+  if (el) { const cur = el.value; el.innerHTML = opts; if (cur) el.value = cur; }
 }
 
 // ── Calcul de paie & paiement ─────────────────────────────
