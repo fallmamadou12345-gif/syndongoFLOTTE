@@ -1904,15 +1904,14 @@ async function loadDashboard() {
   }
   if (rp.length) retUrl += '?' + rp.join('&');
 
-  var [d, affs, vers, deps, facs, retardsData, livreursData, paiementsLvData] = await Promise.all([
+  var [d, affs, vers, deps, facs, retardsData, livreursData] = await Promise.all([
     api('GET', dashUrl),
     api('GET', '/affectations'),
     api('GET', '/versements'),
     api('GET', '/depenses'),
     api('GET', '/facturations'),
     api('GET', retUrl),
-    api('GET', '/livreurs'),
-    api('GET', '/paiements_livreurs')
+    api('GET', '/livreurs')
   ]);
 
   if (!d || !d.kpis) return;
@@ -1932,13 +1931,18 @@ async function loadDashboard() {
   var depsFilt = Array.isArray(deps) ? deps.filter(function(d){ return enPeriode(d.date_depense); }) : [];
   var facsFilt = Array.isArray(facs) ? facs.filter(function(f){ return enPeriode(f.date); }) : [];
 
-  // ── Paie des livreurs (moto affectée actuelle) sur la période ──
+  // ── Paie des livreurs (montant à payer calculé : heures × taux + primes du jour) ──
+  // sur la moto actuellement affectée à chacun, pour la période sélectionnée.
   var _livreurs = Array.isArray(livreursData) ? livreursData : [];
-  var paiementsLvFilt = Array.isArray(paiementsLvData) ? paiementsLvData.filter(function(pm){ return enPeriode(pm.date_paiement); }) : [];
+  var _lvCalcSuffix = per ? ('?date_debut=' + per.debut + '&date_fin=' + per.fin) : '';
+  var _lvCalcs = await Promise.all(_livreurs.map(function(l) {
+    return api('GET', '/livreurs/' + l.id + '/calcul' + _lvCalcSuffix).then(function(r) { return { l: l, r: r }; });
+  }));
   var paieLvParMoto = {};
-  paiementsLvFilt.forEach(function(pm) {
-    var lv = _livreurs.find(function(l){ return l.id === pm.livreur_id; });
-    if (lv && lv.moto_immat) paieLvParMoto[lv.moto_immat] = (paieLvParMoto[lv.moto_immat] || 0) + pm.montant;
+  _lvCalcs.forEach(function(x) {
+    if (x.l.moto_immat && x.r && !x.r.detail) {
+      paieLvParMoto[x.l.moto_immat] = (paieLvParMoto[x.l.moto_immat] || 0) + (x.r.montant_a_payer || 0);
+    }
   });
 
   // ── Filtrer par tag si actif ──────────────────────────────
