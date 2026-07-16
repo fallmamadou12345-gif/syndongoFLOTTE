@@ -220,12 +220,34 @@ tr:hover td{background:#fafaf8}
   <div class="login-box">
     <div class="login-logo">Sy<span>Ndongo</span></div>
     <div class="login-sub">Gestion de flotte VTC · Transport Ndongo Fall</div>
-    <div class="login-field">
-      <label>Mot de passe</label>
-      <input type="password" id="login-pwd" placeholder="Votre mot de passe" onkeypress="if(event.key==='Enter')login()">
+
+    <div id="login-mode-manager">
+      <div class="login-field">
+        <label>Mot de passe</label>
+        <input type="password" id="login-pwd" placeholder="Votre mot de passe" onkeypress="if(event.key==='Enter')login()">
+      </div>
+      <button class="login-btn" onclick="login()">Se connecter</button>
+      <div class="login-err" id="login-err">Mot de passe incorrect</div>
+      <div style="text-align:center;margin-top:14px">
+        <a href="#" onclick="toggleLoginLivreur(true);return false;" style="font-size:12px;color:#185FA5;text-decoration:none">🛵 Espace livreur</a>
+      </div>
     </div>
-    <button class="login-btn" onclick="login()">Se connecter</button>
-    <div class="login-err" id="login-err">Mot de passe incorrect</div>
+
+    <div id="login-mode-livreur" style="display:none">
+      <div class="login-field">
+        <label>Téléphone</label>
+        <input type="tel" id="login-lv-tel" placeholder="Votre numéro de téléphone" onkeypress="if(event.key==='Enter')document.getElementById('login-lv-pin').focus()">
+      </div>
+      <div class="login-field">
+        <label>Code PIN</label>
+        <input type="password" inputmode="numeric" maxlength="4" id="login-lv-pin" placeholder="Code à 4 chiffres" onkeypress="if(event.key==='Enter')loginLivreur()">
+      </div>
+      <button class="login-btn" onclick="loginLivreur()">Se connecter</button>
+      <div class="login-err" id="login-lv-err">Téléphone ou code incorrect</div>
+      <div style="text-align:center;margin-top:14px">
+        <a href="#" onclick="toggleLoginLivreur(false);return false;" style="font-size:12px;color:#185FA5;text-decoration:none">← Retour</a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -824,14 +846,14 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Taux horaire (FCFA / heure) *</label><input id="lv-taux" type="number" placeholder="500"></div>
           <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-blue" onclick="saveTauxHoraire(this)">Enregistrer le taux</button></div>
         </div>
-        <div style="font-size:12px;font-weight:600;color:#6b6b67;margin:12px 0 6px">Primes par palier (selon le montant versé sur la période)</div>
+        <div style="font-size:12px;font-weight:600;color:#6b6b67;margin:12px 0 6px">Primes par palier (selon le montant versé PAR JOUR)</div>
         <div id="lv-paliers-list"></div>
         <div class="form-row" style="margin-top:8px">
-          <div class="field"><label>Seuil versé (FCFA)</label><input id="lv-pal-seuil" type="number" placeholder="Ex: 50000"></div>
+          <div class="field"><label>Seuil versé / jour (FCFA)</label><input id="lv-pal-seuil" type="number" placeholder="Ex: 50000"></div>
           <div class="field"><label>Prime (FCFA)</label><input id="lv-pal-prime" type="number" placeholder="Ex: 5000"></div>
           <div class="field" style="display:flex;align-items:flex-end"><button class="btn btn-red" onclick="addPalier(this)">+ Ajouter palier</button></div>
         </div>
-        <div style="font-size:10px;color:#6b6b67;margin-top:6px">Le palier le plus haut atteint par le montant versé sur la période s'applique (non cumulatif).</div>
+        <div style="font-size:10px;color:#6b6b67;margin-top:6px">Le palier le plus haut atteint CHAQUE JOUR (selon le montant versé ce jour-là) s'applique — non cumulable avec un autre palier ce même jour. Les primes des différents jours s'additionnent sur la période.</div>
       </div>
 
       <div class="card">
@@ -894,6 +916,28 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">Historique des paiements</div>
         <div id="t-paiements-lv"><div class="empty">Aucun paiement</div></div>
+      </div>
+    </div>
+
+    <!-- MON ESPACE (livreur) -->
+    <div class="page" id="page-mon-espace">
+      <div class="card">
+        <div class="card-title" id="me-titre">Mon espace</div>
+        <div class="form-row">
+          <div class="field"><label>Du</label><input id="me-debut" type="date" onchange="loadMonEspaceLivreur()"></div>
+          <div class="field"><label>Au</label><input id="me-fin" type="date" onchange="loadMonEspaceLivreur()"></div>
+        </div>
+        <div id="me-stats"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Détail par jour</div>
+        <div id="me-jours"><div class="empty">Aucune donnée</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Paiements déjà reçus</div>
+        <div id="me-paiements"><div class="empty">Aucun paiement</div></div>
       </div>
     </div>
 
@@ -1424,7 +1468,7 @@ const API = window.location.hostname === 'localhost'
   ? 'http://localhost:8000/api'
   : window.location.origin + '/api';
 
-let TOKEN = '', ROLE = '', USER = '';
+let TOKEN = '', ROLE = '', USER = '', LIVREUR_ID = '';
 let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'' }; // Infos du gestionnaire connecté
 let allTags = [], allVehs = [], allChaufs = [], allAffs = [];
 
@@ -1493,6 +1537,33 @@ async function login() {
   }
 }
 
+function toggleLoginLivreur(showLivreur) {
+  document.getElementById('login-mode-manager').style.display = showLivreur ? 'none' : 'block';
+  document.getElementById('login-mode-livreur').style.display = showLivreur ? 'block' : 'none';
+  document.getElementById('login-err').style.display = 'none';
+  document.getElementById('login-lv-err').style.display = 'none';
+}
+
+async function loginLivreur() {
+  const tel = document.getElementById('login-lv-tel').value.trim();
+  const pin = document.getElementById('login-lv-pin').value.trim();
+  if (!tel || !pin) return;
+  try {
+    const r = await fetch(API + '/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telephone: tel, pin: pin })
+    });
+    if (!r.ok) { document.getElementById('login-lv-err').style.display = 'block'; return; }
+    const d = await r.json();
+    TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
+    localStorage.setItem('snd_tk', TOKEN);
+    demarrerApp();
+  } catch(e) {
+    toast('Erreur de connexion', 'err');
+  }
+}
+
 function logout() {
   localStorage.removeItem('snd_tk');
   location.reload();
@@ -1509,7 +1580,7 @@ window.addEventListener('load', async function() {
     });
     if (r.ok) {
       const d = await r.json();
-      TOKEN = d.token; ROLE = d.role; USER = d.nom;
+      TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
       if (d.role === 'gestionnaire') {
         GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire' };
       } else {
@@ -1529,6 +1600,26 @@ window.addEventListener('load', async function() {
 function demarrerApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+
+  // Espace livreur : mini-app dédiée en lecture seule, on ne touche à rien du reste
+  // (pas de dashboard/nav manager, pas d'appels aux endpoints manager qui seraient de toute façon refusés).
+  if (ROLE === 'livreur') {
+    const bLv = document.getElementById('user-badge');
+    bLv.textContent = USER;
+    bLv.style.background = '#EAF3DE'; bLv.style.color = '#27500A';
+    document.getElementById('nav').innerHTML = '<div class="nav-item active" onclick="goPage(\'mon-espace\',this)">👤 Mon espace</div>';
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    const pgLv = document.getElementById('page-mon-espace');
+    if (pgLv) pgLv.classList.add('active');
+    const siLv = document.getElementById('sync-indicator');
+    if (siLv) siLv.style.display = 'none';
+    const gfbLv = document.getElementById('global-filter-bar');
+    if (gfbLv) gfbLv.style.display = 'none';
+    const gsLv = document.getElementById('gs');
+    if (gsLv) gsLv.style.display = 'none';
+    initMonEspaceLivreur();
+    return;
+  }
 
   // Badge
   const b = document.getElementById('user-badge');
@@ -1711,6 +1802,8 @@ function loadPage(id) {
     loadDepenses();
   } else if (id === 'livreurs') {
     initLivreursPage();
+  } else if (id === 'mon-espace') {
+    initMonEspaceLivreur();
   } else if (id === 'alertes') {
     loadAlertes();
   } else if (id === 'rapports') {
@@ -2877,10 +2970,11 @@ async function addChauffeur(btn) {
   const p = document.getElementById('cp').value.trim(), n = document.getElementById('cn').value.trim(), t = document.getElementById('ct').value.trim();
   if (!p || !n || !t) { toast('Prénom, nom, téléphone obligatoires', 'err'); return; }
   setBtnLoad(btn, true);
-  const r = await api('POST', '/chauffeurs', { prenom: p, nom: n, telephone: t, numero_permis: document.getElementById('cpe').value, adresse: document.getElementById('ca').value, notes: document.getElementById('cno').value, categorie: (document.getElementById('ccat') || {}).value || 'chauffeur' });
+  const categorie = (document.getElementById('ccat') || {}).value || 'chauffeur';
+  const r = await api('POST', '/chauffeurs', { prenom: p, nom: n, telephone: t, numero_permis: document.getElementById('cpe').value, adresse: document.getElementById('ca').value, notes: document.getElementById('cno').value, categorie: categorie });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
-  toast(p + ' ' + n + ' enregistré');
+  toast(p + ' ' + n + ' enregistré' + (r.pin ? ' — code PIN espace livreur : ' + r.pin : ''));
   ['cp', 'cn', 'ct', 'cpe', 'ca', 'cno'].forEach(function(id) { document.getElementById(id).value = ''; });
   loadChauffeurs(); refreshSelects();
 }
@@ -4716,7 +4810,7 @@ async function loadConfigLivreurs() {
   const list = document.getElementById('lv-paliers-list');
   if (!list) return;
   if (!cfg.paliers || !cfg.paliers.length) { list.innerHTML = '<div class="empty">Aucun palier configuré</div>'; return; }
-  list.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>À partir de (versé)</th><th>Prime</th><th></th></tr></thead><tbody>' +
+  list.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>À partir de (versé / jour)</th><th>Prime</th><th></th></tr></thead><tbody>' +
     cfg.paliers.map(function(pl) {
       return '<tr><td>' + fmt(pl.seuil) + '</td><td style="color:#27500A;font-weight:700">' + fmt(pl.prime) + '</td>' +
         '<td><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delPalier(' + pl.seuil + ')">Suppr.</button></td></tr>';
@@ -4763,10 +4857,23 @@ async function loadLivreursList() {
   const el = document.getElementById('t-livreurs');
   if (!el) return;
   if (!_livreursCache.length) { el.innerHTML = '<div class="empty">Aucun livreur — ajoute-en un depuis la page Chauffeurs (catégorie "Livreur Moto")</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Nom</th><th>Téléphone</th><th>Moto affectée</th></tr></thead><tbody>' +
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Nom</th><th>Téléphone</th><th>Moto affectée</th><th>Code PIN (espace livreur)</th><th></th></tr></thead><tbody>' +
     _livreursCache.map(function(l) {
-      return '<tr><td>' + l.prenom + ' ' + l.nom + '</td><td>' + (l.telephone || '—') + '</td><td>' + (l.moto_immat || '<span style="color:#A32D2D">Non affecté</span>') + '</td></tr>';
+      const pinChip = l.pin
+        ? '<div onclick="navigator.clipboard.writeText(\'' + l.pin + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:13px;background:#f5f4f0;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer;display:inline-block" title="Cliquer pour copier">' + l.pin + ' 📋</div>'
+        : '<span style="color:#6b6b67">—</span>';
+      return '<tr><td>' + l.prenom + ' ' + l.nom + '</td><td>' + (l.telephone || '—') + '</td><td>' + (l.moto_immat || '<span style="color:#A32D2D">Non affecté</span>') + '</td>' +
+        '<td>' + pinChip + '</td>' +
+        '<td><button class="btn-sm" onclick="regenPinLivreur(\'' + l.id + '\')">Régénérer</button></td></tr>';
     }).join('') + '</tbody></table></div>';
+}
+
+async function regenPinLivreur(id) {
+  if (!confirm('Générer un nouveau code PIN pour ce livreur ? L\'ancien code cessera de fonctionner.')) return;
+  const r = await api('POST', '/livreurs/' + id + '/regen_pin');
+  if (!r || r.detail && !r.pin) { toast(r.detail || 'Erreur', 'err'); return; }
+  toast('Nouveau code PIN : ' + r.pin);
+  await loadLivreursList();
 }
 
 async function loadLivreurSelects() {
@@ -4795,6 +4902,13 @@ async function calculerPaieLivreur() {
   const r = await api('GET', url);
   if (!r || r.detail) { el.innerHTML = '<div class="empty">' + (r ? r.detail : 'Erreur') + '</div>'; return; }
   _lastCalculLivreur = r;
+  const detailPrimesHtml = (r.detail_primes && r.detail_primes.length)
+    ? '<div style="font-size:12px;font-weight:600;color:#6b6b67;margin:14px 0 6px">Détail des primes par jour</div>' +
+      '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Versé ce jour</th><th>Palier atteint</th><th>Prime</th></tr></thead><tbody>' +
+      r.detail_primes.map(function(d) {
+        return '<tr><td>' + d.date + '</td><td>' + fmt(d.montant_jour) + '</td><td>' + fmt(d.seuil) + '+</td><td style="color:#27500A;font-weight:700">' + fmt(d.prime) + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+    : '';
   el.innerHTML =
     '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' +
       '<div class="stat-box"><div class="stat-val">' + r.nb_jours + '</div><div class="stat-label">Jours saisis</div></div>' +
@@ -4802,9 +4916,10 @@ async function calculerPaieLivreur() {
       '<div class="stat-box"><div class="stat-val">' + fmt(r.total_facture) + '</div><div class="stat-label">Facturé</div></div>' +
       '<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Versé</div></div>' +
       '<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
-      '<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.palier_atteint ? 'Prime (palier ' + fmt(r.palier_atteint.seuil) + '+)' : 'Prime (aucun palier atteint)') + '</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)') + '</div></div>' +
       '<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER</div></div>' +
     '</div>' +
+    detailPrimesHtml +
     '<button class="btn btn-blue" onclick="enregistrerPaiementLivreur()">Enregistrer le paiement</button>';
 }
 
@@ -4845,6 +4960,74 @@ async function delPaiementLivreur(id) {
   await api('DELETE', '/paiements_livreurs/' + id);
   toast('Supprimé', 'info');
   await loadPaiementsLivreursList();
+}
+
+// ═══════════════════════════════════════════════════════
+// ESPACE LIVREUR — tableau de bord personnel en lecture seule
+// ═══════════════════════════════════════════════════════
+let _meCache = null;
+async function initMonEspaceLivreur() {
+  const meDebut = document.getElementById('me-debut'), meFin = document.getElementById('me-fin');
+  if (meDebut && !meDebut.value) {
+    const now = new Date();
+    meDebut.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  }
+  if (meFin && !meFin.value) meFin.value = new Date().toISOString().split('T')[0];
+  const me = await api('GET', '/livreur/me');
+  if (me && !me.detail) {
+    _meCache = me;
+    const titre = document.getElementById('me-titre');
+    if (titre) titre.textContent = 'Mon espace — ' + me.prenom + ' ' + me.nom + (me.moto_immat ? ' (' + me.moto_immat + ')' : '');
+  }
+  await loadMonEspaceLivreur();
+  await loadMesPaiementsLivreur();
+}
+
+async function loadMonEspaceLivreur() {
+  const el = document.getElementById('me-stats');
+  const elJ = document.getElementById('me-jours');
+  if (!el) return;
+  const debut = (document.getElementById('me-debut') || {}).value || '';
+  const fin = (document.getElementById('me-fin') || {}).value || '';
+  let url = '/livreur/dashboard';
+  const params = [];
+  if (debut) params.push('date_debut=' + debut);
+  if (fin) params.push('date_fin=' + fin);
+  if (params.length) url += '?' + params.join('&');
+  const r = await api('GET', url);
+  if (!r || r.detail) { el.innerHTML = '<div class="empty">' + (r ? r.detail : 'Erreur') + '</div>'; return; }
+
+  const objectifBox = (_meCache && _meCache.montant_journalier)
+    ? '<div class="stat-box"><div class="stat-val">' + fmt(_meCache.montant_journalier) + '</div><div class="stat-label">Objectif quotidien à verser</div></div>'
+    : '';
+  el.innerHTML = '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' +
+    '<div class="stat-box"><div class="stat-val">' + formatHeures(r.total_heures) + '</div><div class="stat-label">Heures travaillées</div></div>' +
+    '<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Montant versé</div></div>' +
+    objectifBox +
+    '<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)') + '</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER (période)</div></div>' +
+  '</div>';
+
+  if (!elJ) return;
+  if (!r.detail_jours || !r.detail_jours.length) { elJ.innerHTML = '<div class="empty">Aucune donnée sur cette période</div>'; return; }
+  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th></tr></thead><tbody>' +
+    r.detail_jours.map(function(j) {
+      return '<tr><td>' + j.date + '</td><td>' + formatHeures(j.heures) + '</td><td>' + fmt(j.verse) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+async function loadMesPaiementsLivreur() {
+  const el = document.getElementById('me-paiements');
+  if (!el) return;
+  const list = await api('GET', '/livreur/paiements');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun paiement</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date paiement</th><th>Période</th><th>Heures</th><th>Versé</th><th>Prime</th><th>Montant</th></tr></thead><tbody>' +
+    list.map(function(pm) {
+      return '<tr><td>' + pm.date_paiement + '</td><td>' + (pm.periode_debut || '?') + ' → ' + (pm.periode_fin || '?') + '</td>' +
+        '<td>' + formatHeures(pm.total_heures) + '</td><td>' + fmt(pm.total_verse) + '</td><td>' + fmt(pm.prime) + '</td>' +
+        '<td style="font-weight:700;color:#0C447C">' + fmt(pm.montant) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
 }
 
 // Cache des dépenses pour voirJustificatif

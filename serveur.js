@@ -95,6 +95,7 @@ function saveDB(db) {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 const today = () => new Date().toISOString().split('T')[0];
+const genPin = () => String(Math.floor(1000 + Math.random() * 9000));
 
 function getRole(req) {
   const parsed = url.parse(req.url, true);
@@ -105,6 +106,11 @@ function getRole(req) {
   if (proprio) return { role:'proprietaire', proprio };
   const gest = db.gestionnaires.find(g => g.password === token);
   if (gest) return { role:'gestionnaire', gest };
+  if (token.startsWith('lv:')) {
+    const [, lvId, lvPin] = token.split(':');
+    const livreur = db.chauffeurs.find(c => c.id === lvId && c.categorie === 'livreur' && c.statut === 'actif' && c.pin && c.pin === lvPin);
+    if (livreur) return { role:'livreur', livreur };
+  }
   return { role:'public' };
 }
 
@@ -151,6 +157,36 @@ function livreursVisiblesIds(db, auth) {
   return [];
 }
 
+// Calcul de paie livreur : heures × taux + primes par palier appliquées JOUR PAR JOUR
+// (le palier le plus haut atteint par le montant versé CE jour-là s'applique, non cumulable ce jour ;
+//  les primes des différents jours s'additionnent ensuite sur toute la période)
+function calculPaieLivreur(db, livreurId, dd, df) {
+  const recettes = db.recettes_livreurs.filter(r => r.livreur_id === livreurId && r.date >= dd && r.date <= df);
+  const total_heures = recettes.reduce((s, r) => s + r.heures, 0);
+  const affIds = db.affectations.filter(a => a.chauffeur_id === livreurId).map(a => a.id);
+  const versements = db.versements.filter(vs => affIds.includes(vs.affectation_id) && vs.date_versement >= dd && vs.date_versement <= df);
+  const total_verse = versements.reduce((s, vs) => s + vs.montant, 0);
+  const total_facture = db.facturations.filter(f => f.chauffeur_id === livreurId && f.date >= dd && f.date <= df).reduce((s, f) => s + (f.montant_facture || 0), 0);
+  const manquant = Math.max(0, total_facture - total_verse);
+  const taux_horaire = db.config_livreurs.taux_horaire || 0;
+  const paliers = [...db.config_livreurs.paliers].sort((a, b) => b.seuil - a.seuil);
+
+  const versePerDay = {};
+  versements.forEach(vs => { versePerDay[vs.date_versement] = (versePerDay[vs.date_versement] || 0) + vs.montant; });
+  const detail_primes = [];
+  let prime = 0;
+  Object.keys(versePerDay).sort().forEach(date => {
+    const montant_jour = versePerDay[date];
+    const pl = paliers.find(p => montant_jour >= p.seuil);
+    if (pl) { prime += pl.prime; detail_primes.push({ date, montant_jour, seuil: pl.seuil, prime: pl.prime }); }
+  });
+
+  const salaire_base = Math.round(total_heures * taux_horaire);
+  const montant_a_payer = salaire_base + prime;
+  return { livreur_id: livreurId, nb_jours: recettes.length, total_heures, total_facture, total_verse, manquant,
+    taux_horaire, prime, detail_primes, nb_jours_primes: detail_primes.length, salaire_base, montant_a_payer };
+}
+
 async function handleAPI(req, res, body) {
   const db = loadDB();
   const parsed = url.parse(req.url, true);
@@ -167,6 +203,13 @@ async function handleAPI(req, res, body) {
   const isGest = auth.role === 'gestionnaire';
   const isProprio = auth.role === 'proprietaire';
   const canWrite = isManager || isGest;
+
+  // Le rôle "livreur" (accès chauffeur en lecture seule) ne peut atteindre que
+  // ses propres routes dédiées — jamais les routes manager/gestionnaire/proprietaire,
+  // dont beaucoup n'ont pas de garde de rôle explicite et sont "ouvertes par défaut".
+  if (auth.role === 'livreur' && p !== '/api/auth' && !p.startsWith('/api/livreur/')) {
+    res.writeHead(403); return res.end(JSON.stringify({ detail: 'Accès réservé à l\'espace livreur' }));
+  }
 
   // ── AUTH ──────────────────────────────────────────────────
   if (p === '/api/auth' && method === 'POST') {
@@ -186,6 +229,19 @@ async function handleAPI(req, res, body) {
       is_manager: gt.is_manager || false,         // Affiche comme Manager dans l'UI
       affiche_comme: gt.is_manager ? 'Manager' : 'Gestionnaire'
     }));
+    if (data.telephone && data.pin) {
+      const tel = String(data.telephone).trim();
+      const pin = String(data.pin).trim();
+      const lv = db.chauffeurs.find(c => c.categorie === 'livreur' && c.statut === 'actif' && c.telephone === tel && c.pin && c.pin === pin);
+      if (lv) return res.end(JSON.stringify({ role:'livreur', token:'lv:'+lv.id+':'+lv.pin, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id }));
+      res.writeHead(401); return res.end(JSON.stringify({ detail:'Téléphone ou code incorrect' }));
+    }
+    // Reconnexion auto (localStorage) avec un jeton livreur déjà émis : "lv:<id>:<pin>"
+    if (typeof data.password === 'string' && data.password.startsWith('lv:')) {
+      const [, lvId, lvPin] = data.password.split(':');
+      const lv = db.chauffeurs.find(c => c.id === lvId && c.categorie === 'livreur' && c.statut === 'actif' && c.pin && c.pin === lvPin);
+      if (lv) return res.end(JSON.stringify({ role:'livreur', token:data.password, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id }));
+    }
     res.writeHead(401); return res.end(JSON.stringify({ detail:'Mot de passe incorrect' }));
   }
 
@@ -488,16 +544,17 @@ async function handleAPI(req, res, body) {
               telephone_wave: numerosWave[0]||'', // Compat
               statut:'actif',date_embauche:today(),
               cree_par:isGest?auth.gest.id:'manager'};
+    if(c.categorie==='livreur') c.pin=genPin();
     db.chauffeurs.push(c);
     // Historique
     db.historique=(db.historique||[]);
     db.historique.push({id:uid(),type:'chauffeur_cree',ref_id:c.id,ref_nom:c.prenom+' '+c.nom,
       auteur:isGest?auth.gest.nom:'Manager',role:auth.role,date:new Date().toISOString()});
-    saveDB(db);return res.end(JSON.stringify({id:c.id,message:'Chauffeur enregistré'}));
+    saveDB(db);return res.end(JSON.stringify({id:c.id,pin:c.pin,message:'Chauffeur enregistré'}));
   }
   const cM=p.match(/^\/api\/chauffeurs\/([^/]+)$/);
   if(cM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){db.chauffeurs[idx].statut='depart';saveDB(db);}return res.end(JSON.stringify({message:'Chauffeur marqué comme parti'}));}
-  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};if(db.chauffeurs[idx].categorie==='livreur'&&!db.chauffeurs[idx].pin)db.chauffeurs[idx].pin=genPin();saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
 
   // ── FICHE CHAUFFEUR ───────────────────────────────────────
   const cFiche=p.match(/^\/api\/chauffeurs\/([^/]+)\/fiche$/);
@@ -676,9 +733,21 @@ async function handleAPI(req, res, body) {
     list=list.map(c=>{
       const aff=db.affectations.find(a=>a.chauffeur_id===c.id&&!a.date_fin);
       const veh=aff?db.vehicules.find(v=>v.id===aff.vehicule_id):null;
-      return{id:c.id,prenom:c.prenom,nom:c.nom,telephone:c.telephone,moto_immat:veh?veh.immatriculation:null};
+      return{id:c.id,prenom:c.prenom,nom:c.nom,telephone:c.telephone,moto_immat:veh?veh.immatriculation:null,pin:c.pin||null};
     });
     return res.end(JSON.stringify(list));
+  }
+
+  // ── LIVREURS MOTO — régénérer le code PIN d'accès ───────────────
+  const regenPinM=p.match(/^\/api\/livreurs\/([^/]+)\/regen_pin$/);
+  if(regenPinM&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!livreursVisiblesIds(db,auth).includes(regenPinM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.chauffeurs.findIndex(c=>c.id===regenPinM[1]&&c.categorie==='livreur');
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Livreur introuvable'}));}
+    db.chauffeurs[idx].pin=genPin();
+    saveDB(db);
+    return res.end(JSON.stringify({pin:db.chauffeurs[idx].pin,message:'Code PIN régénéré'}));
   }
 
   // ── HEURES LIVREURS (saisie journalière — le montant est géré via Facturation/Versement) ──
@@ -717,19 +786,7 @@ async function handleAPI(req, res, body) {
     if(!livreur){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
     if(!isManager&&!livreursVisiblesIds(db,auth).includes(calcM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const dd=q.date_debut||'0000-00-00', df=q.date_fin||'9999-99-99';
-    const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===calcM[1]&&r.date>=dd&&r.date<=df);
-    const total_heures=recettes.reduce((s,r)=>s+r.heures,0);
-    const affIds=db.affectations.filter(a=>a.chauffeur_id===calcM[1]).map(a=>a.id);
-    const total_verse=db.versements.filter(vs=>affIds.includes(vs.affectation_id)&&vs.date_versement>=dd&&vs.date_versement<=df).reduce((s,vs)=>s+vs.montant,0);
-    const total_facture=db.facturations.filter(f=>f.chauffeur_id===calcM[1]&&f.date>=dd&&f.date<=df).reduce((s,f)=>s+(f.montant_facture||0),0);
-    const manquant=Math.max(0,total_facture-total_verse);
-    const taux_horaire=db.config_livreurs.taux_horaire||0;
-    const paliers=[...db.config_livreurs.paliers].sort((a,b)=>b.seuil-a.seuil);
-    const palierAtteint=paliers.find(pl=>total_verse>=pl.seuil)||null;
-    const prime=palierAtteint?palierAtteint.prime:0;
-    const salaire_base=Math.round(total_heures*taux_horaire);
-    const montant_a_payer=salaire_base+prime;
-    return res.end(JSON.stringify({livreur_id:calcM[1],nb_jours:recettes.length,total_heures,total_facture,total_verse,manquant,taux_horaire,palier_atteint:palierAtteint,prime,salaire_base,montant_a_payer}));
+    return res.end(JSON.stringify(calculPaieLivreur(db,calcM[1],dd,df)));
   }
 
   // ── PAIEMENTS LIVREURS ───────────────────────────────────────
@@ -756,6 +813,36 @@ async function handleAPI(req, res, body) {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     db.paiements_livreurs=db.paiements_livreurs.filter(pm=>pm.id!==plM[1]);
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+  }
+
+  // ── ESPACE LIVREUR (accès lecture seule du livreur lui-même, token "lv:") ──
+  // Toujours scopé sur auth.livreur.id : jamais d'id fourni par le client.
+  if(p==='/api/livreur/me'&&method==='GET'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const lv=auth.livreur;
+    const aff=db.affectations.find(a=>a.chauffeur_id===lv.id&&!a.date_fin);
+    const veh=aff?db.vehicules.find(v=>v.id===aff.vehicule_id):null;
+    return res.end(JSON.stringify({id:lv.id,prenom:lv.prenom,nom:lv.nom,telephone:lv.telephone,
+      moto_immat:veh?veh.immatriculation:null,montant_journalier:aff?(aff.montant_journalier||0):0}));
+  }
+  if(p==='/api/livreur/dashboard'&&method==='GET'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const lvId=auth.livreur.id;
+    const dd=q.date_debut||'0000-00-00', df=q.date_fin||'9999-99-99';
+    const calc=calculPaieLivreur(db,lvId,dd,df);
+    const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===lvId&&r.date>=dd&&r.date<=df);
+    const affIds=db.affectations.filter(a=>a.chauffeur_id===lvId).map(a=>a.id);
+    const versements=db.versements.filter(vs=>affIds.includes(vs.affectation_id)&&vs.date_versement>=dd&&vs.date_versement<=df);
+    const parJour={};
+    recettes.forEach(r=>{ parJour[r.date]=parJour[r.date]||{date:r.date,heures:0,verse:0}; parJour[r.date].heures+=r.heures; });
+    versements.forEach(vs=>{ parJour[vs.date_versement]=parJour[vs.date_versement]||{date:vs.date_versement,heures:0,verse:0}; parJour[vs.date_versement].verse+=vs.montant; });
+    const detail_jours=Object.values(parJour).sort((a,b)=>b.date.localeCompare(a.date));
+    return res.end(JSON.stringify(Object.assign({},calc,{detail_jours})));
+  }
+  if(p==='/api/livreur/paiements'&&method==='GET'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const list=db.paiements_livreurs.filter(pm=>pm.livreur_id===auth.livreur.id);
+    return res.end(JSON.stringify(list.slice(-300).reverse()));
   }
 
   // ── FACTURATIONS ──────────────────────────────────────────
