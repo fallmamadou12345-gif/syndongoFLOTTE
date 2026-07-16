@@ -80,7 +80,10 @@ function loadDB() {
   // Normaliser les tags (s'assurer qu'ils sont tous des strings)
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
-   'depenses','alertes','gestionnaires','historique','journal'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'depenses','alertes','gestionnaires','historique','journal',
+   'livreurs','recettes_livreurs','paiements_livreurs'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+  if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
+  if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   return db;
 }
 
@@ -628,6 +631,115 @@ async function handleAPI(req, res, body) {
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
   }
   if(dM&&method==='PATCH'){if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.depenses.findIndex(d=>d.id===dM[1]);if(idx!==-1){db.depenses[idx]={...db.depenses[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+
+  // ── LIVREURS MOTO — CONFIG (taux horaire + paliers de primes) ──
+  if(p==='/api/config_livreurs'&&method==='GET'){
+    return res.end(JSON.stringify(db.config_livreurs));
+  }
+  if(p==='/api/config_livreurs'&&method==='PATCH'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(data.taux_horaire!==undefined) db.config_livreurs.taux_horaire=Number(data.taux_horaire)||0;
+    if(Array.isArray(data.paliers)){
+      db.config_livreurs.paliers=data.paliers
+        .map(x=>({seuil:Number(x.seuil)||0,prime:Number(x.prime)||0}))
+        .sort((a,b)=>a.seuil-b.seuil);
+    }
+    saveDB(db);return res.end(JSON.stringify({message:'Configuration mise à jour',config:db.config_livreurs}));
+  }
+
+  // ── LIVREURS MOTO ────────────────────────────────────────────
+  if(p==='/api/livreurs'&&method==='GET'){
+    let list=db.livreurs.filter(l=>l.statut!=='depart');
+    if(q.q){const sq=q.q.toLowerCase();list=list.filter(l=>(l.prenom||'').toLowerCase().includes(sq)||(l.nom||'').toLowerCase().includes(sq)||(l.telephone||'').includes(sq));}
+    return res.end(JSON.stringify(list));
+  }
+  if(p==='/api/livreurs'&&method==='POST'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(data.telephone&&db.livreurs.find(l=>l.telephone===(data.telephone||'').trim())) return res.end(JSON.stringify({detail:'Téléphone déjà enregistré'}));
+    const l={id:uid(),prenom:(data.prenom||'').trim(),nom:(data.nom||'').trim(),telephone:(data.telephone||'').trim(),moto_immat:(data.moto_immat||'').trim().toUpperCase(),statut:'actif',created_at:new Date().toISOString()};
+    db.livreurs.push(l);saveDB(db);return res.end(JSON.stringify({id:l.id,message:'Livreur enregistré'}));
+  }
+  const lM=p.match(/^\/api\/livreurs\/([^/]+)$/);
+  if(lM&&method==='PATCH'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.livreurs.findIndex(l=>l.id===lM[1]);
+    if(idx!==-1){db.livreurs[idx]={...db.livreurs[idx],...data};saveDB(db);}
+    return res.end(JSON.stringify({message:'Mis à jour'}));
+  }
+  if(lM&&method==='DELETE'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.livreurs.findIndex(l=>l.id===lM[1]);
+    if(idx!==-1){db.livreurs[idx].statut='depart';saveDB(db);}
+    return res.end(JSON.stringify({message:'Livreur marqué comme parti'}));
+  }
+
+  // ── RECETTES LIVREURS (heures + versement journalier) ──────────
+  if(p==='/api/recettes_livreurs'&&method==='GET'){
+    let list=db.recettes_livreurs;
+    if(q.livreur_id) list=list.filter(r=>r.livreur_id===q.livreur_id);
+    if(q.date_debut) list=list.filter(r=>r.date>=q.date_debut);
+    if(q.date_fin) list=list.filter(r=>r.date<=q.date_fin);
+    return res.end(JSON.stringify(list.slice(-500).reverse()));
+  }
+  if(p==='/api/recettes_livreurs'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.livreur_id) return res.end(JSON.stringify({detail:'Livreur obligatoire'}));
+    const date=data.date||today();
+    const heures=Number(data.heures)||0;
+    const montant_verse=Number(data.montant_verse)||0;
+    const existing=db.recettes_livreurs.findIndex(r=>r.livreur_id===data.livreur_id&&r.date===date);
+    const r={id:existing!==-1?db.recettes_livreurs[existing].id:uid(),livreur_id:data.livreur_id,date,heures,montant_verse,note:data.note||'',created_at:new Date().toISOString()};
+    if(existing!==-1) db.recettes_livreurs[existing]=r; else db.recettes_livreurs.push(r);
+    saveDB(db);return res.end(JSON.stringify({id:r.id,message:'Recette enregistrée'}));
+  }
+  const rlM=p.match(/^\/api\/recettes_livreurs\/([^/]+)$/);
+  if(rlM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    db.recettes_livreurs=db.recettes_livreurs.filter(r=>r.id!==rlM[1]);
+    saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+  }
+
+  // ── CALCUL PAIE LIVREUR (heures × taux + prime par palier) ──────
+  const calcM=p.match(/^\/api\/livreurs\/([^/]+)\/calcul$/);
+  if(calcM&&method==='GET'){
+    const livreur=db.livreurs.find(l=>l.id===calcM[1]);
+    if(!livreur){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    const dd=q.date_debut||'0000-00-00', df=q.date_fin||'9999-99-99';
+    const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===calcM[1]&&r.date>=dd&&r.date<=df);
+    const total_heures=recettes.reduce((s,r)=>s+r.heures,0);
+    const total_verse=recettes.reduce((s,r)=>s+r.montant_verse,0);
+    const taux_horaire=db.config_livreurs.taux_horaire||0;
+    const paliers=[...db.config_livreurs.paliers].sort((a,b)=>b.seuil-a.seuil);
+    const palierAtteint=paliers.find(pl=>total_verse>=pl.seuil)||null;
+    const prime=palierAtteint?palierAtteint.prime:0;
+    const salaire_base=Math.round(total_heures*taux_horaire);
+    const montant_a_payer=salaire_base+prime;
+    return res.end(JSON.stringify({livreur_id:calcM[1],nb_jours:recettes.length,total_heures,total_verse,taux_horaire,palier_atteint:palierAtteint,prime,salaire_base,montant_a_payer}));
+  }
+
+  // ── PAIEMENTS LIVREURS ───────────────────────────────────────
+  if(p==='/api/paiements_livreurs'&&method==='GET'){
+    let list=db.paiements_livreurs;
+    if(q.livreur_id) list=list.filter(pm=>pm.livreur_id===q.livreur_id);
+    return res.end(JSON.stringify(list.slice(-300).reverse()));
+  }
+  if(p==='/api/paiements_livreurs'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.livreur_id) return res.end(JSON.stringify({detail:'Livreur obligatoire'}));
+    const pm={id:uid(),livreur_id:data.livreur_id,periode_debut:data.periode_debut||'',periode_fin:data.periode_fin||'',
+      total_heures:Number(data.total_heures)||0,total_verse:Number(data.total_verse)||0,
+      taux_horaire:Number(data.taux_horaire)||0,prime:Number(data.prime)||0,
+      montant:Number(data.montant)||0,statut:'paye',
+      date_paiement:today(),auteur:isGest?auth.gest.nom:'Manager',created_at:new Date().toISOString()};
+    db.paiements_livreurs.push(pm);saveDB(db);
+    return res.end(JSON.stringify({id:pm.id,message:'Paiement enregistré'}));
+  }
+  const plM=p.match(/^\/api\/paiements_livreurs\/([^/]+)$/);
+  if(plM&&method==='DELETE'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    db.paiements_livreurs=db.paiements_livreurs.filter(pm=>pm.id!==plM[1]);
+    saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+  }
 
   // ── FACTURATIONS ──────────────────────────────────────────
   if(p==='/api/facturations'&&method==='GET'){
