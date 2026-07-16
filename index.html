@@ -724,9 +724,18 @@ tr:hover td{background:#fafaf8}
         <div class="form-row">
           <div class="field"><label>Date de la facture (si antérieure)</label><input id="dfacture" type="date"></div>
           <div class="field"><label>Payé par</label>
-            <select id="dpayeur">
+            <select id="dpayeur" onchange="toggleTiersNom()">
               <option value="gestionnaire">Gestionnaire</option>
               <option value="tiers">Tiers</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row" id="dtiers-row" style="display:none">
+          <div class="field"><label>Nom du tiers (à rembourser) *</label><input id="dtiers-nom" placeholder="Ex: Mamadou Fall"></div>
+          <div class="field"><label>Statut remboursement</label>
+            <select id="dtiers-statut">
+              <option value="a_rembourser">À rembourser</option>
+              <option value="rembourse">Déjà remboursé</option>
             </select>
           </div>
         </div>
@@ -4314,7 +4323,10 @@ const _origAddDepense = typeof addDepense === 'function' ? addDepense : null;
 addDepense = async function(btn) {
   const vid = (document.getElementById('dv') || {}).value;
   const montant = (document.getElementById('dm') || {}).value;
+  const payeur = (document.getElementById('dpayeur') || {}).value || 'gestionnaire';
+  const tiersNom = (document.getElementById('dtiers-nom') || {}).value.trim();
   if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
+  if (payeur === 'tiers' && !tiersNom) { toast('Nom du tiers obligatoire', 'err'); return; }
   setBtnLoad(btn, true);
   // Lire le justificatif si présent
   const fileInput = document.getElementById('djust');
@@ -4332,7 +4344,9 @@ addDepense = async function(btn) {
     montant: +montant,
     description: (document.getElementById('dd') || {}).value || '',
     date_facture: (document.getElementById('dfacture') || {}).value || null,
-    payeur: (document.getElementById('dpayeur') || {}).value || 'gestionnaire',
+    payeur,
+    tiers_nom: payeur === 'tiers' ? tiersNom : null,
+    tiers_statut: payeur === 'tiers' ? ((document.getElementById('dtiers-statut') || {}).value || 'a_rembourser') : null,
     justificatif
   });
   setBtnLoad(btn, false);
@@ -4342,11 +4356,21 @@ addDepense = async function(btn) {
   document.getElementById('dd').value = '';
   if (document.getElementById('dfacture')) document.getElementById('dfacture').value = '';
   if (document.getElementById('dpayeur')) document.getElementById('dpayeur').value = 'gestionnaire';
+  if (document.getElementById('dtiers-nom')) document.getElementById('dtiers-nom').value = '';
+  if (document.getElementById('dtiers-statut')) document.getElementById('dtiers-statut').value = 'a_rembourser';
+  toggleTiersNom();
   if (fileInput) fileInput.value = '';
   const prev = document.getElementById('djust-preview');
   if (prev) { prev.style.display = 'none'; prev.innerHTML = ''; }
   loadDepenses();
 };
+
+function toggleTiersNom() {
+  const sel = document.getElementById('dpayeur');
+  const row = document.getElementById('dtiers-row');
+  if (!sel || !row) return;
+  row.style.display = sel.value === 'tiers' ? 'flex' : 'none';
+}
 
 // Afficher justificatif dans la liste des dépenses
 const _origLoadDepenses_render = loadDepenses;
@@ -4357,7 +4381,16 @@ async function renderDepenseItem(d) {
   const dateCell = d.date_facture && d.date_facture !== d.date_depense
     ? `${d.date_depense}<br><span style="font-size:10px;color:#6b6b67">Facture : ${d.date_facture}</span>`
     : d.date_depense;
-  const payeurCell = d.payeur === 'tiers' ? pill('Tiers', 'purple') : pill('Gestionnaire', 'blue');
+  let payeurCell;
+  if (d.payeur === 'tiers') {
+    const nomTiers = d.tiers_nom ? ` — ${d.tiers_nom}` : '';
+    const statutPill = d.tiers_statut === 'rembourse' ? pill('Remboursé', 'ok') : pill('À rembourser', 'warn');
+    payeurCell = `${pill('Tiers' + nomTiers, 'purple')}<br>${statutPill}`;
+  } else {
+    payeurCell = pill('Gestionnaire', 'blue');
+  }
+  const remboursBtn = (d.payeur === 'tiers' && d.tiers_statut !== 'rembourse' && ROLE !== 'proprietaire')
+    ? `<button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="marquerRembourse('${d.id}')">✓ Remboursé</button>` : '';
   return `<tr>
     <td>${dateCell}</td>
     <td>${pill(d.categorie, 'gray')}</td>
@@ -4365,10 +4398,17 @@ async function renderDepenseItem(d) {
     <td>${d.description || '—'}</td>
     <td>${payeurCell}</td>
     <td>${hasJust ? `<button class="btn-sm" style="background:#E6F1FB;color:#0C447C" onclick="voirJustificatif('${d.id}')">📎 Voir</button>` : '—'}</td>
-    ${ROLE !== 'proprietaire' ? `<td style="display:flex;gap:3px">
+    ${ROLE !== 'proprietaire' ? `<td style="display:flex;gap:3px;flex-wrap:wrap">
+      ${remboursBtn}
       <button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delDep('${d.id}')">Suppr.</button>
     </td>` : '<td></td>'}
   </tr>`;
+}
+
+async function marquerRembourse(id) {
+  await api('PATCH', '/depenses/' + id, { tiers_statut: 'rembourse' });
+  toast('Marqué comme remboursé');
+  loadDepenses();
 }
 
 // Cache des dépenses pour voirJustificatif
