@@ -639,6 +639,13 @@ tr:hover td{background:#fafaf8}
               <label>Montant à facturer (FCFA) * <span style="font-weight:400;color:#6b6b67">— gain du jour, variable</span></label>
               <input id="fm-montant" type="number" placeholder="Ex: 9200">
             </div>
+            <div class="field" style="margin-top:8px">
+              <label>Heures travaillées</label>
+              <div style="display:flex;gap:6px">
+                <input id="fm-heures-h" type="number" min="0" placeholder="H" style="width:70px">
+                <input id="fm-heures-m" type="number" min="0" max="59" placeholder="mn" style="width:70px">
+              </div>
+            </div>
           </div>
           <button class="btn btn-blue" style="width:100%" onclick="validerFac(this)">Valider la facturation</button>
         </div>
@@ -3129,6 +3136,8 @@ async function onFacVeh() {
   if (isMoto) {
     vtcBox.style.display = 'none'; motoBox.style.display = '';
     document.getElementById('fm-montant').value = '';
+    document.getElementById('fm-heures-h').value = '';
+    document.getElementById('fm-heures-m').value = '';
     if (affs.length > 1) {
       fc.style.display = 'none'; fcSelect.style.display = '';
       fcSelect.innerHTML = affs.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + '</option>'; }).join('');
@@ -7744,11 +7753,25 @@ validerFac = async function(btn) {
     setBtnLoad(btn, true);
     var r = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:chauffeurId, date, type_journee:type, montant_facture:montant, montant_base:base });
     await api('POST', '/activites', { vehicule_id:vid, statut_jour:sjMap[type]||'repos', date });
+    var heuresMsg = '';
+    if (isMoto) {
+      var hh = +((document.getElementById('fm-heures-h')||{}).value) || 0;
+      var hm = +((document.getElementById('fm-heures-m')||{}).value) || 0;
+      var heuresTot = hh + hm / 60;
+      if (heuresTot > 0) {
+        await api('POST', '/recettes_livreurs', { livreur_id: chauffeurId, date: date, heures: heuresTot });
+        heuresMsg = ' · ' + hh + 'h' + (hm ? String(hm).padStart(2,'0') + 'mn' : '');
+      }
+    }
     setBtnLoad(btn, false);
     if (r && r.detail) { toast(r.detail, 'err'); return; }
-    toast(r.updated ? '✏️ Facturation mise à jour — ' + fmt(montant) : '✅ Facturé — ' + fmt(montant));
+    toast((r.updated ? '✏️ Facturation mise à jour — ' + fmt(montant) : '✅ Facturé — ' + fmt(montant)) + heuresMsg);
     document.getElementById('fd-warning').style.display = 'none';
-    if (isMoto) (document.getElementById('fm-montant')||{}).value = '';
+    if (isMoto) {
+      (document.getElementById('fm-montant')||{}).value = '';
+      (document.getElementById('fm-heures-h')||{}).value = '';
+      (document.getElementById('fm-heures-m')||{}).value = '';
+    }
 
   } else {
     // Mode multi-dates (VTC uniquement)
