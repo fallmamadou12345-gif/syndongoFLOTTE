@@ -833,15 +833,19 @@ async function handleAPI(req, res, body) {
     const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===lvId&&r.date>=dd&&r.date<=df);
     const affIds=db.affectations.filter(a=>a.chauffeur_id===lvId).map(a=>a.id);
     const versements=db.versements.filter(vs=>affIds.includes(vs.affectation_id)&&vs.date_versement>=dd&&vs.date_versement<=df);
+    const facturations=db.facturations.filter(f=>f.chauffeur_id===lvId&&f.date>=dd&&f.date<=df);
     const parJour={};
-    recettes.forEach(r=>{ parJour[r.date]=parJour[r.date]||{date:r.date,heures:0,verse:0}; parJour[r.date].heures+=r.heures; });
-    versements.forEach(vs=>{ parJour[vs.date_versement]=parJour[vs.date_versement]||{date:vs.date_versement,heures:0,verse:0}; parJour[vs.date_versement].verse+=vs.montant; });
+    function jourDe(date){ return parJour[date]=parJour[date]||{date,heures:0,verse:0,facture:0}; }
+    recettes.forEach(r=>{ jourDe(r.date).heures+=r.heures; });
+    versements.forEach(vs=>{ jourDe(vs.date_versement).verse+=vs.montant; });
+    facturations.forEach(f=>{ jourDe(f.date).facture+=(f.montant_facture||0); });
     const primeParDate={};
     calc.detail_primes.forEach(d=>{ primeParDate[d.date]=d.prime; });
     const detail_jours=Object.values(parJour).sort((a,b)=>b.date.localeCompare(a.date)).map(j=>{
       const prime=primeParDate[j.date]||0;
       const salaire=Math.round(j.heures*calc.taux_horaire);
-      return Object.assign({},j,{prime,montant_a_payer:salaire+prime});
+      const manquant=Math.max(0,j.facture-j.verse);
+      return Object.assign({},j,{prime,manquant,montant_a_payer:salaire+prime});
     });
     return res.end(JSON.stringify(Object.assign({},calc,{detail_jours})));
   }

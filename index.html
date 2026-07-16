@@ -762,6 +762,18 @@ tr:hover td{background:#fafaf8}
         <div id="t-ret"><div class="empty">Chargement…</div></div>
       </div>
       <div class="card">
+        <div class="card-title">
+          Manquants par jour
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="date" id="ret-jour-q" style="font-size:12px" onchange="filtrerRetJours()">
+            <button class="btn-sm" style="background:#f0f0f0;color:#444" onclick="filtrerRetJours()">🔍 Retrouver</button>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444" onclick="document.getElementById('ret-jour-q').value='';filtrerRetJours()">✕</button>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6b6b67;margin:-4px 0 8px">Détail, jour par jour, des facturations non couvertes des véhicules en retard ci-dessus (imputation FIFO sur l'historique complet des versements).</div>
+        <div id="t-ret-jours"><div class="empty">Chargement…</div></div>
+      </div>
+      <div class="card">
         <div class="card-title">Statistiques pannes — 30 derniers jours</div>
         <div id="t-pannes"><div class="empty">Chargement…</div></div>
       </div>
@@ -931,7 +943,14 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <div class="card">
-        <div class="card-title">Détail par jour</div>
+        <div class="card-title">
+          Détail par jour
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="date" id="me-jour-q" style="font-size:12px" onchange="filtrerMeJours()">
+            <button class="btn-sm" style="background:#f0f0f0;color:#444" onclick="filtrerMeJours()">🔍 Retrouver</button>
+            <button class="btn-sm" style="background:#f0f0f0;color:#444" onclick="document.getElementById('me-jour-q').value='';filtrerMeJours()">✕</button>
+          </div>
+        </div>
         <div id="me-jours"><div class="empty">Aucune donnée</div></div>
       </div>
 
@@ -1458,6 +1477,27 @@ function imputerVersements(facsTout, versTout, facsPeriodeIds, affIds) {
   // Cap : l'encaissé imputé ne peut pas dépasser le facturé de la période
   encImpute = Math.min(encImpute, facMontant);
   return { encImpute: encImpute, retard: Math.max(0, facMontant - encImpute) };
+}
+
+// Comme imputerVersements, mais renvoie le détail des facturations non couvertes
+// (jour par jour) au lieu d'un seul total — utilisé par la page Retards.
+function manquantsParJourVehicule(facsTout, versTout, affIds) {
+  var facsTriees = (facsTout||[]).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+  var versFiltres = (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); });
+  var versTriees = versFiltres.sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
+  var pool = versTriees.map(function(vs){ return vs.montant; });
+  var result = [];
+  facsTriees.forEach(function(fac) {
+    var due = fac.montant_facture || 0;
+    var impute = 0;
+    for (var i = 0; i < pool.length && due > 0; i++) {
+      var prise = Math.min(pool[i], due);
+      impute += prise; pool[i] -= prise; due -= prise;
+    }
+    var manquant = (fac.montant_facture||0) - impute;
+    if (manquant > 0) result.push({ date: fac.date, facture: fac.montant_facture||0, manquant: manquant });
+  });
+  return result;
 }
 
 
@@ -3474,6 +3514,22 @@ function buildTagsParams(extraParams) {
   }
   return params;
 }
+let _retJoursCache = [];
+function filtrerRetJours() {
+  const el = document.getElementById('t-ret-jours');
+  if (!el) return;
+  const q = (document.getElementById('ret-jour-q') || {}).value || '';
+  const jours = q ? _retJoursCache.filter(function(j) { return j.date === q; }) : _retJoursCache;
+  if (!jours.length) { el.innerHTML = '<div class="empty" style="color:#3B6D11">' + (q ? 'Aucun manquant pour le ' + q : '✓ Aucun manquant sur cette période') + '</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Chauffeur</th><th>Facturé</th><th>Manquant</th></tr></thead><tbody>' +
+    jours.map(function(j) {
+      return '<tr onclick="ouvrirFicheVeh(\'' + j.vehicule_id + '\')" style="cursor:pointer"><td>' + j.date + '</td>' +
+        '<td><strong>' + j.immatriculation + '</strong> ' + j.marque + '</td><td>' + j.chauffeur + '</td>' +
+        '<td style="color:#6b6b67">' + fmt(j.facture) + '</td>' +
+        '<td style="color:#A32D2D;font-weight:700">' + fmt(j.manquant) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
 async function loadRetards() {
   const debut  = (document.getElementById('ret-debut') || {}).value || '';
   const fin    = (document.getElementById('ret-fin')   || {}).value || '';
@@ -3528,6 +3584,33 @@ async function loadRetards() {
            (r.tag||'').toLowerCase().includes(retQ) ||
            (r.gestionnaire||'').toLowerCase().includes(retQ);
   });
+  // ── Manquants par jour (imputation FIFO sur les véhicules en retard) ──
+  if (ret.length) {
+    var [facsAllRet, versAllRet, affsAllRet] = await Promise.all([
+      api('GET', '/facturations'),
+      api('GET', '/versements'),
+      api('GET', '/affectations')
+    ]);
+    facsAllRet = Array.isArray(facsAllRet) ? facsAllRet : [];
+    versAllRet = Array.isArray(versAllRet) ? versAllRet : [];
+    affsAllRet = Array.isArray(affsAllRet) ? affsAllRet : [];
+    var manquantsJour = [];
+    ret.forEach(function(rv) {
+      var vAffIds = affsAllRet.filter(function(a){ return a.vehicule_id === rv.vehicule_id; }).map(function(a){ return a.id; });
+      var vFacs = facsAllRet.filter(function(f){ return f.vehicule_id === rv.vehicule_id; });
+      var jours = manquantsParJourVehicule(vFacs, versAllRet, vAffIds);
+      jours.forEach(function(j) {
+        if (debut && fin && (j.date < debut || j.date > fin)) return;
+        manquantsJour.push({ date: j.date, vehicule_id: rv.vehicule_id, immatriculation: rv.immatriculation, marque: rv.marque, chauffeur: rv.chauffeur, facture: j.facture, manquant: j.manquant });
+      });
+    });
+    manquantsJour.sort(function(a,b){ return b.date.localeCompare(a.date); });
+    _retJoursCache = manquantsJour;
+  } else {
+    _retJoursCache = [];
+  }
+  filtrerRetJours();
+
   const el = document.getElementById('t-ret');
   const total = ret.reduce(function(s, r) { return s + r.retard; }, 0);
   if (!ret.length) { el.innerHTML = '<div class="empty" style="color:#3B6D11">✓ Aucun retard — tous les versements sont à jour</div>'; }
@@ -5029,11 +5112,22 @@ async function loadMonEspaceLivreur() {
     '<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER (période)</div></div>' +
   '</div>';
 
+  _meJoursCache = Array.isArray(r.detail_jours) ? r.detail_jours : [];
   if (!elJ) return;
-  if (!r.detail_jours || !r.detail_jours.length) { elJ.innerHTML = '<div class="empty">Aucune donnée sur cette période</div>'; return; }
-  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th><th>Prime</th><th>Montant à payer</th></tr></thead><tbody>' +
-    r.detail_jours.map(function(j) {
+  filtrerMeJours();
+}
+
+let _meJoursCache = [];
+function filtrerMeJours() {
+  const elJ = document.getElementById('me-jours');
+  if (!elJ) return;
+  const q = (document.getElementById('me-jour-q') || {}).value || '';
+  const jours = q ? _meJoursCache.filter(function(j) { return j.date === q; }) : _meJoursCache;
+  if (!jours.length) { elJ.innerHTML = '<div class="empty">' + (q ? 'Aucune donnée pour le ' + q : 'Aucune donnée sur cette période') + '</div>'; return; }
+  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th><th>Manquant</th><th>Prime</th><th>Montant à payer</th></tr></thead><tbody>' +
+    jours.map(function(j) {
       return '<tr><td>' + j.date + '</td><td>' + formatHeures(j.heures) + '</td><td>' + fmt(j.verse) + '</td>' +
+        '<td' + (j.manquant > 0 ? ' style="color:#A32D2D;font-weight:700"' : '') + '>' + fmt(j.manquant) + '</td>' +
         '<td' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
         '<td style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
