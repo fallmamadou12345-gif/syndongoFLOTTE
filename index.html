@@ -842,6 +842,41 @@ tr:hover td{background:#fafaf8}
 
       <div class="card">
         <div class="card-title">
+          Vue d'ensemble — Heures & paie
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="font-size:11px;color:#6b6b67">Du</span>
+            <input id="ov-debut" type="date" style="font-size:12px" onchange="loadPaieOverview()">
+            <span style="font-size:11px;color:#6b6b67">au</span>
+            <input id="ov-fin" type="date" style="font-size:12px" onchange="loadPaieOverview()">
+          </div>
+        </div>
+        <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px">
+          <div class="kpi-stat blue">
+            <div class="kpi-label">Heures travaillées</div>
+            <div class="kpi-val" id="ov-k-heures" style="color:#185FA5">—</div>
+          </div>
+          <div class="kpi-stat green">
+            <div class="kpi-label">Total versé</div>
+            <div class="kpi-val" id="ov-k-verse" style="color:#3B6D11">—</div>
+          </div>
+          <div class="kpi-stat orange">
+            <div class="kpi-label">Manquant</div>
+            <div class="kpi-val" id="ov-k-manquant" style="color:#BA7517">—</div>
+          </div>
+          <div class="kpi-stat purple">
+            <div class="kpi-label">Primes</div>
+            <div class="kpi-val" id="ov-k-prime" style="color:#8B5CF6">—</div>
+          </div>
+          <div class="kpi-stat crimson">
+            <div class="kpi-label">Total à payer</div>
+            <div class="kpi-val" id="ov-k-total" style="color:#DC2626">—</div>
+          </div>
+        </div>
+        <div id="ov-table"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
           Calcul de paie & paiement
         </div>
         <div class="form-row">
@@ -4616,6 +4651,59 @@ async function initLivreursPage() {
   await loadLivreursList();
   await loadLivreurSelects();
   await loadPaiementsLivreursList();
+  const ovDebut = document.getElementById('ov-debut'), ovFin = document.getElementById('ov-fin');
+  if (ovDebut && !ovDebut.value) {
+    const now = new Date();
+    ovDebut.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  }
+  if (ovFin && !ovFin.value) ovFin.value = new Date().toISOString().split('T')[0];
+  await loadPaieOverview();
+}
+
+// ── Vue d'ensemble automatique — heures & paie de tous les livreurs ──
+async function loadPaieOverview() {
+  const el = document.getElementById('ov-table');
+  if (!el) return;
+  const debut = (document.getElementById('ov-debut') || {}).value || '';
+  const fin = (document.getElementById('ov-fin') || {}).value || '';
+  if (!_livreursCache.length) await loadLivreursList();
+  if (!_livreursCache.length) { el.innerHTML = '<div class="empty">Aucun livreur</div>'; return; }
+
+  let url_suffix = '';
+  const params = [];
+  if (debut) params.push('date_debut=' + debut);
+  if (fin) params.push('date_fin=' + fin);
+  if (params.length) url_suffix = '?' + params.join('&');
+
+  const results = await Promise.all(_livreursCache.map(function(l) {
+    return api('GET', '/livreurs/' + l.id + '/calcul' + url_suffix).then(function(r) { return { livreur: l, r: r }; });
+  }));
+
+  let totHeures = 0, totVerse = 0, totManquant = 0, totPrime = 0, totAPayer = 0;
+  results.forEach(function(x) {
+    if (!x.r || x.r.detail) return;
+    totHeures += x.r.total_heures || 0;
+    totVerse += x.r.total_verse || 0;
+    totManquant += x.r.manquant || 0;
+    totPrime += x.r.prime || 0;
+    totAPayer += x.r.montant_a_payer || 0;
+  });
+  document.getElementById('ov-k-heures').textContent = formatHeures(totHeures);
+  document.getElementById('ov-k-verse').textContent = fmt(totVerse);
+  document.getElementById('ov-k-manquant').textContent = fmt(totManquant);
+  document.getElementById('ov-k-prime').textContent = fmt(totPrime);
+  document.getElementById('ov-k-total').textContent = fmt(totAPayer);
+
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Livreur</th><th>Moto</th><th>Heures</th><th>Versé</th><th>Manquant</th><th>Prime</th><th>À payer</th></tr></thead><tbody>' +
+    results.map(function(x) {
+      const r = x.r || {};
+      return '<tr><td>' + x.livreur.prenom + ' ' + x.livreur.nom + '</td><td>' + (x.livreur.moto_immat || '—') + '</td>' +
+        '<td>' + formatHeures(r.total_heures || 0) + '</td>' +
+        '<td>' + fmt(r.total_verse || 0) + '</td>' +
+        '<td style="color:' + ((r.manquant||0) > 0 ? '#A32D2D' : '#6b6b67') + '">' + fmt(r.manquant || 0) + '</td>' +
+        '<td style="color:#8B5CF6">' + fmt(r.prime || 0) + '</td>' +
+        '<td style="font-weight:700;color:#185FA5">' + fmt(r.montant_a_payer || 0) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
 }
 
 // ── Configuration (taux horaire + paliers) ──────────────
