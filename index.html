@@ -105,6 +105,20 @@ tr:hover td{background:#fafaf8}
   .stat-grid{grid-template-columns:1fr 1fr}
 }
 
+/* ── Espace livreur : version mobile ── */
+@media(max-width:480px){
+  #page-mon-espace .stat-box-row{display:grid !important;grid-template-columns:1fr 1fr}
+  #page-mon-espace .card{padding:14px}
+  #page-mon-espace .card-title{font-size:14px}
+  #page-mon-espace table thead{display:none}
+  #page-mon-espace table, #page-mon-espace tbody, #page-mon-espace tr, #page-mon-espace td{display:block;width:100%}
+  #page-mon-espace tr{border:1px solid #e0dfd8;border-radius:10px;padding:8px 10px;margin-bottom:8px}
+  #page-mon-espace tr:last-child{margin-bottom:0}
+  #page-mon-espace td{border:none;padding:5px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+  #page-mon-espace td::before{content:attr(data-label);font-weight:600;color:#6b6b67;font-size:11px}
+  #page-mon-espace #me-jour-q{flex:1;min-width:0}
+}
+
 /* ── Filtres & Autocomplete ── */
 .filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;background:#f5f4f0;border-radius:10px;padding:10px 12px}
 .filter-bar label{font-size:11px;color:#6b6b67;font-weight:600;white-space:nowrap}
@@ -5126,10 +5140,10 @@ function filtrerMeJours() {
   if (!jours.length) { elJ.innerHTML = '<div class="empty">' + (q ? 'Aucune donnée pour le ' + q : 'Aucune donnée sur cette période') + '</div>'; return; }
   elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th><th>Manquant</th><th>Prime</th><th>Montant à payer</th></tr></thead><tbody>' +
     jours.map(function(j) {
-      return '<tr><td>' + j.date + '</td><td>' + formatHeures(j.heures) + '</td><td>' + fmt(j.verse) + '</td>' +
-        '<td' + (j.manquant > 0 ? ' style="color:#A32D2D;font-weight:700"' : '') + '>' + fmt(j.manquant) + '</td>' +
-        '<td' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
-        '<td style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td></tr>';
+      return '<tr><td data-label="Date">' + j.date + '</td><td data-label="Heures">' + formatHeures(j.heures) + '</td><td data-label="Versé">' + fmt(j.verse) + '</td>' +
+        '<td data-label="Manquant"' + (j.manquant > 0 ? ' style="color:#A32D2D;font-weight:700"' : '') + '>' + fmt(j.manquant) + '</td>' +
+        '<td data-label="Prime"' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
+        '<td data-label="Montant à payer" style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 
@@ -5140,9 +5154,9 @@ async function loadMesPaiementsLivreur() {
   if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun paiement</div>'; return; }
   el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date paiement</th><th>Période</th><th>Heures</th><th>Versé</th><th>Prime</th><th>Montant</th></tr></thead><tbody>' +
     list.map(function(pm) {
-      return '<tr><td>' + pm.date_paiement + '</td><td>' + (pm.periode_debut || '?') + ' → ' + (pm.periode_fin || '?') + '</td>' +
-        '<td>' + formatHeures(pm.total_heures) + '</td><td>' + fmt(pm.total_verse) + '</td><td>' + fmt(pm.prime) + '</td>' +
-        '<td style="font-weight:700;color:#0C447C">' + fmt(pm.montant) + '</td></tr>';
+      return '<tr><td data-label="Date paiement">' + pm.date_paiement + '</td><td data-label="Période">' + (pm.periode_debut || '?') + ' → ' + (pm.periode_fin || '?') + '</td>' +
+        '<td data-label="Heures">' + formatHeures(pm.total_heures) + '</td><td data-label="Versé">' + fmt(pm.total_verse) + '</td><td data-label="Prime">' + fmt(pm.prime) + '</td>' +
+        '<td data-label="Montant" style="font-weight:700;color:#0C447C">' + fmt(pm.montant) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 
