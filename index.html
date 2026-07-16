@@ -2112,19 +2112,8 @@ async function loadDashboard() {
   // totRet est déjà calculé par imputation FIFO dans le bloc ci-dessus
 
   // ── Afficher les KPIs (animation) ────────────────────────
-  function setKpi(id, val, color) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = val;
-    el.style.opacity = '1';
-    if (color) el.style.color = color;
-  }
-
-  setKpi('k-facture', fmt(totFac), '#185FA5');
-  setKpi('k-rec',     fmt(totEnc), '#3B6D11');
-  setKpi('k-dep',     fmt(totDep), '#A32D2D');
-  setKpi('k-marge',   fmt(marge),  marge >= 0 ? '#3B6D11' : '#A32D2D');
-  setKpi('k-retard',  fmt(totRet), totRet > 0 ? '#A32D2D' : '#3B6D11');
+  _dashOrigKpis = { fac: totFac, enc: totEnc, dep: totDep, marge: marge, taux: taux, ret: totRet };
+  applyDashKpis(_dashOrigKpis);
   // Compteurs KPI
   var nbFacEl = document.getElementById('k-facture-nb');
   if (nbFacEl) { nbFacEl.textContent = facsFilt.length + ' fact.'; nbFacEl.style.display = facsFilt.length>0?'inline':'none'; }
@@ -2137,12 +2126,6 @@ async function loadDashboard() {
   var nbRetEl = document.getElementById('k-retard-nb');
   if (nbRetEl) { nbRetEl.textContent = nbRetVehs + ' véh.'; nbRetEl.style.display = nbRetVehs>0?'inline':'none'; }
 
-  var kt = document.getElementById('k-taux');
-  if (kt) {
-    kt.textContent = taux + '%';
-    kt.style.color = taux >= 90 ? '#059669' : taux >= 70 ? '#BA7517' : '#A32D2D';
-    kt.style.opacity = '1';
-  }
   // Sous-label du taux : préciser que c'est global
   var ktSub = document.getElementById('k-taux-sub');
   if (ktSub) {
@@ -2235,6 +2218,22 @@ async function loadDashboard() {
   // Compter les véhicules en retard sur la période (cohérent avec totRet)
   nbRetVehs = rows.filter(function(r){ return r.vRet > 0; }).length;
 
+  // Mémoriser les lignes (non filtrées) pour que filtrerRent() puisse filtrer sans tout re-fetch
+  _dashRentRows = rows;
+  renderRentabiliteTable(rows);
+  // Ré-appliquer le filtre actif (texte + tag) si l'utilisateur en avait déjà saisi un
+  filtrerRent();
+
+  // ── Graphique ────────────────────────────────────────────
+  renderGraph();
+}
+
+// ── Rendu du tableau "Rentabilité par véhicule" (réutilisé par le filtre) ──
+function renderRentabiliteTable(rows) {
+  var el = document.getElementById('d-rent');
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = '<div class="empty">Aucun véhicule</div>'; return; }
+
   var rowsHtml = rows.map(function(r) {
     return '<tr data-id="'+r.v.id+'" onclick="ouvrirFicheVeh(this.dataset.id)" style="cursor:pointer">' +
       '<td><strong style="color:#185FA5">'+r.v.immatriculation+'</strong> <span style="color:#6b6b67;font-size:11px">'+r.v.marque+'</span>'+(r.v.tag?' '+pill(r.v.tag,'purple'):'')+' '+(r.v.statut_presume?'<span style="font-size:9px;color:#BA7517">*</span>':'')+
@@ -2267,7 +2266,7 @@ async function loadDashboard() {
     '<td style="text-align:right;color:'+(rowsTotMarge>=0?'#3B6D11':'#A32D2D')+'">'+fmt(rowsTotMarge)+'</td>' +
     '<td style="text-align:center">'+rowsTaux+'%</td></tr>';
 
-  document.getElementById('d-rent').innerHTML =
+  el.innerHTML =
     '<div style="overflow-x:auto"><table>' +
     '<thead><tr>' +
       '<th>Véhicule</th>' +
@@ -2281,9 +2280,62 @@ async function loadDashboard() {
     '</tr></thead>' +
     '<tbody>' + rowsHtml + totRow + '</tbody>' +
     '</table></div>';
+}
 
-  // ── Graphique ────────────────────────────────────────────
-  renderGraph();
+// ── Filtre local du tableau "Rentabilité par véhicule" (texte + tag) ──
+// Recalcule aussi les KPIs du haut sur le sous-ensemble filtré, pour rester cohérent avec ce qui est affiché.
+let _dashRentRows = [];
+let _dashOrigKpis = null;
+function filtrerRent(q) {
+  var qEl = document.getElementById('d-filter-q2');
+  var tagEl = document.getElementById('d-filter-tag2');
+  var searchQ = ((typeof q === 'string' ? q : (qEl || {}).value) || '').toLowerCase().trim();
+  var tagQ = (tagEl || {}).value || '';
+
+  var filtered = _dashRentRows.filter(function(r) {
+    var matchQ = !searchQ ||
+      r.v.immatriculation.toLowerCase().includes(searchQ) ||
+      (r.v.marque || '').toLowerCase().includes(searchQ) ||
+      (r.v.tag || '').toLowerCase().includes(searchQ);
+    var matchTag = !tagQ || r.v.tag === tagQ;
+    return matchQ && matchTag;
+  });
+  renderRentabiliteTable(filtered);
+
+  if (!_dashOrigKpis) return;
+  if (!searchQ && !tagQ) { applyDashKpis(_dashOrigKpis); return; }
+
+  var fFac = filtered.reduce(function(s,r){return s+r.vFac;},0);
+  var fEnc = filtered.reduce(function(s,r){return s+r.vEnc;},0);
+  var fDep = filtered.reduce(function(s,r){return s+r.vDep;},0);
+  applyDashKpis({
+    fac: fFac, enc: fEnc, dep: fDep,
+    marge: fEnc - fDep,
+    taux: fFac > 0 ? Math.round(fEnc/fFac*100) : 0,
+    ret: Math.max(0, fFac - fEnc)
+  });
+}
+
+// ── Applique un jeu de KPIs (Facturé/Encaissé/Dépenses/Marge/Taux/Retard) aux cartes du haut ──
+function applyDashKpis(k) {
+  function setKpi(id, val, color) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.style.opacity = '1';
+    if (color) el.style.color = color;
+  }
+  setKpi('k-facture', fmt(k.fac), '#185FA5');
+  setKpi('k-rec', fmt(k.enc), '#3B6D11');
+  setKpi('k-dep', fmt(k.dep), '#A32D2D');
+  setKpi('k-marge', fmt(k.marge), k.marge >= 0 ? '#3B6D11' : '#A32D2D');
+  setKpi('k-retard', fmt(k.ret), k.ret > 0 ? '#A32D2D' : '#3B6D11');
+  var kt = document.getElementById('k-taux');
+  if (kt) {
+    kt.textContent = k.taux + '%';
+    kt.style.color = k.taux >= 90 ? '#059669' : k.taux >= 70 ? '#BA7517' : '#A32D2D';
+    kt.style.opacity = '1';
+  }
 }
 
 // ═══════════════════════════════════════════════════════
