@@ -429,6 +429,15 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Propriétaire lié</label><select id="vprop"><option value="">— Aucun —</option></select></div>
           <div class="field"><label>Statut</label><select id="vst"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select></div>
         </div>
+        <div class="form-row">
+          <div class="field"><label>Catégorie</label>
+            <select id="vcat">
+              <option value="vtc">VTC (voiture)</option>
+              <option value="moto">Moto</option>
+            </select>
+            <div style="font-size:10px;color:#6b6b67;margin-top:3px">Une moto peut être affectée à 2 livreurs (relais).</div>
+          </div>
+        </div>
         <button class="btn btn-blue" onclick="addVehicule(this)">Enregistrer</button>
       </div>
       <div class="card">
@@ -487,6 +496,14 @@ tr:hover td{background:#fafaf8}
         <div class="form-row">
           <div class="field"><label>Adresse</label><input id="ca" placeholder="Quartier, Ville"></div>
           <div class="field"><label>Notes</label><input id="cno" placeholder="Infos complémentaires"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Catégorie</label>
+            <select id="ccat">
+              <option value="chauffeur">Chauffeur VTC</option>
+              <option value="livreur">Livreur Moto</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-blue" onclick="addChauffeur(this)">Enregistrer</button>
       </div>
@@ -792,20 +809,13 @@ tr:hover td{background:#fafaf8}
 
       <div class="card">
         <div class="card-title">Livreurs</div>
-        <div class="form-row">
-          <div class="field"><label>Prénom *</label><input id="lv-prenom" placeholder="Prénom"></div>
-          <div class="field"><label>Nom *</label><input id="lv-nom" placeholder="Nom"></div>
-        </div>
-        <div class="form-row">
-          <div class="field"><label>Téléphone</label><input id="lv-tel" placeholder="7X XXX XX XX"></div>
-          <div class="field"><label>Moto (immatriculation)</label><input id="lv-moto" placeholder="Ex: AB-274-JR"></div>
-        </div>
-        <button class="btn btn-blue" onclick="addLivreur(this)">Enregistrer le livreur</button>
-        <div id="t-livreurs" style="margin-top:12px"><div class="empty">Aucun livreur</div></div>
+        <div style="font-size:11px;color:#6b6b67;margin-bottom:8px">Pour ajouter un livreur ou une moto, utilise les pages <b>Chauffeurs</b> (catégorie "Livreur Moto") et <b>Véhicules</b> (catégorie "Moto"), puis affecte-les depuis <b>Affectations</b> — une moto accepte jusqu'à 2 livreurs (relais).</div>
+        <div id="t-livreurs"><div class="empty">Aucun livreur</div></div>
       </div>
 
       <div class="card">
-        <div class="card-title">Enregistrer la recette du jour</div>
+        <div class="card-title">Enregistrer les heures du jour</div>
+        <div style="font-size:11px;color:#6b6b67;margin-bottom:8px">Le montant versé se saisit dans <b>Caisse &amp; Facturation</b> (facturation du jour + versement) comme pour les VTC — le manquant est suivi automatiquement dans <b>Retards</b>.</div>
         <div class="form-row">
           <div class="field"><label>Livreur *</label><select id="rl-livreur"><option value="">— choisir —</option></select></div>
           <div class="field"><label>Date *</label><input id="rl-date" type="date"></div>
@@ -817,10 +827,9 @@ tr:hover td{background:#fafaf8}
               <input id="rl-heures-m" type="number" min="0" max="59" placeholder="mn" style="width:70px">
             </div>
           </div>
-          <div class="field"><label>Montant versé (FCFA) *</label><input id="rl-montant" type="number" placeholder="9200"></div>
         </div>
         <button class="btn btn-red" onclick="addRecetteLivreur(this)">Enregistrer</button>
-        <div id="t-recettes-lv" style="margin-top:12px"><div class="empty">Aucune recette</div></div>
+        <div id="t-recettes-lv" style="margin-top:12px"><div class="empty">Aucune heure saisie</div></div>
       </div>
 
       <div class="card">
@@ -2494,7 +2503,8 @@ async function addVehicule(btn) {
     km_prochain_vidange: +document.getElementById('vvid').value || null,
     tag: document.getElementById('vtag').value,
     statut: document.getElementById('vst').value,
-    proprio_id: document.getElementById('vprop').value || null
+    proprio_id: document.getElementById('vprop').value || null,
+    categorie: (document.getElementById('vcat') || {}).value || 'vtc'
   });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
@@ -2824,7 +2834,7 @@ async function addChauffeur(btn) {
   const p = document.getElementById('cp').value.trim(), n = document.getElementById('cn').value.trim(), t = document.getElementById('ct').value.trim();
   if (!p || !n || !t) { toast('Prénom, nom, téléphone obligatoires', 'err'); return; }
   setBtnLoad(btn, true);
-  const r = await api('POST', '/chauffeurs', { prenom: p, nom: n, telephone: t, numero_permis: document.getElementById('cpe').value, adresse: document.getElementById('ca').value, notes: document.getElementById('cno').value });
+  const r = await api('POST', '/chauffeurs', { prenom: p, nom: n, telephone: t, numero_permis: document.getElementById('cpe').value, adresse: document.getElementById('ca').value, notes: document.getElementById('cno').value, categorie: (document.getElementById('ccat') || {}).value || 'chauffeur' });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
   toast(p + ' ' + n + ' enregistré');
@@ -4562,23 +4572,22 @@ async function delPalier(seuil) {
   loadConfigLivreurs();
 }
 
-// ── Livreurs (fiche) ─────────────────────────────────────
+// ── Livreurs (= chauffeurs catégorie "livreur", affectés à une moto) ──
 async function loadLivreursList() {
   const list = await api('GET', '/livreurs');
   _livreursCache = Array.isArray(list) ? list : [];
   const el = document.getElementById('t-livreurs');
   if (!el) return;
-  if (!_livreursCache.length) { el.innerHTML = '<div class="empty">Aucun livreur</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Nom</th><th>Téléphone</th><th>Moto</th><th>Action</th></tr></thead><tbody>' +
+  if (!_livreursCache.length) { el.innerHTML = '<div class="empty">Aucun livreur — ajoute-en un depuis la page Chauffeurs (catégorie "Livreur Moto")</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Nom</th><th>Téléphone</th><th>Moto affectée</th></tr></thead><tbody>' +
     _livreursCache.map(function(l) {
-      return '<tr><td>' + l.prenom + ' ' + l.nom + '</td><td>' + (l.telephone || '—') + '</td><td>' + (l.moto_immat || '—') + '</td>' +
-        '<td><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delLivreur(\'' + l.id + '\')">Suppr.</button></td></tr>';
+      return '<tr><td>' + l.prenom + ' ' + l.nom + '</td><td>' + (l.telephone || '—') + '</td><td>' + (l.moto_immat || '<span style="color:#A32D2D">Non affecté</span>') + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 
 async function loadLivreurSelects() {
   const opts = '<option value="">— choisir —</option>' + _livreursCache.map(function(l) {
-    return '<option value="' + l.id + '">' + l.prenom + ' ' + l.nom + '</option>';
+    return '<option value="' + l.id + '">' + l.prenom + ' ' + l.nom + (l.moto_immat ? ' (' + l.moto_immat + ')' : '') + '</option>';
   }).join('');
   ['rl-livreur', 'pl-livreur'].forEach(function(id) {
     const el = document.getElementById(id);
@@ -4586,46 +4595,17 @@ async function loadLivreurSelects() {
   });
 }
 
-async function addLivreur(btn) {
-  const prenom = document.getElementById('lv-prenom').value.trim();
-  const nom = document.getElementById('lv-nom').value.trim();
-  if (!prenom || !nom) { toast('Prénom et nom obligatoires', 'err'); return; }
-  setBtnLoad(btn, true);
-  const res = await api('POST', '/livreurs', {
-    prenom: prenom, nom: nom,
-    telephone: document.getElementById('lv-tel').value.trim(),
-    moto_immat: document.getElementById('lv-moto').value.trim()
-  });
-  setBtnLoad(btn, false);
-  if (res.detail) { toast(res.detail, 'err'); return; }
-  toast('Livreur enregistré');
-  document.getElementById('lv-prenom').value = '';
-  document.getElementById('lv-nom').value = '';
-  document.getElementById('lv-tel').value = '';
-  document.getElementById('lv-moto').value = '';
-  await loadLivreursList();
-  await loadLivreurSelects();
-}
-
-async function delLivreur(id) {
-  if (!confirm('Supprimer ce livreur ?')) return;
-  await api('DELETE', '/livreurs/' + id);
-  toast('Livreur supprimé', 'info');
-  await loadLivreursList();
-  await loadLivreurSelects();
-}
-
-// ── Recettes journalières (heures + versement) ───────────
+// ── Heures journalières (le montant est géré via Facturation/Versement) ──
 async function loadRecettesLivreursList() {
   const list = await api('GET', '/recettes_livreurs');
   const el = document.getElementById('t-recettes-lv');
   if (!el) return;
-  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune recette</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Livreur</th><th>Heures</th><th>Versé</th><th>Action</th></tr></thead><tbody>' +
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune heure saisie</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Livreur</th><th>Heures</th><th>Action</th></tr></thead><tbody>' +
     list.slice(0, 60).map(function(r) {
       const l = _livreursCache.find(function(x) { return x.id === r.livreur_id; });
       return '<tr><td>' + r.date + '</td><td>' + (l ? l.prenom + ' ' + l.nom : '—') + '</td>' +
-        '<td>' + formatHeures(r.heures) + '</td><td style="font-weight:700">' + fmt(r.montant_verse) + '</td>' +
+        '<td>' + formatHeures(r.heures) + '</td>' +
         '<td><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delRecetteLivreur(\'' + r.id + '\')">Suppr.</button></td></tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -4633,18 +4613,17 @@ async function loadRecettesLivreursList() {
 async function addRecetteLivreur(btn) {
   const livreurId = document.getElementById('rl-livreur').value;
   const date = document.getElementById('rl-date').value;
-  const montant = document.getElementById('rl-montant').value;
-  if (!livreurId || !date || !montant) { toast('Livreur, date et montant versé obligatoires', 'err'); return; }
+  if (!livreurId || !date) { toast('Livreur et date obligatoires', 'err'); return; }
   const h = +(document.getElementById('rl-heures-h').value || 0);
   const m = +(document.getElementById('rl-heures-m').value || 0);
   const heures = h + m / 60;
+  if (!heures) { toast('Renseigne les heures travaillées', 'err'); return; }
   setBtnLoad(btn, true);
-  await api('POST', '/recettes_livreurs', { livreur_id: livreurId, date: date, heures: heures, montant_verse: +montant });
+  await api('POST', '/recettes_livreurs', { livreur_id: livreurId, date: date, heures: heures });
   setBtnLoad(btn, false);
-  toast('Recette enregistrée');
+  toast('Heures enregistrées');
   document.getElementById('rl-heures-h').value = '';
   document.getElementById('rl-heures-m').value = '';
-  document.getElementById('rl-montant').value = '';
   await loadRecettesLivreursList();
 }
 
@@ -4677,7 +4656,9 @@ async function calculerPaieLivreur() {
     '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' +
       '<div class="stat-box"><div class="stat-val">' + r.nb_jours + '</div><div class="stat-label">Jours saisis</div></div>' +
       '<div class="stat-box"><div class="stat-val">' + formatHeures(r.total_heures) + '</div><div class="stat-label">Heures travail</div></div>' +
-      '<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Total versé</div></div>' +
+      '<div class="stat-box"><div class="stat-val">' + fmt(r.total_facture) + '</div><div class="stat-label">Facturé</div></div>' +
+      '<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Versé</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
       '<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.palier_atteint ? 'Prime (palier ' + fmt(r.palier_atteint.seuil) + '+)' : 'Prime (aucun palier atteint)') + '</div></div>' +
       '<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER</div></div>' +
     '</div>' +
