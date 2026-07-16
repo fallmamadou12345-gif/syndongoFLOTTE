@@ -1,0 +1,15 @@
+# Données réelles (mots de passe, PIN, téléphones, finances) — ne jamais versionner
+syndongo_data.json
+import_data_local.json
+test_data*.json
+
+# Secrets / configuration locale
+.env
+ecosystem.config.js
+
+# Sauvegardes
+backups/
+*.backup*
+
+# Node
+node_modules/
