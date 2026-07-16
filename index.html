@@ -575,8 +575,22 @@ tr:hover td{background:#fafaf8}
         <div class="card" style="border-top:3px solid #185FA5">
           <div class="card-title">Facturation</div>
           <div class="form-row">
-            <div class="field"><label>Véhicule *</label><select id="fv" onchange="onFacVeh()"><option value="">— choisir —</option></select></div>
-            <div class="field"><label>Chauffeur</label><input id="fc" readonly style="opacity:.7;background:#f0efeb"></div>
+            <div class="field">
+              <label>Véhicule *</label>
+              <div class="ac-wrap">
+                <input id="fv-search" placeholder="🔍 Rechercher immat., marque, tag…" autocomplete="off" oninput="acFacVeh(this.value)" onfocus="acFacVeh(this.value)">
+                <div class="ac-drop" id="fv-ac-drop"></div>
+              </div>
+              <select id="fv" onchange="onFacVeh()" style="margin-top:6px"><option value="">— choisir —</option></select>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <span class="chip inactive" id="fchip-moto" onclick="toggleFacMotoFilter()" style="font-size:11px">🏍️ Motos uniquement</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Chauffeur</label>
+              <input id="fc" readonly style="opacity:.7;background:#f0efeb">
+              <select id="fc-select" style="display:none;margin-top:6px" onchange="onFacChauffeurChoisi()"></select>
+            </div>
           </div>
           <div class="form-row">
             <div class="field">
@@ -615,10 +629,16 @@ tr:hover td{background:#fafaf8}
               <div id="fmulti-info" style="font-size:11px;color:#6b6b67;margin-top:4px"></div>
             </div>
           </div>
-          <div style="background:#f5f4f0;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
+          <div id="f-montant-vtc-box" style="background:#f5f4f0;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
             <div style="font-size:11px;color:#6b6b67;margin-bottom:2px">Montant à facturer</div>
             <div id="f-montant" style="font-size:26px;font-weight:700;color:#185FA5">— F</div>
             <div id="f-info" style="font-size:11px;color:#6b6b67;margin-top:2px"></div>
+          </div>
+          <div id="f-montant-moto-box" style="display:none;margin-bottom:10px">
+            <div class="field">
+              <label>Montant à facturer (FCFA) * <span style="font-weight:400;color:#6b6b67">— gain du jour, variable</span></label>
+              <input id="fm-montant" type="number" placeholder="Ex: 9200">
+            </div>
           </div>
           <button class="btn btn-blue" style="width:100%" onclick="validerFac(this)">Valider la facturation</button>
         </div>
@@ -3044,19 +3064,92 @@ async function cloturerAff(id, btn) {
 // ═══════════════════════════════════════════════════════
 let _facAff = [];
 
+function onFacChauffeurChoisi() { /* valeur lue au moment de valider */ }
+
+let _facMotoFilterOn = false;
+
+async function acFacVeh(q) {
+  if (!allVehs.length) allVehs = await api('GET', '/vehicules') || [];
+  const sq = (q || '').toLowerCase().trim();
+  let pool = allVehs;
+  if (_facMotoFilterOn) pool = pool.filter(function(v) { return v.categorie === 'moto'; });
+  if (!sq) { hideAcDrop('fv-ac-drop'); return; }
+  const filtered = pool.filter(function(v) {
+    return v.immatriculation.toLowerCase().includes(sq) ||
+      (v.marque || '').toLowerCase().includes(sq) ||
+      (v.tag || '').toLowerCase().includes(sq);
+  }).slice(0, 8);
+  const items = filtered.map(function(v) {
+    return {
+      main: v.immatriculation + (v.categorie === 'moto' ? ' 🏍️' : ''),
+      sub: (v.marque || '') + (v.tag ? ' · ' + v.tag : ''),
+      badge: null,
+      onclick: "selectAcFacVeh('" + v.id + "', '" + v.immatriculation.replace(/'/g, "\\'") + "')"
+    };
+  });
+  showAcDrop('fv-ac-drop', items);
+}
+
+function selectAcFacVeh(id, immat) {
+  document.getElementById('fv-search').value = immat;
+  document.getElementById('fv').value = id;
+  hideAcDrop('fv-ac-drop');
+  onFacVeh();
+}
+
+function toggleFacMotoFilter() {
+  _facMotoFilterOn = !_facMotoFilterOn;
+  const chip = document.getElementById('fchip-moto');
+  chip.className = _facMotoFilterOn ? 'chip active-blue' : 'chip inactive';
+  const fv = document.getElementById('fv');
+  const cur = fv.value;
+  const pool = _facMotoFilterOn ? allVehs.filter(function(v) { return v.categorie === 'moto'; }) : allVehs;
+  fv.innerHTML = '<option value="">— choisir —</option>' + pool.map(function(v) {
+    return '<option value="' + v.id + '">' + v.immatriculation + ' · ' + v.marque + '</option>';
+  }).join('');
+  if (pool.find(function(v) { return v.id === cur; })) fv.value = cur;
+  acFacVeh(document.getElementById('fv-search').value);
+}
+
 async function onFacVeh() {
   const vid = document.getElementById('fv').value;
-  if (!vid) { document.getElementById('fc').value = ''; document.getElementById('f-montant').textContent = '— F'; return; }
+  const fc = document.getElementById('fc'), fcSelect = document.getElementById('fc-select');
+  const vtcBox = document.getElementById('f-montant-vtc-box'), motoBox = document.getElementById('f-montant-moto-box');
+  if (!vid) {
+    fc.value = ''; fc.style.display = ''; fcSelect.style.display = 'none';
+    document.getElementById('f-montant').textContent = '— F';
+    vtcBox.style.display = ''; motoBox.style.display = 'none';
+    return;
+  }
   if (!_facAff.length) _facAff = await api('GET', '/affectations') || [];
-  const aff = _facAff.find(function(a) { return a.vehicule_id === vid; });
-  document.getElementById('fc').value = aff ? aff.chauffeur : 'Non affecté';
-  calcFac();
+  const affs = _facAff.filter(function(a) { return a.vehicule_id === vid; });
+  const veh = (allVehs || []).find(function(v) { return v.id === vid; });
+  const isMoto = veh && veh.categorie === 'moto';
+
+  if (isMoto) {
+    vtcBox.style.display = 'none'; motoBox.style.display = '';
+    document.getElementById('fm-montant').value = '';
+    if (affs.length > 1) {
+      fc.style.display = 'none'; fcSelect.style.display = '';
+      fcSelect.innerHTML = affs.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + '</option>'; }).join('');
+    } else {
+      fc.style.display = ''; fcSelect.style.display = 'none';
+      fc.value = affs.length ? affs[0].chauffeur : 'Non affecté';
+    }
+  } else {
+    vtcBox.style.display = ''; motoBox.style.display = 'none';
+    fc.style.display = ''; fcSelect.style.display = 'none';
+    fc.value = affs.length ? affs[0].chauffeur : 'Non affecté';
+    calcFac();
+  }
 }
 
 async function calcFac() {
   const vid = document.getElementById('fv').value;
   const type = document.getElementById('ftype').value;
   if (!vid) return;
+  const veh = (allVehs || []).find(function(v) { return v.id === vid; });
+  if (veh && veh.categorie === 'moto') return; // montant saisi manuellement pour les motos
   if (!_facAff.length) _facAff = await api('GET', '/affectations') || [];
   const aff = _facAff.find(function(a) { return a.vehicule_id === vid; });
   const base = aff ? aff.montant_journalier : 0;
@@ -3070,16 +3163,32 @@ async function calcFac() {
 async function validerFac(btn) {
   const vid = document.getElementById('fv').value, type = document.getElementById('ftype').value, date = document.getElementById('fd').value;
   if (!vid || !date) { toast('Véhicule et date obligatoires', 'err'); return; }
+  const veh = (allVehs || []).find(function(v) { return v.id === vid; });
+  const isMoto = veh && veh.categorie === 'moto';
   if (!_facAff.length) _facAff = await api('GET', '/affectations') || [];
-  const aff = _facAff.find(function(a) { return a.vehicule_id === vid; });
-  const base = aff ? aff.montant_journalier : 0;
-  const montant = type === 'complet' ? base : type === 'demi_panne' ? Math.round(base / 2) : 0;
+  const affs = _facAff.filter(function(a) { return a.vehicule_id === vid; });
+
+  let chauffeurId, montant, montantBase;
+  if (isMoto) {
+    montant = +document.getElementById('fm-montant').value || 0;
+    if (type === 'complet' && !montant) { toast('Montant obligatoire pour une moto', 'err'); return; }
+    chauffeurId = affs.length > 1 ? document.getElementById('fc-select').value : (affs[0] ? affs[0].chauffeur_id : '');
+    if (!chauffeurId) { toast('Choisis le livreur', 'err'); return; }
+    montantBase = montant;
+  } else {
+    const aff = affs[0];
+    const base = aff ? aff.montant_journalier : 0;
+    montant = type === 'complet' ? base : type === 'demi_panne' ? Math.round(base / 2) : 0;
+    chauffeurId = aff ? aff.chauffeur_id : '';
+    montantBase = base;
+  }
   const sjMap = { complet: 'actif', demi_panne: 'panne', repos: 'repos', inactif: 'inactif' };
   setBtnLoad(btn, true);
-  await api('POST', '/facturations', { vehicule_id: vid, chauffeur_id: aff ? aff.chauffeur_id : '', date: date, type_journee: type, montant_facture: montant, montant_base: base });
+  await api('POST', '/facturations', { vehicule_id: vid, chauffeur_id: chauffeurId, date: date, type_journee: type, montant_facture: montant, montant_base: montantBase });
   await api('POST', '/activites', { vehicule_id: vid, statut_jour: sjMap[type] || 'repos' });
   setBtnLoad(btn, false);
   toast('Facturation validée — ' + montant.toLocaleString('fr-FR') + ' F');
+  if (isMoto) document.getElementById('fm-montant').value = '';
   loadFac(); loadDashboard(); _facAff = [];
 }
 
@@ -7605,32 +7714,50 @@ validerFac = async function(btn) {
   var type  = (document.getElementById('ftype')||{}).value || 'complet';
   if (!vid) { toast('Sélectionnez un véhicule', 'err'); return; }
 
+  var veh = (allVehs || []).find(function(v) { return v.id === vid; });
+  var isMoto = veh && veh.categorie === 'moto';
+
   if (!_facAff || !_facAff.length) _facAff = await api('GET', '/affectations') || [];
-  var aff = _facAff.find(function(a){ return a.vehicule_id === vid && !a.date_fin; });
-  if (!aff) { toast('Aucune affectation active pour ce véhicule', 'err'); return; }
-  var base = aff.montant_journalier || 0;
-  var montant = type==='complet' ? base : type==='demi_panne' ? Math.round(base/2) : 0;
+  var affsActives = _facAff.filter(function(a){ return a.vehicule_id === vid && !a.date_fin; });
+  if (!affsActives.length) { toast('Aucune affectation active pour ce véhicule', 'err'); return; }
+
   var sjMap = { complet:'actif', demi_panne:'panne', repos:'repos', inactif:'inactif' };
+  var chauffeurId, montant, base;
+
+  if (isMoto) {
+    if (_facMode !== 'single') { toast('Pour une moto, utilise le mode "Une date" (le montant varie chaque jour)', 'err'); return; }
+    montant = +((document.getElementById('fm-montant')||{}).value) || 0;
+    if (type === 'complet' && !montant) { toast('Montant obligatoire pour une moto', 'err'); return; }
+    chauffeurId = affsActives.length > 1 ? (document.getElementById('fc-select')||{}).value : affsActives[0].chauffeur_id;
+    if (!chauffeurId) { toast('Choisis le livreur', 'err'); return; }
+    base = montant;
+  } else {
+    var aff = affsActives[0];
+    base = aff.montant_journalier || 0;
+    montant = type==='complet' ? base : type==='demi_panne' ? Math.round(base/2) : 0;
+    chauffeurId = aff.chauffeur_id;
+  }
 
   if (_facMode === 'single') {
     var date = (document.getElementById('fd')||{}).value || '';
     if (!date) { toast('Date obligatoire', 'err'); return; }
     setBtnLoad(btn, true);
-    var r = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:aff.chauffeur_id, date, type_journee:type, montant_facture:montant, montant_base:base });
+    var r = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:chauffeurId, date, type_journee:type, montant_facture:montant, montant_base:base });
     await api('POST', '/activites', { vehicule_id:vid, statut_jour:sjMap[type]||'repos', date });
     setBtnLoad(btn, false);
     if (r && r.detail) { toast(r.detail, 'err'); return; }
     toast(r.updated ? '✏️ Facturation mise à jour — ' + fmt(montant) : '✅ Facturé — ' + fmt(montant));
     document.getElementById('fd-warning').style.display = 'none';
+    if (isMoto) (document.getElementById('fm-montant')||{}).value = '';
 
   } else {
-    // Mode multi-dates
+    // Mode multi-dates (VTC uniquement)
     if (!_datesSelectionnees.length) { toast('Sélectionnez au moins une date', 'err'); return; }
     setBtnLoad(btn, true);
     var ok = 0; var maj = 0;
     for (var i = 0; i < _datesSelectionnees.length; i++) {
       var d = _datesSelectionnees[i];
-      var res2 = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:aff.chauffeur_id, date:d, type_journee:type, montant_facture:montant, montant_base:base });
+      var res2 = await api('POST', '/facturations', { vehicule_id:vid, chauffeur_id:chauffeurId, date:d, type_journee:type, montant_facture:montant, montant_base:base });
       await api('POST', '/activites', { vehicule_id:vid, statut_jour:sjMap[type]||'repos', date:d });
       if (res2 && res2.updated) maj++; else ok++;
     }
