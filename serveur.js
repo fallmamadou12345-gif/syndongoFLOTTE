@@ -133,6 +133,24 @@ function vehsVisibles(db, auth) {
   return [];
 }
 
+// Ids des livreurs (chauffeurs catégorie 'livreur') visibles par l'utilisateur courant
+function livreursVisiblesIds(db, auth) {
+  const myVehs = vehsVisibles(db, auth).map(v => v.id);
+  let list = db.chauffeurs.filter(c => c.statut === 'actif' && c.categorie === 'livreur');
+  if (auth.role === 'manager') return list.map(c => c.id);
+  if (auth.role === 'gestionnaire') {
+    const affVeh = db.affectations.filter(a => myVehs.includes(a.vehicule_id) && !a.date_fin).map(a => a.chauffeur_id);
+    const mesLivreurs = list.filter(c => c.cree_par === auth.gest.id).map(c => c.id);
+    const tousIds = new Set([...affVeh, ...mesLivreurs]);
+    return list.filter(c => tousIds.has(c.id)).map(c => c.id);
+  }
+  if (auth.role === 'proprietaire') {
+    const affVeh = db.affectations.filter(a => myVehs.includes(a.vehicule_id) && !a.date_fin).map(a => a.chauffeur_id);
+    return list.filter(c => affVeh.includes(c.id)).map(c => c.id);
+  }
+  return [];
+}
+
 async function handleAPI(req, res, body) {
   const db = loadDB();
   const parsed = url.parse(req.url, true);
@@ -652,7 +670,8 @@ async function handleAPI(req, res, body) {
 
   // ── LIVREURS MOTO — liste (= chauffeurs de catégorie livreur) ───
   if(p==='/api/livreurs'&&method==='GET'){
-    let list=db.chauffeurs.filter(c=>c.statut==='actif'&&c.categorie==='livreur');
+    const visIds=livreursVisiblesIds(db,auth);
+    let list=db.chauffeurs.filter(c=>visIds.includes(c.id));
     if(q.q){const sq=q.q.toLowerCase();list=list.filter(c=>(c.prenom||'').toLowerCase().includes(sq)||(c.nom||'').toLowerCase().includes(sq));}
     list=list.map(c=>{
       const aff=db.affectations.find(a=>a.chauffeur_id===c.id&&!a.date_fin);
@@ -664,7 +683,8 @@ async function handleAPI(req, res, body) {
 
   // ── HEURES LIVREURS (saisie journalière — le montant est géré via Facturation/Versement) ──
   if(p==='/api/recettes_livreurs'&&method==='GET'){
-    let list=db.recettes_livreurs;
+    const visIds=livreursVisiblesIds(db,auth);
+    let list=db.recettes_livreurs.filter(r=>visIds.includes(r.livreur_id));
     if(q.livreur_id) list=list.filter(r=>r.livreur_id===q.livreur_id);
     if(q.date_debut) list=list.filter(r=>r.date>=q.date_debut);
     if(q.date_fin) list=list.filter(r=>r.date<=q.date_fin);
@@ -673,6 +693,7 @@ async function handleAPI(req, res, body) {
   if(p==='/api/recettes_livreurs'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(!data.livreur_id) return res.end(JSON.stringify({detail:'Livreur obligatoire'}));
+    if(isGest&&!livreursVisiblesIds(db,auth).includes(data.livreur_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Livreur non assigné'}));}
     const date=data.date||today();
     const heures=Number(data.heures)||0;
     const existing=db.recettes_livreurs.findIndex(r=>r.livreur_id===data.livreur_id&&r.date===date);
@@ -683,6 +704,8 @@ async function handleAPI(req, res, body) {
   const rlM=p.match(/^\/api\/recettes_livreurs\/([^/]+)$/);
   if(rlM&&method==='DELETE'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const rExist=db.recettes_livreurs.find(r=>r.id===rlM[1]);
+    if(isGest&&rExist&&!livreursVisiblesIds(db,auth).includes(rExist.livreur_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     db.recettes_livreurs=db.recettes_livreurs.filter(r=>r.id!==rlM[1]);
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
   }
@@ -692,6 +715,7 @@ async function handleAPI(req, res, body) {
   if(calcM&&method==='GET'){
     const livreur=db.chauffeurs.find(c=>c.id===calcM[1]);
     if(!livreur){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!isManager&&!livreursVisiblesIds(db,auth).includes(calcM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const dd=q.date_debut||'0000-00-00', df=q.date_fin||'9999-99-99';
     const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===calcM[1]&&r.date>=dd&&r.date<=df);
     const total_heures=recettes.reduce((s,r)=>s+r.heures,0);
@@ -710,13 +734,15 @@ async function handleAPI(req, res, body) {
 
   // ── PAIEMENTS LIVREURS ───────────────────────────────────────
   if(p==='/api/paiements_livreurs'&&method==='GET'){
-    let list=db.paiements_livreurs;
+    const visIds=livreursVisiblesIds(db,auth);
+    let list=db.paiements_livreurs.filter(pm=>visIds.includes(pm.livreur_id));
     if(q.livreur_id) list=list.filter(pm=>pm.livreur_id===q.livreur_id);
     return res.end(JSON.stringify(list.slice(-300).reverse()));
   }
   if(p==='/api/paiements_livreurs'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(!data.livreur_id) return res.end(JSON.stringify({detail:'Livreur obligatoire'}));
+    if(isGest&&!livreursVisiblesIds(db,auth).includes(data.livreur_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Livreur non assigné'}));}
     const pm={id:uid(),livreur_id:data.livreur_id,periode_debut:data.periode_debut||'',periode_fin:data.periode_fin||'',
       total_heures:Number(data.total_heures)||0,total_verse:Number(data.total_verse)||0,
       taux_horaire:Number(data.taux_horaire)||0,prime:Number(data.prime)||0,
