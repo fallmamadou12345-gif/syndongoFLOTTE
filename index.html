@@ -798,7 +798,14 @@ tr:hover td{background:#fafaf8}
       <div class="card">
         <div class="card-title">Enregistrer une dépense</div>
         <div class="form-row">
-          <div class="field"><label>Véhicule *</label><select id="dv"><option value="">— choisir —</option></select></div>
+          <div class="field">
+            <label>Véhicule *</label>
+            <div class="ac-wrap">
+              <input id="dv-search" placeholder="🔍 Rechercher immat., marque, tag…" autocomplete="off" oninput="acVehiculePicker(this.value,'dv-ac-drop','dv-search','dv')" onfocus="acVehiculePicker(this.value,'dv-ac-drop','dv-search','dv')">
+              <div class="ac-drop" id="dv-ac-drop"></div>
+            </div>
+            <select id="dv" style="margin-top:6px"><option value="">— choisir —</option></select>
+          </div>
           <div class="field"><label>Catégorie *</label>
             <select id="dc">
               <option value="carburant">Carburant</option>
@@ -1015,7 +1022,14 @@ tr:hover td{background:#fafaf8}
         <div class="card-title">📅 Mettre à jour les échéances véhicule</div>
         <div class="info-box" style="margin-bottom:10px">Renseignez les dates d'expiration pour activer les rappels automatiques.</div>
         <div class="form-row">
-          <div class="field"><label>Véhicule *</label><select id="al-veh" onchange="chargerEcheancesVeh()"><option value="">— choisir —</option></select></div>
+          <div class="field">
+            <label>Véhicule *</label>
+            <div class="ac-wrap">
+              <input id="al-veh-search" placeholder="🔍 Rechercher immat., marque, tag…" autocomplete="off" oninput="acVehiculePicker(this.value,'al-veh-ac-drop','al-veh-search','al-veh')" onfocus="acVehiculePicker(this.value,'al-veh-ac-drop','al-veh-search','al-veh')">
+              <div class="ac-drop" id="al-veh-ac-drop"></div>
+            </div>
+            <select id="al-veh" onchange="chargerEcheancesVeh()" style="margin-top:6px"><option value="">— choisir —</option></select>
+          </div>
           <div class="field"><label>Km actuel</label><input id="al-km" type="number" placeholder="120000"></div>
         </div>
         <div class="form-row">
@@ -1038,7 +1052,14 @@ tr:hover td{background:#fafaf8}
         <div class="card-title">📌 Créer un rappel personnalisé</div>
         <div class="info-box" style="margin-bottom:10px">Ajoutez vos propres rappels pour un véhicule (taxe, amende, contrôle, etc.)</div>
         <div class="form-row">
-          <div class="field"><label>Véhicule *</label><select id="al-custom-veh"><option value="">— choisir —</option></select></div>
+          <div class="field">
+            <label>Véhicule *</label>
+            <div class="ac-wrap">
+              <input id="al-custom-veh-search" placeholder="🔍 Rechercher immat., marque, tag…" autocomplete="off" oninput="acVehiculePicker(this.value,'al-custom-veh-ac-drop','al-custom-veh-search','al-custom-veh')" onfocus="acVehiculePicker(this.value,'al-custom-veh-ac-drop','al-custom-veh-search','al-custom-veh')">
+              <div class="ac-drop" id="al-custom-veh-ac-drop"></div>
+            </div>
+            <select id="al-custom-veh" style="margin-top:6px"><option value="">— choisir —</option></select>
+          </div>
           <div class="field"><label>📝 Titre du rappel *</label><input id="al-custom-titre" placeholder="Ex: Taxe municipale, Amende…"></div>
         </div>
         <div class="form-row">
@@ -1063,7 +1084,14 @@ tr:hover td{background:#fafaf8}
               <option value="panne">Panne déclarée</option>
             </select>
           </div>
-          <div class="field"><label>Chauffeur</label><select id="alc"><option value="">— choisir —</option></select></div>
+          <div class="field">
+            <label>Chauffeur</label>
+            <div class="ac-wrap">
+              <input id="alc-search" placeholder="🔍 Rechercher nom, téléphone…" autocomplete="off" oninput="acChauffeurPicker(this.value,'alc-ac-drop','alc-search','alc')" onfocus="acChauffeurPicker(this.value,'alc-ac-drop','alc-search','alc')">
+              <div class="ac-drop" id="alc-ac-drop"></div>
+            </div>
+            <select id="alc" style="margin-top:6px"><option value="">— choisir —</option></select>
+          </div>
         </div>
         <div class="form-row">
           <div class="field"><label>Canal</label><select id="alcn"><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></div>
@@ -2417,9 +2445,9 @@ async function loadTags() {
 
   // Mettre à jour tous les selects
   const selects = [
-    { id: 'vtag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'vtag', placeholder: '— Aucun tag —', filter: true },
     { id: 'gtag', placeholder: '— Aucun tag —', filter: false },
-    { id: 'ev-tag', placeholder: '— Aucun tag —', filter: false },
+    { id: 'ev-tag', placeholder: '— Aucun tag —', filter: true },
     { id: 'v-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag2', placeholder: 'Tous tags', filter: true },
@@ -4081,16 +4109,9 @@ async function refreshSelects() {
   if (ROLE === 'manager') {
     refreshPropSelect('vprop');
     refreshPropSelect('gprop');
-    loadTags();
   }
-
-  // Mettre à jour le filtre tag véhicules
-  const vtEl = document.getElementById('v-tag');
-  if (vtEl) {
-    const cur = vtEl.value;
-    vtEl.innerHTML = '<option value="">Tous tags</option>' + allTags.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
-    if (cur) vtEl.value = cur;
-  }
+  // loadTags() applique déjà le bon filtrage par rôle pour v-tag (et vtag/ev-tag) — ne pas le réécrire ici.
+  loadTags();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4304,6 +4325,62 @@ function selectAcChauf(id, nom) {
   document.getElementById('c-q').value = nom;
   hideAcDrop('c-ac-drop');
   voirFicheChauf(id);
+}
+
+// ── Recherche-sélection générique pour remplir un <select> véhicule/chauffeur ──
+// (même motif que acFacVeh/selectAcFacVeh, mais réutilisable pour plusieurs champs)
+async function acVehiculePicker(q, dropId, searchInputId, selectId) {
+  if (!allVehs.length) allVehs = await api('GET', '/vehicules') || [];
+  const sq = (q || '').toLowerCase().trim();
+  if (!sq) { hideAcDrop(dropId); return; }
+  const filtered = allVehs.filter(function(v) {
+    return v.immatriculation.toLowerCase().includes(sq) ||
+      (v.marque || '').toLowerCase().includes(sq) ||
+      (v.tag || '').toLowerCase().includes(sq);
+  }).slice(0, 8);
+  const items = filtered.map(function(v) {
+    return {
+      main: v.immatriculation + (v.categorie === 'moto' ? ' 🏍️' : ''),
+      sub: (v.marque || '') + (v.tag ? ' · ' + v.tag : ''),
+      badge: null,
+      onclick: "selectVehiculePicker('" + v.id + "','" + v.immatriculation.replace(/'/g, "\\'") + "','" + dropId + "','" + searchInputId + "','" + selectId + "')"
+    };
+  });
+  showAcDrop(dropId, items);
+}
+function selectVehiculePicker(id, immat, dropId, searchInputId, selectId) {
+  document.getElementById(searchInputId).value = immat;
+  const sel = document.getElementById(selectId);
+  sel.value = id;
+  hideAcDrop(dropId);
+  sel.dispatchEvent(new Event('change'));
+}
+
+async function acChauffeurPicker(q, dropId, searchInputId, selectId) {
+  if (!allChaufs.length) allChaufs = await api('GET', '/chauffeurs') || [];
+  const sq = (q || '').toLowerCase().trim();
+  if (!sq) { hideAcDrop(dropId); return; }
+  const filtered = allChaufs.filter(function(c) {
+    return (c.prenom || '').toLowerCase().includes(sq) ||
+      (c.nom || '').toLowerCase().includes(sq) ||
+      (c.telephone || '').includes(sq);
+  }).slice(0, 8);
+  const items = filtered.map(function(c) {
+    return {
+      main: c.prenom + ' ' + c.nom,
+      sub: c.telephone || '',
+      badge: null,
+      onclick: "selectChauffeurPicker('" + c.id + "','" + (c.prenom + ' ' + c.nom).replace(/'/g, "\\'") + "','" + dropId + "','" + searchInputId + "','" + selectId + "')"
+    };
+  });
+  showAcDrop(dropId, items);
+}
+function selectChauffeurPicker(id, nom, dropId, searchInputId, selectId) {
+  document.getElementById(searchInputId).value = nom;
+  const sel = document.getElementById(selectId);
+  sel.value = id;
+  hideAcDrop(dropId);
+  sel.dispatchEvent(new Event('change'));
 }
 
 // ── Filtre dashboard avec autocomplete ────────────────────

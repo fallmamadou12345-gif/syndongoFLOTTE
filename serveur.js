@@ -382,7 +382,14 @@ async function handleAPI(req, res, body) {
   }
 
   // ── TAGS ──────────────────────────────────────────────────
-  if (p==='/api/tags'&&method==='GET') return res.end(JSON.stringify(normalizeTags(db.tags)));
+  if (p==='/api/tags'&&method==='GET') {
+    if (auth.role === 'manager') return res.end(JSON.stringify(normalizeTags(db.tags)));
+    const myTags = new Set(vehsVisibles(db, auth).map(v => v.tag).filter(Boolean));
+    if (auth.role === 'gestionnaire') {
+      (auth.gest.tags || (auth.gest.tag ? [auth.gest.tag] : [])).forEach(t => myTags.add(t));
+    }
+    return res.end(JSON.stringify(normalizeTags([...myTags])));
+  }
   if (p==='/api/tags'&&method==='POST') {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     // Normaliser: toujours stocker les tags comme strings simples
