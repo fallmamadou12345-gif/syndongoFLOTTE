@@ -167,7 +167,28 @@ function calculPaieLivreur(db, livreurId, dd, df) {
   const versements = db.versements.filter(vs => affIds.includes(vs.affectation_id) && vs.date_versement >= dd && vs.date_versement <= df);
   const total_verse = versements.reduce((s, vs) => s + vs.montant, 0);
   const total_facture = db.facturations.filter(f => f.chauffeur_id === livreurId && f.date >= dd && f.date <= df).reduce((s, f) => s + (f.montant_facture || 0), 0);
-  const manquant = Math.max(0, total_facture - total_verse);
+
+  // Manquant réel : imputation FIFO sur TOUT l'historique des versements du livreur
+  // (même méthode que le calcul des retards véhicule), pas seulement le versé de la période —
+  // un versement fait avant ou après la période peut couvrir une facturation de la période.
+  const facsAll = db.facturations.filter(f => f.chauffeur_id === livreurId).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const versAll = db.versements.filter(vs => affIds.includes(vs.affectation_id)).slice().sort((a, b) => a.date_versement.localeCompare(b.date_versement));
+  const pool = versAll.map(vs => vs.montant);
+  const manquant_par_jour = {};
+  let manquant = 0;
+  facsAll.forEach(fac => {
+    let due = fac.montant_facture || 0, impute = 0;
+    for (let i = 0; i < pool.length && due > 0; i++) {
+      const prise = Math.min(pool[i], due);
+      impute += prise; pool[i] -= prise; due -= prise;
+    }
+    const m = (fac.montant_facture || 0) - impute;
+    if (fac.date >= dd && fac.date <= df && m > 0) {
+      manquant += m;
+      manquant_par_jour[fac.date] = (manquant_par_jour[fac.date] || 0) + m;
+    }
+  });
+
   const taux_horaire = db.config_livreurs.taux_horaire || 0;
   const paliers = [...db.config_livreurs.paliers].sort((a, b) => b.seuil - a.seuil);
 
@@ -183,7 +204,7 @@ function calculPaieLivreur(db, livreurId, dd, df) {
 
   const salaire_base = Math.round(total_heures * taux_horaire);
   const montant_a_payer = salaire_base + prime;
-  return { livreur_id: livreurId, nb_jours: recettes.length, total_heures, total_facture, total_verse, manquant,
+  return { livreur_id: livreurId, nb_jours: recettes.length, total_heures, total_facture, total_verse, manquant, manquant_par_jour,
     taux_horaire, prime, detail_primes, nb_jours_primes: detail_primes.length, salaire_base, montant_a_payer };
 }
 
@@ -833,19 +854,18 @@ async function handleAPI(req, res, body) {
     const recettes=db.recettes_livreurs.filter(r=>r.livreur_id===lvId&&r.date>=dd&&r.date<=df);
     const affIds=db.affectations.filter(a=>a.chauffeur_id===lvId).map(a=>a.id);
     const versements=db.versements.filter(vs=>affIds.includes(vs.affectation_id)&&vs.date_versement>=dd&&vs.date_versement<=df);
-    const facturations=db.facturations.filter(f=>f.chauffeur_id===lvId&&f.date>=dd&&f.date<=df);
     const parJour={};
-    function jourDe(date){ return parJour[date]=parJour[date]||{date,heures:0,verse:0,facture:0}; }
+    function jourDe(date){ return parJour[date]=parJour[date]||{date,heures:0,verse:0}; }
     recettes.forEach(r=>{ jourDe(r.date).heures+=r.heures; });
     versements.forEach(vs=>{ jourDe(vs.date_versement).verse+=vs.montant; });
-    facturations.forEach(f=>{ jourDe(f.date).facture+=(f.montant_facture||0); });
+    Object.keys(calc.manquant_par_jour).forEach(date=>{ jourDe(date).manquant=calc.manquant_par_jour[date]; });
     const primeParDate={};
     calc.detail_primes.forEach(d=>{ primeParDate[d.date]=d.prime; });
     const detail_jours=Object.values(parJour).sort((a,b)=>b.date.localeCompare(a.date)).map(j=>{
       const prime=primeParDate[j.date]||0;
       const salaire=Math.round(j.heures*calc.taux_horaire);
-      const manquant=Math.max(0,j.facture-j.verse);
-      return Object.assign({},j,{prime,manquant,montant_a_payer:salaire+prime});
+      const manquant=j.manquant||0;
+      return Object.assign({},j,{manquant,prime,montant_a_payer:salaire+prime});
     });
     return res.end(JSON.stringify(Object.assign({},calc,{detail_jours})));
   }
