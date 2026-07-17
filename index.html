@@ -975,9 +975,21 @@ tr:hover td{background:#fafaf8}
         <div id="me-jours"><div class="empty">Aucune donnée</div></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="me-paiements-card">
         <div class="card-title">Paiements déjà reçus</div>
         <div id="me-paiements"><div class="empty">Aucun paiement</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔧 Contrôle véhicule</div>
+        <div id="me-controle-statut"><div class="empty">Chargement…</div></div>
+        <div id="me-controle-form" style="display:none;margin-top:12px">
+          <div style="font-size:11px;color:#6b6b67;margin-bottom:6px;font-weight:600">État des lieux</div>
+          <div id="me-checklist" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+          <div class="field" style="margin-bottom:10px"><label>Commentaire</label><textarea id="me-ctrl-commentaire" placeholder="Précisions éventuelles…" rows="2"></textarea></div>
+          <div class="field" style="margin-bottom:10px"><label>Photo (optionnel)</label><input type="file" id="me-ctrl-photo" accept="image/*"></div>
+          <button class="btn btn-blue" onclick="soumettreControle(this)">Soumettre le contrôle</button>
+        </div>
       </div>
     </div>
 
@@ -1008,6 +1020,7 @@ tr:hover td{background:#fafaf8}
           <button class="chip inactive" id="al-chip-assurance" onclick="filtrerAlertes('assurance')">🛡️ Assurance</button>
           <button class="chip inactive" id="al-chip-visite" onclick="filtrerAlertes('visite')">🔍 Visite tech.</button>
           <button class="chip inactive" id="al-chip-vidange" onclick="filtrerAlertes('vidange')">🔧 Vidange</button>
+          <button class="chip inactive" id="al-chip-controle" onclick="filtrerAlertes('controle')">🔧 Contrôle véhicule</button>
           <button class="chip inactive" id="al-chip-retard" onclick="filtrerAlertes('retard')">⏰ Retard</button>
           <button class="chip inactive" id="al-chip-dep" onclick="filtrerAlertes('dep')">⚠️ Dépenses</button>
           <button class="chip inactive" id="al-chip-station" onclick="filtrerAlertes('station')">🅿️ Stationnement</button>
@@ -1043,6 +1056,10 @@ tr:hover td{background:#fafaf8}
         <div class="form-row">
           <div class="field"><label>🅿️ Paiement stationnement (échéance)</label><input id="al-station" type="date"></div>
           <div class="field"><label>🅿️ Montant droit de stationnement (F)</label><input id="al-station-mt" type="number" placeholder="50000"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>🔧 Fréquence contrôle véhicule (jours) <span style="font-size:10px;color:#6b6b67">(laisser vide = pas de contrôle périodique requis)</span></label><input id="al-controle-freq" type="number" placeholder="Ex: 30"></div>
+          <div class="field"><label>🔧 Dernier contrôle validé</label><input id="al-controle-date" type="date" disabled style="opacity:.7"></div>
         </div>
         <button class="btn btn-blue" onclick="sauverEcheancesVeh(this)" style="margin-right:8px">💾 Sauvegarder</button>
       </div>
@@ -1184,6 +1201,22 @@ tr:hover td{background:#fafaf8}
             <div style="font-size:12px">Le système va vérifier les doublons, écarts, montants suspects et orphelins</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- INSPECTIONS (contrôles véhicule) -->
+    <div class="page" id="page-inspections">
+      <div class="card">
+        <div class="card-title">
+          ✅ Inspections — état des lieux véhicules/motos
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="chip active-blue" id="insp-chip-en_attente" onclick="filtrerInspections('en_attente')">⏳ En attente</button>
+            <button class="chip inactive" id="insp-chip-valide" onclick="filtrerInspections('valide')">✅ Validés</button>
+            <button class="chip inactive" id="insp-chip-rejete" onclick="filtrerInspections('rejete')">❌ Rejetés</button>
+            <button class="chip inactive" id="insp-chip-tous" onclick="filtrerInspections('')">Tous</button>
+          </div>
+        </div>
+        <div id="insp-list"><div class="empty">Chargement…</div></div>
       </div>
     </div>
 
@@ -1562,7 +1595,7 @@ const API = window.location.hostname === 'localhost'
   ? 'http://localhost:8000/api'
   : window.location.origin + '/api';
 
-let TOKEN = '', ROLE = '', USER = '', LIVREUR_ID = '';
+let TOKEN = '', ROLE = '', USER = '', LIVREUR_ID = '', LIVREUR_CATEGORIE = '';
 let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'', facturer_scope:'tous', encaisser_scope:'tous' }; // Infos du gestionnaire connecté
 let allTags = [], allVehs = [], allChaufs = [], allAffs = [];
 
@@ -1653,7 +1686,7 @@ async function loginLivreur() {
     });
     if (!r.ok) { document.getElementById('login-lv-err').style.display = 'block'; return; }
     const d = await r.json();
-    TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
+    TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || ''; LIVREUR_CATEGORIE = d.categorie || '';
     localStorage.setItem('snd_tk', TOKEN);
     demarrerApp();
   } catch(e) {
@@ -1677,7 +1710,7 @@ window.addEventListener('load', async function() {
     });
     if (r.ok) {
       const d = await r.json();
-      TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
+      TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || ''; LIVREUR_CATEGORIE = d.categorie || '';
       if (d.role === 'gestionnaire') {
         GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', facturer_scope: d.facturer_scope||'tous', encaisser_scope: d.encaisser_scope||'tous' };
       } else {
@@ -1744,6 +1777,7 @@ function demarrerApp() {
       { id: 'depenses', label: 'Dépenses' },
       { id: 'livreurs', label: '🏍️ Livreurs Moto' },
       { id: 'alertes', label: 'Alertes' },
+      { id: 'inspections', label: '✅ Inspections' },
       { id: 'rapports', label: 'Rapports' },
       { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
@@ -1761,6 +1795,7 @@ function demarrerApp() {
       { id: 'depenses', label: 'Dépenses' },
       { id: 'livreurs', label: '🏍️ Livreurs Moto' },
       { id: 'alertes', label: 'Alertes' },
+      { id: 'inspections', label: '✅ Inspections' },
       { id: 'rapports', label: 'Rapports' },
       { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
@@ -1916,6 +1951,8 @@ function loadPage(id) {
     initMonEspaceLivreur();
   } else if (id === 'alertes') {
     loadAlertes();
+  } else if (id === 'inspections') {
+    loadInspections();
   } else if (id === 'rapports') {
     if (typeof filtrerRapport === 'function') filtrerRapport();
     // Ajouter bouton CSV si absent
@@ -2914,12 +2951,13 @@ async function renderFicheVeh() {
   if (perLabel) perLabel.textContent = per ? per.debut + ' → ' + per.fin : 'Toute la période';
 
   // Charger toutes les données
-  const [f, affs, vers, deps, facs] = await Promise.all([
+  const [f, affs, vers, deps, facs, ctrls] = await Promise.all([
     api('GET', '/vehicules/' + _ficheVehIdCur + '/fiche'),
     api('GET', '/affectations'),
     api('GET', '/versements?vehicule_id=' + _ficheVehIdCur),  // Tous les versements de CE véhicule
     api('GET', '/depenses'),
-    api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur)
+    api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur),
+    api('GET', '/controles?vehicule_id=' + _ficheVehIdCur)
   ]);
 
   if (!f || !f.vehicule) { body.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }
@@ -3119,7 +3157,21 @@ async function renderFicheVeh() {
     (v.km_actuel?'<div style="font-size:11px;color:#6b6b67;margin-left:auto">'+v.km_actuel.toLocaleString('fr-FR')+' km</div>':'') +
     '</div>';
 
-  body.innerHTML = infoHTML + kpiHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML;
+  // ── Historique des contrôles véhicule (état des lieux)
+  var ctrlStatutCols = { en_attente: ['#FFF8E6','#BA7517','⏳ En attente'], valide: ['#EAF3DE','#3B6D11','✅ Validé'], rejete: ['#FCEBEB','#A32D2D','❌ Rejeté'] };
+  var ctrlHTML = Array.isArray(ctrls) && ctrls.length ? '<div style="margin-bottom:14px">' +
+    '<div style="font-size:11px;font-weight:600;color:#6b6b67;margin-bottom:6px">CONTRÔLES VÉHICULE ('+ctrls.length+')</div>' +
+    ctrls.slice(0,20).map(function(c) {
+      var sc = ctrlStatutCols[c.statut] || ['#f5f4f0','#444', c.statut];
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f9f9f9;border:1px solid #e0dfd8;border-radius:8px;margin-bottom:4px">' +
+        '<div><span style="font-size:12px">' + c.date_soumission + '</span>' +
+        '<span style="font-size:11px;color:#6b6b67"> · ' + (c.chauffeur||'?') + '</span></div>' +
+        '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;background:' + sc[0] + ';color:' + sc[1] + '">' + sc[2] + '</span>' +
+        '</div>';
+    }).join('') + '</div>'
+    : '<div style="font-size:12px;color:#aaa;margin-bottom:12px;font-style:italic">Aucun contrôle véhicule enregistré</div>';
+
+  body.innerHTML = infoHTML + kpiHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML + ctrlHTML;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3136,14 +3188,26 @@ async function loadChauffeurs() {
   const el = document.getElementById('t-chauffeurs');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
   const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
-  el.innerHTML = '<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Véhicule</th><th>Permis</th>' + (isM ? '<th>Actions</th>' : '') + '</tr></thead><tbody>' +
+  el.innerHTML = '<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Véhicule</th><th>Permis</th>' + (isM ? '<th>Code PIN (espace chauffeur)</th><th>Actions</th>' : '') + '</tr></thead><tbody>' +
     list.map(function(c) {
+      var pinChip = c.pin
+        ? '<div onclick="navigator.clipboard.writeText(\'' + c.pin + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:13px;background:#f5f4f0;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer;display:inline-block" title="Cliquer pour copier">' + c.pin + ' 📋</div>' +
+          '<button class="btn-sm" style="margin-left:5px" onclick="regenPinChauffeur(\'' + c.id + '\')">Régénérer</button>'
+        : '<button class="btn-sm" onclick="regenPinChauffeur(\'' + c.id + '\')">Générer un PIN</button>';
       return '<tr><td onclick="ouvrirFicheChauf(\'' + c.id + '\')" style="cursor:pointer;color:#185FA5;font-weight:700">' + c.prenom + ' ' + c.nom + '</td>' +
         '<td>' + c.telephone + '</td>' +
         '<td>' + (c.vehicule_actuel ? pill(c.vehicule_actuel.split('·')[0].trim(), 'blue') : '<span style="color:#aaa;font-size:11px">Non affecté</span>') + '</td>' +
         '<td>' + (c.numero_permis || '—') + '</td>' +
-        (isM ? '<td style="display:flex;gap:3px"><button class="btn-sm btn-blue" onclick="ouvrirFicheChauf(\'' + c.id + '\')">Fiche</button><button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick=\'editChauf(' + JSON.stringify(c) + ')\'>Modif.</button><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delChauf(\'' + c.id + '\',\'' + c.prenom + ' ' + c.nom + '\')">Suppr.</button></td>' : '') + '</tr>';
+        (isM ? '<td>' + pinChip + '</td><td style="display:flex;gap:3px"><button class="btn-sm btn-blue" onclick="ouvrirFicheChauf(\'' + c.id + '\')">Fiche</button><button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick=\'editChauf(' + JSON.stringify(c) + ')\'>Modif.</button><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delChauf(\'' + c.id + '\',\'' + c.prenom + ' ' + c.nom + '\')">Suppr.</button></td>' : '') + '</tr>';
     }).join('') + '</tbody></table>';
+}
+
+async function regenPinChauffeur(id) {
+  if (!confirm('Générer un nouveau code PIN pour ce chauffeur ? L\'ancien code cessera de fonctionner.')) return;
+  const r = await api('POST', '/chauffeurs/' + id + '/regen_pin');
+  if (!r || (r.detail && !r.pin)) { toast(r.detail || 'Erreur', 'err'); return; }
+  toast('Nouveau code PIN : ' + r.pin);
+  await loadChauffeurs();
 }
 
 async function addChauffeur(btn) {
@@ -3154,7 +3218,7 @@ async function addChauffeur(btn) {
   const r = await api('POST', '/chauffeurs', { prenom: p, nom: n, telephone: t, numero_permis: document.getElementById('cpe').value, adresse: document.getElementById('ca').value, notes: document.getElementById('cno').value, categorie: categorie });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
-  toast(p + ' ' + n + ' enregistré' + (r.pin ? ' — code PIN espace livreur : ' + r.pin : ''));
+  toast(p + ' ' + n + ' enregistré' + (r.pin ? ' — code PIN espace chauffeur : ' + r.pin : ''));
   ['cp', 'cn', 'ct', 'cpe', 'ca', 'cno'].forEach(function(id) { document.getElementById(id).value = ''; });
   loadChauffeurs(); refreshSelects();
 }
@@ -4637,6 +4701,32 @@ async function genererAlertesTechniques() {
           detail:'Actuel: '+v.km_actuel.toLocaleString('fr-FR')+' km / Seuil: '+v.km_prochain_vidange.toLocaleString('fr-FR')+' km', urgence: 2 });
       }
     }
+
+    // ── Contrôle véhicule périodique (état des lieux) ─────────
+    if (v.frequence_controle_jours) {
+      if (!v.date_dernier_controle) {
+        alertes.push({ type:'warn', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+          message:'🔧 Aucun contrôle véhicule enregistré — '+v.immatriculation,
+          detail:'Fréquence configurée : tous les '+v.frequence_controle_jours+' jours', urgence: 2 });
+      } else {
+        var prochainCtrl = new Date(v.date_dernier_controle);
+        prochainCtrl.setDate(prochainCtrl.getDate() + v.frequence_controle_jours);
+        var j4 = Math.ceil((prochainCtrl - todayD) / (1000*60*60*24));
+        if (j4 < 0) {
+          alertes.push({ type:'danger', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+            message:'🔧 Contrôle véhicule <strong>EN RETARD de '+(Math.abs(j4))+' jour(s)</strong> — '+v.immatriculation,
+            detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 3 });
+        } else if (j4 <= 7) {
+          alertes.push({ type:'danger', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+            message:'🔧 Contrôle véhicule dû dans <strong>'+j4+' jour(s)</strong> — '+v.immatriculation,
+            detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 3 });
+        } else if (j4 <= 30) {
+          alertes.push({ type:'warn', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
+            message:'🔧 Contrôle véhicule dû dans '+j4+' jours — '+v.immatriculation,
+            detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 2 });
+        }
+      }
+    }
   });
 
   // ── Retards importants (> 30 000 F) ───────────────────────
@@ -4728,7 +4818,7 @@ async function genererAlertesTechniques() {
 function filtrerAlertes(type) {
   if (type) _alerteFiltreType = type;
   var q = ((document.getElementById('al-q')||{}).value||'').toLowerCase();
-  ['tous','assurance','visite','vidange','retard','dep','station','custom'].forEach(function(t) {
+  ['tous','assurance','visite','vidange','controle','retard','dep','station','custom'].forEach(function(t) {
     var c = document.getElementById('al-chip-' + t);
     if (c) c.className = 'chip ' + (_alerteFiltreType===t ? 'active-blue' : 'inactive');
   });
@@ -4761,6 +4851,75 @@ function filtrerAlertes(type) {
   }).join('');
 }
 
+// ═══════════════════════════════════════════════════════
+// INSPECTIONS — contrôles véhicule (validation manager/gestionnaire)
+// ═══════════════════════════════════════════════════════
+let _inspectionsFiltre = 'en_attente';
+const INSPECTION_LABELS = { freins:'🛑 Freins', pneus:'🛞 Pneus', eclairage:'💡 Éclairage', carrosserie:'🚗 Carrosserie', niveaux:'🛢️ Niveaux' };
+
+async function loadInspections() {
+  filtrerInspections(_inspectionsFiltre);
+}
+
+async function filtrerInspections(statut) {
+  _inspectionsFiltre = statut;
+  ['en_attente','valide','rejete','tous'].forEach(function(t) {
+    var c = document.getElementById('insp-chip-' + t);
+    if (c) c.className = 'chip ' + ((statut===t || (statut==='' && t==='tous')) ? 'active-blue' : 'inactive');
+  });
+  var el = document.getElementById('insp-list');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">Chargement…</div>';
+  var list = await api('GET', '/controles' + (statut ? '?statut=' + statut : ''));
+  if (!Array.isArray(list) || !list.length) {
+    el.innerHTML = '<div class="empty">Aucune inspection pour ce filtre</div>';
+    return;
+  }
+  var statutCols = { en_attente: ['#FFF8E6','#BA7517','⏳ En attente'], valide: ['#EAF3DE','#3B6D11','✅ Validé'], rejete: ['#FCEBEB','#A32D2D','❌ Rejeté'] };
+  el.innerHTML = list.map(function(c) {
+    var sc = statutCols[c.statut] || ['#f5f4f0','#444', c.statut];
+    var checklistHtml = Object.keys(c.checklist || {}).map(function(k) {
+      var v = c.checklist[k];
+      return '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:' + (v==='ok'?'#EAF3DE':'#FCEBEB') + ';color:' + (v==='ok'?'#27500A':'#A32D2D') + '">' + (INSPECTION_LABELS[k]||k) + ' ' + (v==='ok'?'✓':'✕') + '</span>';
+    }).join(' ');
+    return '<div style="border:1px solid #e0dfd8;border-left:3px solid ' + sc[1] + ';border-radius:8px;padding:12px 14px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;background:' + sc[0] + ';color:' + sc[1] + '">' + sc[2] + '</span>' +
+          '<span style="font-size:12px;font-weight:600">' + (c.vehicule||'?') + '</span>' +
+          '<span style="font-size:11px;color:#6b6b67">· ' + (c.chauffeur||'?') + '</span>' +
+          '<span style="font-size:11px;color:#6b6b67">· ' + (c.date_soumission||'') + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + checklistHtml + '</div>' +
+      (c.commentaire_chauffeur ? '<div style="font-size:13px;color:#1a1a18;margin-bottom:8px">💬 ' + c.commentaire_chauffeur + '</div>' : '') +
+      (c.photo && c.photo.data ? '<div style="margin-bottom:8px"><img src="' + c.photo.data + '" style="max-width:200px;max-height:160px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer" onclick="window.open(this.src)"></div>' : '') +
+      (c.statut === 'rejete' && c.commentaire_gestionnaire ? '<div style="font-size:12px;color:#A32D2D;margin-bottom:8px">Motif du rejet : ' + c.commentaire_gestionnaire + '</div>' : '') +
+      (c.statut === 'en_attente' ? '<div style="display:flex;gap:8px">' +
+        '<button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="validerControle(\'' + c.id + '\')">✅ Valider</button>' +
+        '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="rejeterControle(\'' + c.id + '\')">❌ Rejeter</button>' +
+      '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+async function validerControle(id) {
+  if (!confirm('Valider ce contrôle ?')) return;
+  const r = await api('POST', '/controles/' + id + '/valider');
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Contrôle validé');
+  filtrerInspections(_inspectionsFiltre);
+}
+
+async function rejeterControle(id) {
+  var motif = prompt('Motif du rejet (obligatoire) :');
+  if (!motif || !motif.trim()) { if (motif !== null) toast('Motif obligatoire', 'err'); return; }
+  const r = await api('POST', '/controles/' + id + '/rejeter', { commentaire_gestionnaire: motif.trim() });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Contrôle rejeté');
+  filtrerInspections(_inspectionsFiltre);
+}
+
 // Charger les échéances d'un véhicule dans le formulaire
 async function chargerEcheancesVeh() {
   var vid = (document.getElementById('al-veh')||{}).value || '';
@@ -4775,7 +4934,9 @@ async function chargerEcheancesVeh() {
     'al-km-vidange': v.km_prochain_vidange || '',
     'al-carte-grise': v.date_carte_grise || '',
     'al-station': v.date_station || '',
-    'al-station-mt': v.montant_station || ''
+    'al-station-mt': v.montant_station || '',
+    'al-controle-freq': v.frequence_controle_jours || '',
+    'al-controle-date': v.date_dernier_controle || ''
   };
   Object.keys(fields).forEach(function(id) {
     var el = document.getElementById(id);
@@ -4795,7 +4956,8 @@ async function sauverEcheancesVeh(btn) {
     km_prochain_vidange: parseInt(document.getElementById('al-km-vidange').value) || undefined,
     date_carte_grise: document.getElementById('al-carte-grise').value || undefined,
     date_station: document.getElementById('al-station').value || undefined,
-    montant_station: parseInt(document.getElementById('al-station-mt').value) || undefined
+    montant_station: parseInt(document.getElementById('al-station-mt').value) || undefined,
+    frequence_controle_jours: parseInt(document.getElementById('al-controle-freq').value) || undefined
   };
   // Supprimer les champs undefined
   Object.keys(data).forEach(function(k){ if (!data[k]) delete data[k]; });
@@ -5288,8 +5450,88 @@ async function initMonEspaceLivreur() {
     const titre = document.getElementById('me-titre');
     if (titre) titre.textContent = 'Mon espace — ' + me.prenom + ' ' + me.nom + (me.moto_immat ? ' (' + me.moto_immat + ')' : '');
   }
+  const paiementsCard = document.getElementById('me-paiements-card');
+  if (paiementsCard) paiementsCard.style.display = (LIVREUR_CATEGORIE === 'livreur') ? 'block' : 'none';
   await loadMonEspaceLivreur();
-  await loadMesPaiementsLivreur();
+  if (LIVREUR_CATEGORIE === 'livreur') await loadMesPaiementsLivreur();
+  await initMeControle();
+}
+
+// ── Contrôle véhicule (état des lieux) — soumission côté chauffeur ──
+const CONTROLE_ITEMS = [
+  { key:'freins', label:'🛑 Freins' },
+  { key:'pneus', label:'🛞 Pneus' },
+  { key:'eclairage', label:'💡 Éclairage' },
+  { key:'carrosserie', label:'🚗 Carrosserie' },
+  { key:'niveaux', label:'🛢️ Niveaux (huile, etc.)' }
+];
+let _meChecklistState = {};
+
+function renderChecklist() {
+  var el = document.getElementById('me-checklist');
+  if (!el) return;
+  el.innerHTML = CONTROLE_ITEMS.map(function(item) {
+    var etat = _meChecklistState[item.key] || null;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f5f4f0;border-radius:8px">' +
+      '<span style="font-size:13px;font-weight:600">' + item.label + '</span>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button type="button" class="btn-sm" style="background:' + (etat==='ok'?'#3B6D11':'#e0dfd8') + ';color:' + (etat==='ok'?'#fff':'#444') + '" onclick="setChecklistEtat(\'' + item.key + '\',\'ok\')">✓ OK</button>' +
+        '<button type="button" class="btn-sm" style="background:' + (etat==='probleme'?'#A32D2D':'#e0dfd8') + ';color:' + (etat==='probleme'?'#fff':'#444') + '" onclick="setChecklistEtat(\'' + item.key + '\',\'probleme\')">✕ Problème</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function setChecklistEtat(key, val) {
+  _meChecklistState[key] = val;
+  renderChecklist();
+}
+
+async function initMeControle() {
+  _meChecklistState = {};
+  renderChecklist();
+  const el = document.getElementById('me-controle-statut');
+  if (!el) return;
+  const list = await api('GET', '/livreur/controle');
+  const dernier = Array.isArray(list) && list.length ? list[0] : null;
+  if (!dernier) {
+    el.innerHTML = '<div class="empty">Aucun contrôle soumis pour l\'instant</div>';
+  } else if (dernier.statut === 'en_attente') {
+    el.innerHTML = '<div class="warn-box">⏳ Contrôle soumis le ' + dernier.date_soumission + ' — en attente de validation par votre gestionnaire</div>';
+  } else if (dernier.statut === 'valide') {
+    el.innerHTML = '<div class="info-box" style="background:#EAF3DE;border-color:#C0DD97;color:#27500A">✅ Dernier contrôle validé le ' + (dernier.date_traitement || dernier.date_soumission).slice(0,10) + '</div>';
+  } else if (dernier.statut === 'rejete') {
+    el.innerHTML = '<div class="err-box">❌ Contrôle du ' + dernier.date_soumission + ' rejeté' + (dernier.commentaire_gestionnaire ? ' : ' + dernier.commentaire_gestionnaire : '') + ' — merci de resoumettre</div>';
+  }
+  const formEl = document.getElementById('me-controle-form');
+  if (formEl) formEl.style.display = 'block';
+}
+
+async function soumettreControle(btn) {
+  var manquant = CONTROLE_ITEMS.filter(function(i) { return !_meChecklistState[i.key]; });
+  if (manquant.length) { toast('Merci de renseigner tous les points du contrôle', 'err'); return; }
+  setBtnLoad(btn, true);
+  var fileInput = document.getElementById('me-ctrl-photo');
+  var photo = null;
+  if (fileInput && fileInput.files[0]) {
+    photo = await new Promise(function(resolve) {
+      var r = new FileReader();
+      r.onload = function(ev) { resolve({ data: ev.target.result, nom: fileInput.files[0].name, type: fileInput.files[0].type }); };
+      r.readAsDataURL(fileInput.files[0]);
+    });
+  }
+  const res = await api('POST', '/livreur/controle', {
+    checklist: _meChecklistState,
+    commentaire_chauffeur: (document.getElementById('me-ctrl-commentaire') || {}).value || '',
+    photo: photo
+  });
+  setBtnLoad(btn, false);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Contrôle soumis, en attente de validation');
+  document.getElementById('me-ctrl-commentaire').value = '';
+  if (fileInput) fileInput.value = '';
+  _meChecklistState = {};
+  renderChecklist();
+  initMeControle();
 }
 
 async function loadMonEspaceLivreur() {
@@ -5306,17 +5548,20 @@ async function loadMonEspaceLivreur() {
   const r = await api('GET', url);
   if (!r || r.detail) { el.innerHTML = '<div class="empty">' + (r ? r.detail : 'Erreur') + '</div>'; return; }
 
+  var estLivreurMoto = LIVREUR_CATEGORIE === 'livreur';
   const objectifBox = (_meCache && _meCache.montant_journalier)
     ? '<div class="stat-box"><div class="stat-val">' + fmt(_meCache.montant_journalier) + '</div><div class="stat-label">Objectif quotidien à verser</div></div>'
     : '';
-  el.innerHTML = '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' +
-    '<div class="stat-box"><div class="stat-val">' + formatHeures(r.total_heures) + '</div><div class="stat-label">Heures travaillées</div></div>' +
-    '<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Montant versé</div></div>' +
-    objectifBox +
-    '<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)') + '</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER (période)</div></div>' +
-  '</div>';
+  var boxes = [];
+  if (estLivreurMoto) boxes.push('<div class="stat-box"><div class="stat-val">' + formatHeures(r.total_heures) + '</div><div class="stat-label">Heures travaillées</div></div>');
+  boxes.push('<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Montant versé</div></div>');
+  boxes.push(objectifBox);
+  boxes.push('<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>');
+  if (estLivreurMoto) {
+    boxes.push('<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)') + '</div></div>');
+    boxes.push('<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER (période)</div></div>');
+  }
+  el.innerHTML = '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' + boxes.join('') + '</div>';
 
   _meJoursCache = Array.isArray(r.detail_jours) ? r.detail_jours : [];
   if (!elJ) return;
@@ -5330,12 +5575,19 @@ function filtrerMeJours() {
   const q = (document.getElementById('me-jour-q') || {}).value || '';
   const jours = q ? _meJoursCache.filter(function(j) { return j.date === q; }) : _meJoursCache;
   if (!jours.length) { elJ.innerHTML = '<div class="empty">' + (q ? 'Aucune donnée pour le ' + q : 'Aucune donnée sur cette période') + '</div>'; return; }
-  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Heures</th><th>Versé</th><th>Manquant</th><th>Prime</th><th>Montant à payer</th></tr></thead><tbody>' +
+  var estLivreurMotoJ = LIVREUR_CATEGORIE === 'livreur';
+  var theadExtra = estLivreurMotoJ ? '<th>Heures</th>' : '';
+  var theadExtra2 = estLivreurMotoJ ? '<th>Prime</th><th>Montant à payer</th>' : '';
+  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th>' + theadExtra + '<th>Versé</th><th>Manquant</th>' + theadExtra2 + '</tr></thead><tbody>' +
     jours.map(function(j) {
-      return '<tr><td data-label="Date">' + j.date + '</td><td data-label="Heures">' + formatHeures(j.heures) + '</td><td data-label="Versé">' + fmt(j.verse) + '</td>' +
+      var rowExtra = estLivreurMotoJ ? '<td data-label="Heures">' + formatHeures(j.heures) + '</td>' : '';
+      var rowExtra2 = estLivreurMotoJ
+        ? '<td data-label="Prime"' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
+          '<td data-label="Montant à payer" style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td>'
+        : '';
+      return '<tr><td data-label="Date">' + j.date + '</td>' + rowExtra + '<td data-label="Versé">' + fmt(j.verse) + '</td>' +
         '<td data-label="Manquant"' + (j.manquant > 0 ? ' style="color:#A32D2D;font-weight:700"' : '') + '>' + fmt(j.manquant) + '</td>' +
-        '<td data-label="Prime"' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
-        '<td data-label="Montant à payer" style="font-weight:700;color:#0C447C">' + fmt(j.montant_a_payer) + '</td></tr>';
+        rowExtra2 + '</tr>';
     }).join('') + '</tbody></table></div>';
 }
 

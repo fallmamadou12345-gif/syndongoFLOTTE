@@ -81,7 +81,7 @@ function loadDB() {
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
-   'livreurs','recettes_livreurs','paiements_livreurs'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'livreurs','recettes_livreurs','paiements_livreurs','controles_vehicule'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   return db;
@@ -108,7 +108,7 @@ function getRole(req) {
   if (gest) return { role:'gestionnaire', gest };
   if (token.startsWith('lv:')) {
     const [, lvId, lvPin] = token.split(':');
-    const livreur = db.chauffeurs.find(c => c.id === lvId && c.categorie === 'livreur' && c.statut === 'actif' && c.pin && c.pin === lvPin);
+    const livreur = db.chauffeurs.find(c => c.id === lvId && c.statut === 'actif' && c.pin && c.pin === lvPin);
     if (livreur) return { role:'livreur', livreur };
   }
   return { role:'public' };
@@ -210,18 +210,23 @@ function calculPaieLivreur(db, livreurId, dd, df) {
     }
   });
 
-  const taux_horaire = db.config_livreurs.taux_horaire || 0;
-  const paliers = [...db.config_livreurs.paliers].sort((a, b) => b.seuil - a.seuil);
+  // Prime/palier : réservée aux livreurs moto (categorie==='livreur') — jamais versée
+  // par erreur à un chauffeur VTC, ce système d'incitation ne les concerne pas.
+  const estLivreurMoto = (db.chauffeurs.find(c => c.id === livreurId) || {}).categorie === 'livreur';
+  const taux_horaire = estLivreurMoto ? (db.config_livreurs.taux_horaire || 0) : 0;
+  const paliers = estLivreurMoto ? [...db.config_livreurs.paliers].sort((a, b) => b.seuil - a.seuil) : [];
 
   const versePerDay = {};
   versements.forEach(vs => { versePerDay[vs.date_versement] = (versePerDay[vs.date_versement] || 0) + vs.montant; });
   const detail_primes = [];
   let prime = 0;
-  Object.keys(versePerDay).sort().forEach(date => {
-    const montant_jour = versePerDay[date];
-    const pl = paliers.find(p => montant_jour >= p.seuil);
-    if (pl) { prime += pl.prime; detail_primes.push({ date, montant_jour, seuil: pl.seuil, prime: pl.prime }); }
-  });
+  if (estLivreurMoto) {
+    Object.keys(versePerDay).sort().forEach(date => {
+      const montant_jour = versePerDay[date];
+      const pl = paliers.find(p => montant_jour >= p.seuil);
+      if (pl) { prime += pl.prime; detail_primes.push({ date, montant_jour, seuil: pl.seuil, prime: pl.prime }); }
+    });
+  }
 
   const salaire_base = Math.round(total_heures * taux_horaire);
   const montant_a_payer = salaire_base + prime;
@@ -276,15 +281,15 @@ async function handleAPI(req, res, body) {
     if (data.telephone && data.pin) {
       const tel = String(data.telephone).trim();
       const pin = String(data.pin).trim();
-      const lv = db.chauffeurs.find(c => c.categorie === 'livreur' && c.statut === 'actif' && c.telephone === tel && c.pin && c.pin === pin);
-      if (lv) return res.end(JSON.stringify({ role:'livreur', token:'lv:'+lv.id+':'+lv.pin, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id }));
+      const lv = db.chauffeurs.find(c => c.statut === 'actif' && c.telephone === tel && c.pin && c.pin === pin);
+      if (lv) return res.end(JSON.stringify({ role:'livreur', token:'lv:'+lv.id+':'+lv.pin, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id, categorie:lv.categorie||'chauffeur' }));
       res.writeHead(401); return res.end(JSON.stringify({ detail:'Téléphone ou code incorrect' }));
     }
     // Reconnexion auto (localStorage) avec un jeton livreur déjà émis : "lv:<id>:<pin>"
     if (typeof data.password === 'string' && data.password.startsWith('lv:')) {
       const [, lvId, lvPin] = data.password.split(':');
-      const lv = db.chauffeurs.find(c => c.id === lvId && c.categorie === 'livreur' && c.statut === 'actif' && c.pin && c.pin === lvPin);
-      if (lv) return res.end(JSON.stringify({ role:'livreur', token:data.password, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id }));
+      const lv = db.chauffeurs.find(c => c.id === lvId && c.statut === 'actif' && c.pin && c.pin === lvPin);
+      if (lv) return res.end(JSON.stringify({ role:'livreur', token:data.password, nom:lv.prenom+' '+lv.nom, livreur_id:lv.id, categorie:lv.categorie||'chauffeur' }));
     }
     res.writeHead(401); return res.end(JSON.stringify({ detail:'Mot de passe incorrect' }));
   }
@@ -595,7 +600,7 @@ async function handleAPI(req, res, body) {
               telephone_wave: numerosWave[0]||'', // Compat
               statut:'actif',date_embauche:today(),
               cree_par:isGest?auth.gest.id:'manager'};
-    if(c.categorie==='livreur') c.pin=genPin();
+    c.pin=genPin();
     db.chauffeurs.push(c);
     // Historique
     db.historique=(db.historique||[]);
@@ -605,7 +610,7 @@ async function handleAPI(req, res, body) {
   }
   const cM=p.match(/^\/api\/chauffeurs\/([^/]+)$/);
   if(cM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){db.chauffeurs[idx].statut='depart';saveDB(db);}return res.end(JSON.stringify({message:'Chauffeur marqué comme parti'}));}
-  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};if(db.chauffeurs[idx].categorie==='livreur'&&!db.chauffeurs[idx].pin)db.chauffeurs[idx].pin=genPin();saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};if(!db.chauffeurs[idx].pin)db.chauffeurs[idx].pin=genPin();saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
 
   // ── FICHE CHAUFFEUR ───────────────────────────────────────
   const cFiche=p.match(/^\/api\/chauffeurs\/([^/]+)\/fiche$/);
@@ -811,6 +816,23 @@ async function handleAPI(req, res, body) {
     return res.end(JSON.stringify({pin:db.chauffeurs[idx].pin,message:'Code PIN régénéré'}));
   }
 
+  // ── CHAUFFEURS (tous, pas seulement livreurs) — régénérer le code PIN d'accès ──
+  const regenPinChM=p.match(/^\/api\/chauffeurs\/([^/]+)\/regen_pin$/);
+  if(regenPinChM&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.chauffeurs.findIndex(c=>c.id===regenPinChM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Chauffeur introuvable'}));}
+    if(isGest){
+      const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+      const affVeh=db.affectations.filter(a=>myVehs.includes(a.vehicule_id)&&!a.date_fin).map(a=>a.chauffeur_id);
+      const estAMoi=affVeh.includes(regenPinChM[1])||db.chauffeurs[idx].cree_par===auth.gest.id;
+      if(!estAMoi){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    }
+    db.chauffeurs[idx].pin=genPin();
+    saveDB(db);
+    return res.end(JSON.stringify({pin:db.chauffeurs[idx].pin,message:'Code PIN régénéré'}));
+  }
+
   // ── HEURES LIVREURS (saisie journalière — le montant est géré via Facturation/Versement) ──
   if(p==='/api/recettes_livreurs'&&method==='GET'){
     const visIds=livreursVisiblesIds(db,auth);
@@ -913,6 +935,68 @@ async function handleAPI(req, res, body) {
     if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const list=db.paiements_livreurs.filter(pm=>pm.livreur_id===auth.livreur.id);
     return res.end(JSON.stringify(list.slice(-300).reverse()));
+  }
+
+  // ── CONTRÔLES VÉHICULE (état des lieux périodique) ───────────
+  // Soumission par le chauffeur/livreur connecté (rôle 'livreur', toute catégorie)
+  if(p==='/api/livreur/controle'&&method==='POST'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const lvId=auth.livreur.id;
+    const aff=db.affectations.find(a=>a.chauffeur_id===lvId&&!a.date_fin);
+    if(!aff) return res.end(JSON.stringify({detail:'Aucun véhicule affecté'}));
+    const c={id:uid(),vehicule_id:aff.vehicule_id,chauffeur_id:lvId,date_soumission:today(),
+      checklist:data.checklist||{},commentaire_chauffeur:data.commentaire_chauffeur||'',
+      photo:data.photo||null,statut:'en_attente',
+      commentaire_gestionnaire:'',traite_par:'',date_traitement:null,
+      created_at:new Date().toISOString()};
+    db.controles_vehicule.push(c);saveDB(db);
+    return res.end(JSON.stringify({id:c.id,message:'Contrôle soumis, en attente de validation'}));
+  }
+  if(p==='/api/livreur/controle'&&method==='GET'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const list=db.controles_vehicule.filter(c=>c.chauffeur_id===auth.livreur.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+    return res.end(JSON.stringify(list.slice(0,50)));
+  }
+
+  // ── CONTRÔLES VÉHICULE — vue manager/gestionnaire/propriétaire ──
+  if(p==='/api/controles'&&method==='GET'){
+    if(!isManager&&!isGest&&!isProprio){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=db.controles_vehicule.filter(c=>myVehs.includes(c.vehicule_id));
+    if(q.statut) list=list.filter(c=>c.statut===q.statut);
+    if(q.vehicule_id) list=list.filter(c=>c.vehicule_id===q.vehicule_id);
+    list=list.map(c=>{
+      const v=db.vehicules.find(x=>x.id===c.vehicule_id);
+      const ch=db.chauffeurs.find(x=>x.id===c.chauffeur_id);
+      return{...c,vehicule:v?v.immatriculation:'?',chauffeur:ch?ch.prenom+' '+ch.nom:'?'};
+    });
+    return res.end(JSON.stringify(list.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,200)));
+  }
+  const controleValiderM=p.match(/^\/api\/controles\/([^/]+)\/valider$/);
+  if(controleValiderM&&method==='POST'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.controles_vehicule.findIndex(c=>c.id===controleValiderM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Contrôle introuvable'}));}
+    const ctrl=db.controles_vehicule[idx];
+    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(ctrl.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    ctrl.statut='valide';ctrl.traite_par=isGest?auth.gest.nom:'Manager';ctrl.date_traitement=new Date().toISOString();
+    const vIdx=db.vehicules.findIndex(v=>v.id===ctrl.vehicule_id);
+    if(vIdx!==-1) db.vehicules[vIdx].date_dernier_controle=today();
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Contrôle validé'}));
+  }
+  const controleRejeterM=p.match(/^\/api\/controles\/([^/]+)\/rejeter$/);
+  if(controleRejeterM&&method==='POST'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.commentaire_gestionnaire||!data.commentaire_gestionnaire.trim()) return res.end(JSON.stringify({detail:'Un motif de rejet est requis'}));
+    const idx=db.controles_vehicule.findIndex(c=>c.id===controleRejeterM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Contrôle introuvable'}));}
+    const ctrl=db.controles_vehicule[idx];
+    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(ctrl.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    ctrl.statut='rejete';ctrl.commentaire_gestionnaire=data.commentaire_gestionnaire.trim();
+    ctrl.traite_par=isGest?auth.gest.nom:'Manager';ctrl.date_traitement=new Date().toISOString();
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Contrôle rejeté'}));
   }
 
   // ── FACTURATIONS ──────────────────────────────────────────
