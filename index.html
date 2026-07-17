@@ -1357,15 +1357,9 @@ tr:hover td{background:#fafaf8}
           <div class="field"><label>Mot de passe *</label><input id="gpwd" placeholder="Ex: gestIbr2026"></div>
           <div class="field"><label>Propriétaire lié (véhicules auto-assignés)</label><select id="gprop"><option value="">— Aucun —</option></select></div>
         </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Tag / Groupe géré <span style="font-size:10px;color:#6b6b67">(tous les véhicules de ce tag seront assignés)</span></label>
-            <select id="gtag"><option value="">— Aucun tag —</option></select>
-          </div>
-          <div class="field">
-            <label>Tags multiples <span style="font-size:10px;color:#6b6b67">(sélection multiple)</span></label>
-            <div id="gtags-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#f5f4f0;border-radius:8px;min-height:36px;border:1px solid #e0dfd8"></div>
-          </div>
+        <div class="field" style="margin-bottom:10px">
+          <label>Tag(s) / Groupe(s) géré(s) <span style="font-size:10px;color:#6b6b67">(cochez un ou plusieurs — tous les véhicules de ces tags seront assignés)</span></label>
+          <div id="gtags-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px;background:#f5f4f0;border-radius:8px;min-height:36px;border:1px solid #e0dfd8"></div>
         </div>
         <div style="font-size:11px;color:#6b6b67;margin-bottom:10px;padding:7px 10px;background:#EAF3DE;border-radius:6px">
           💡 <strong>Priorité :</strong> Tag(s) &gt; Propriétaire lié. Si un tag est sélectionné, tous les véhicules de ce tag seront automatiquement assignés au gestionnaire.
@@ -1950,8 +1944,7 @@ function loadPage(id) {
       initPropVehCheckboxes();
     }
   } else if (id === 'acces') {
-    loadGestionnaires(); loadProprietaires();
-    setTimeout(function(){ initGtagsCheckboxes(); }, 300);
+    loadGestionnaires(); loadProprietaires(); initGtagsCheckboxes();
   }
 }
 
@@ -2532,7 +2525,6 @@ async function loadTags() {
   // Mettre à jour tous les selects
   const selects = [
     { id: 'vtag', placeholder: '— Aucun tag —', filter: true },
-    { id: 'gtag', placeholder: '— Aucun tag —', filter: false },
     { id: 'ev-tag', placeholder: '— Aucun tag —', filter: true },
     { id: 'v-tag', placeholder: 'Tous tags', filter: true },
     { id: 'd-filter-tag', placeholder: 'Tous tags', filter: true },
@@ -4019,11 +4011,8 @@ async function addGestionnaire(btn) {
   if (!nom || !pwd) { toast('Nom et mot de passe obligatoires', 'err'); return; }
 
   const proprio_id = document.getElementById('gprop').value;
-  // Tags sélectionnés (multi)
-  const tagsSelectionnes = Array.from(document.querySelectorAll('#gtags-checkboxes input:checked')).map(function(cb){ return cb.value; });
-  // Tag unique (select simple) — priorité si sélectionné
-  const tagUnique = (document.getElementById('gtag') || {}).value || '';
-  const tagsFinaux = tagsSelectionnes.length ? tagsSelectionnes : (tagUnique ? [tagUnique] : []);
+  // Tags sélectionnés (un ou plusieurs)
+  const tagsFinaux = Array.from(document.querySelectorAll('#gtags-checkboxes input:checked')).map(function(cb){ return cb.value; });
 
   let vehicules_ids = [];
   const vehs = await api('GET', '/vehicules');
@@ -4062,7 +4051,6 @@ async function addGestionnaire(btn) {
   if (r.detail) { toast(r.detail, 'err'); return; }
   toast('✅ Gestionnaire ' + nom + ' créé' + (vehicules_ids.length ? ' — ' + vehicules_ids.length + ' véhicule(s)' : ''));
   ['gnom', 'gtel', 'gpwd'].forEach(function(id) { document.getElementById(id).value = ''; });
-  var gtag = document.getElementById('gtag'); if (gtag) gtag.value = '';
   document.querySelectorAll('#gtags-checkboxes input:checked').forEach(function(cb){ cb.checked = false; });
   loadGestionnaires();
 }
@@ -6977,14 +6965,22 @@ async function syncTagsGest(gid) {
 async function initGtagsCheckboxes() {
   var el = document.getElementById('gtags-checkboxes');
   if (!el) return;
-  var vehs = await api('GET', '/vehicules');
+  // Rendu immédiat (allTags est déjà en cache) — ne pas attendre l'appel réseau pour afficher les cases.
+  var cur = Array.from(el.querySelectorAll('input:checked')).map(function(cb){ return cb.value; });
   el.innerHTML = allTags.map(function(t) {
-    var nb = Array.isArray(vehs) ? vehs.filter(function(v){ return v.tag===t; }).length : 0;
     return '<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#fff;border:1px solid #e0dfd8;border-radius:99px;cursor:pointer;font-size:12px">' +
-      '<input type="checkbox" value="' + t + '" style="width:13px;height:13px">' +
-      '<span>' + t + ' <span style="color:#6b6b67;font-size:10px">(' + nb + ')</span></span>' +
+      '<input type="checkbox" value="' + t + '" style="width:13px;height:13px"' + (cur.indexOf(t)!==-1?' checked':'') + '>' +
+      '<span>' + t + '</span>' +
       '</label>';
   }).join('');
+  // Compléter avec le nombre de véhicules par tag une fois chargé (non bloquant)
+  var vehs = await api('GET', '/vehicules');
+  if (!Array.isArray(vehs)) return;
+  el.querySelectorAll('label').forEach(function(lbl) {
+    var cb = lbl.querySelector('input');
+    var nb = vehs.filter(function(v){ return v.tag === cb.value; }).length;
+    lbl.querySelector('span').innerHTML = cb.value + ' <span style="color:#6b6b67;font-size:10px">(' + nb + ')</span>';
+  });
 }
 
 // ─── GESTIONNAIRE : initialiser les checkboxes véhicules pour un proprio ───

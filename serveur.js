@@ -1141,7 +1141,7 @@ async function handleAPI(req, res, body) {
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(db.gestionnaires.find(g=>g.password===data.password)) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
     const scopesValides=['tous','moto','voiture','aucun'];
-    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:data.password||uid().slice(0,8),vehicules_ids:data.vehicules_ids||[],tag:data.tag||'',proprio_id:data.proprio_id||null,
+    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:data.password||uid().slice(0,8),vehicules_ids:data.vehicules_ids||[],tags:normalizeTags(data.tags||[]),tag:data.tag||'',proprio_id:data.proprio_id||null,
       facturer_scope:scopesValides.includes(data.facturer_scope)?data.facturer_scope:'tous',
       encaisser_scope:scopesValides.includes(data.encaisser_scope)?data.encaisser_scope:'tous'};
     db.gestionnaires.push(g);saveDB(db);return res.end(JSON.stringify({id:g.id,password:g.password,message:'Gestionnaire créé'}));
