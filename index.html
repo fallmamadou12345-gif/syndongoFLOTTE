@@ -1370,9 +1370,23 @@ tr:hover td{background:#fafaf8}
         <div style="font-size:11px;color:#6b6b67;margin-bottom:10px;padding:7px 10px;background:#EAF3DE;border-radius:6px">
           💡 <strong>Priorité :</strong> Tag(s) &gt; Propriétaire lié. Si un tag est sélectionné, tous les véhicules de ce tag seront automatiquement assignés au gestionnaire.
         </div>
-        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="g-peut-facturer" checked style="width:auto"> Peut facturer</label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="g-peut-encaisser" checked style="width:auto"> Peut encaisser</label>
+        <div class="form-row">
+          <div class="field"><label>Facturer</label>
+            <select id="g-facturer-scope">
+              <option value="tous">Tous (motos + voitures)</option>
+              <option value="moto">Motos uniquement</option>
+              <option value="voiture">Voitures uniquement</option>
+              <option value="aucun">Aucun</option>
+            </select>
+          </div>
+          <div class="field"><label>Encaisser</label>
+            <select id="g-encaisser-scope">
+              <option value="tous">Tous (motos + voitures)</option>
+              <option value="moto">Motos uniquement</option>
+              <option value="voiture">Voitures uniquement</option>
+              <option value="aucun">Aucun</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-blue" onclick="addGestionnaire(this)">Créer le gestionnaire</button>
       </div>
@@ -1555,7 +1569,7 @@ const API = window.location.hostname === 'localhost'
   : window.location.origin + '/api';
 
 let TOKEN = '', ROLE = '', USER = '', LIVREUR_ID = '';
-let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'', peut_facturer:true, peut_encaisser:true }; // Infos du gestionnaire connecté
+let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'', facturer_scope:'tous', encaisser_scope:'tous' }; // Infos du gestionnaire connecté
 let allTags = [], allVehs = [], allChaufs = [], allAffs = [];
 
 const fmt = n => Math.round(n || 0).toLocaleString('fr-FR') + ' F';
@@ -1617,7 +1631,7 @@ async function login() {
     const d = await r.json();
     TOKEN = d.token; ROLE = d.role; USER = d.nom;
     if (d.role === 'gestionnaire') {
-      GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', peut_facturer: d.peut_facturer!==false, peut_encaisser: d.peut_encaisser!==false };
+      GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', facturer_scope: d.facturer_scope||'tous', encaisser_scope: d.encaisser_scope||'tous' };
     }
     localStorage.setItem('snd_tk', TOKEN);
     demarrerApp();
@@ -1671,7 +1685,7 @@ window.addEventListener('load', async function() {
       const d = await r.json();
       TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
       if (d.role === 'gestionnaire') {
-        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', peut_facturer: d.peut_facturer!==false, peut_encaisser: d.peut_encaisser!==false };
+        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', facturer_scope: d.facturer_scope||'tous', encaisser_scope: d.encaisser_scope||'tous' };
       } else {
         const savedGest = localStorage.getItem('snd_gest');
         if (savedGest) try { GEST_INFO = JSON.parse(savedGest); } catch(e) {}
@@ -1793,12 +1807,12 @@ function demarrerApp() {
     // Masquer Facturation/Encaissement si la permission n'est pas accordée
     // (un gestionnaire marqué "Manager de tag" garde tout, comme côté serveur)
     if (!GEST_INFO.is_manager) {
-      if (GEST_INFO.peut_facturer === false) {
+      if (GEST_INFO.facturer_scope === 'aucun') {
         ['card-facturation', 'card-saisie-multiple'].forEach(function(id) {
           var e = document.getElementById(id); if (e) e.style.display = 'none';
         });
       }
-      if (GEST_INFO.peut_encaisser === false) {
+      if (GEST_INFO.encaisser_scope === 'aucun') {
         var eEnc = document.getElementById('card-encaissement');
         if (eEnc) eEnc.style.display = 'none';
       }
@@ -3984,8 +3998,8 @@ async function loadGestionnaires() {
       (gvehs.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px">' + gvehs.map(function(v) { return '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:#E6F1FB;color:#0C447C">' + v.immatriculation + '</span>'; }).join('') + '</div>' : '<span style="font-size:12px;color:#aaa">Aucun</span>') + '</div>' +
       '<div style="font-size:10px;color:#6b6b67;margin-bottom:3px;font-weight:600">PERMISSIONS</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:3px">' +
-      '<span onclick="togglePermissionGest(\'' + g.id + '\',\'peut_facturer\',' + (g.peut_facturer===false) + ')" title="Cliquer pour activer/désactiver" style="cursor:pointer;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:600;background:' + (g.peut_facturer===false?'#F1EFE8':'#EAF3DE') + ';color:' + (g.peut_facturer===false?'#444':'#27500A') + '">Facturer ' + (g.peut_facturer===false?'✕':'✓') + '</span>' +
-      '<span onclick="togglePermissionGest(\'' + g.id + '\',\'peut_encaisser\',' + (g.peut_encaisser===false) + ')" title="Cliquer pour activer/désactiver" style="cursor:pointer;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:600;background:' + (g.peut_encaisser===false?'#F1EFE8':'#EAF3DE') + ';color:' + (g.peut_encaisser===false?'#444':'#27500A') + '">Encaisser ' + (g.peut_encaisser===false?'✕':'✓') + '</span>' +
+      pillPermissionScope(g.id, 'facturer_scope', g.facturer_scope, 'Facturer') +
+      pillPermissionScope(g.id, 'encaisser_scope', g.encaisser_scope, 'Encaisser') +
       ['Saisir statut', 'Voir retards', 'Voir rapports'].map(function(p) { return '<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:#EAF3DE;color:#27500A;font-weight:600">' + p + '</span>'; }).join('') + '</div>' +
       '</div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">' +
       '<div style="font-size:10px;color:#6b6b67">Mot de passe :</div>' +
@@ -4041,8 +4055,8 @@ async function addGestionnaire(btn) {
     tag: tagsFinaux[0] || '',
     vehicules_ids: vehicules_ids,
     is_manager: (document.getElementById('g-is-manager')||{}).checked || false,
-    peut_facturer: (document.getElementById('g-peut-facturer')||{}).checked !== false,
-    peut_encaisser: (document.getElementById('g-peut-encaisser')||{}).checked !== false
+    facturer_scope: (document.getElementById('g-facturer-scope')||{}).value || 'tous',
+    encaisser_scope: (document.getElementById('g-encaisser-scope')||{}).value || 'tous'
   });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
@@ -4083,11 +4097,20 @@ async function assignerVehGest(gid, gnom) {
   ouvrir('m-assign-gest');
 }
 
-async function togglePermissionGest(gid, champ, nouvelleValeur) {
+function pillPermissionScope(gestId, champ, scope, actionLabel) {
+  scope = scope || 'tous';
+  var order = ['tous', 'moto', 'voiture', 'aucun'];
+  var next = order[(order.indexOf(scope) + 1) % order.length];
+  var colors = { tous: ['#EAF3DE', '#27500A'], moto: ['#E6F1FB', '#0C447C'], voiture: ['#EEEDFE', '#3C3489'], aucun: ['#F1EFE8', '#444'] };
+  var labels = { tous: 'Tous', moto: 'Motos', voiture: 'Voitures', aucun: 'Aucun' };
+  var c = colors[scope] || colors.tous;
+  return '<span onclick="cyclePermissionScope(\'' + gestId + '\',\'' + champ + '\',\'' + next + '\')" title="Cliquer pour changer (Tous → Motos → Voitures → Aucun)" style="cursor:pointer;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:600;background:' + c[0] + ';color:' + c[1] + '">' + actionLabel + ': ' + labels[scope] + '</span>';
+}
+async function cyclePermissionScope(gid, champ, nouvelleValeur) {
   const patch = {};
   patch[champ] = nouvelleValeur;
   await api('PATCH', '/gestionnaires/' + gid, patch);
-  toast(nouvelleValeur ? 'Permission activée' : 'Permission désactivée', 'info');
+  toast((champ === 'facturer_scope' ? 'Facturation' : 'Encaissement') + ' : ' + nouvelleValeur, 'info');
   loadGestionnaires();
 }
 
@@ -4164,7 +4187,16 @@ async function refreshSelects() {
   const set = function(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; };
   set('av', '<option value="">— véhicule libre —</option>' + vLibOpts);
   set('ac', '<option value="">— chauffeur libre —</option>' + cLibOpts);
-  set('fv', '<option value="">— choisir —</option>' + vOpts);
+  // Facturation : restreindre le choix de véhicule selon la portée du gestionnaire (motos/voitures/tous)
+  var vOptsFacture = vOpts;
+  if (ROLE === 'gestionnaire' && GEST_INFO.facturer_scope === 'moto') {
+    vOptsFacture = vehs.filter(function(v) { return v.categorie === 'moto'; })
+      .map(function(v) { return '<option value="' + v.id + '">' + v.immatriculation + ' · ' + v.marque + '</option>'; }).join('');
+  } else if (ROLE === 'gestionnaire' && GEST_INFO.facturer_scope === 'voiture') {
+    vOptsFacture = vehs.filter(function(v) { return v.categorie !== 'moto'; })
+      .map(function(v) { return '<option value="' + v.id + '">' + v.immatriculation + ' · ' + v.marque + '</option>'; }).join('');
+  }
+  set('fv', '<option value="">— choisir —</option>' + vOptsFacture);
   set('ff-veh', '<option value="">Tous véhicules</option>' + vOpts);
   set('hist-veh', '<option value="">Tous véhicules</option>' + vOpts);
   // Filtre Encaissement : si un gestionnaire est actif, ne garder que ses chauffeurs (via tags ou vehicules_ids)
@@ -4186,6 +4218,16 @@ async function refreshSelects() {
     // Sinon si juste un tag est actif, filtrer par tag
     var _vIdsTag = new Set(vehs.filter(function(v){ return v.tag === _globalTag; }).map(function(v){ return v.id; }));
     _affsForEnc = affs.filter(function(a){ return _vIdsTag.has(a.vehicule_id); });
+  }
+  // Encaissement : restreindre selon la portée du gestionnaire (motos/voitures/tous)
+  if (ROLE === 'gestionnaire' && (GEST_INFO.encaisser_scope === 'moto' || GEST_INFO.encaisser_scope === 'voiture')) {
+    var _vehByIdEnc = {}; vehs.forEach(function(v) { _vehByIdEnc[v.id] = v; });
+    var _wantMotoEnc = GEST_INFO.encaisser_scope === 'moto';
+    _affsForEnc = _affsForEnc.filter(function(a) {
+      var v = _vehByIdEnc[a.vehicule_id];
+      if (!v) return false;
+      return _wantMotoEnc ? v.categorie === 'moto' : v.categorie !== 'moto';
+    });
   }
   set('ec', '<option value="">— choisir —</option>' + _affsForEnc.map(function(a) { return '<option value="' + a.chauffeur_id + '">' + a.chauffeur + ' — ' + a.vehicule + '</option>'; }).join(''));
   set('dv', '<option value="">— choisir —</option>' + vOpts);
@@ -8294,39 +8336,6 @@ validerFac = async function(btn) {
   loadDashboard();
   _facAff = [];
   calcFac();
-};
-
-// ═══════════════════════════════════════════════════════
-// RESTRICTION DES TAGS POUR GESTIONNAIRES
-// ═══════════════════════════════════════════════════════
-
-// Filtrer les véhicules dans le select de facturation pour les gestionnaires
-var _origRefreshSelects = typeof refreshSelects === 'function' ? refreshSelects : null;
-refreshSelects = async function() {
-  if (_origRefreshSelects) await _origRefreshSelects();
-
-  // Pour les gestionnaires : restreindre les véhicules du formulaire de facturation
-  if (ROLE === 'gestionnaire') {
-    var fvEl = document.getElementById('fv');
-    var dvEl = document.getElementById('dv'); // dépenses
-    if (!fvEl) return;
-
-    var vehs = await api('GET', '/vehicules');
-    if (!Array.isArray(vehs)) return;
-
-    // Filtrer par tags assignés
-    var myTags = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags : (GEST_INFO.tag ? [GEST_INFO.tag] : []);
-
-    [fvEl, dvEl].forEach(function(el) {
-      if (!el) return;
-      var cur = el.value;
-      el.innerHTML = '<option value="">— choisir —</option>' +
-        vehs.map(function(v) {
-          return '<option value="' + v.id + '">' + v.immatriculation + (v.tag?' ('+v.tag+')':'') + '</option>';
-        }).join('');
-      if (cur) el.value = cur;
-    });
-  }
 };
 
 // ═══════════════════════════════════════════════════════

@@ -122,8 +122,25 @@ function cors(res) {
 }
 
 // Permissions granulaires gestionnaire : facturer et/ou encaisser (absent = true, rétrocompatible)
-function peutFacturer(auth) { return auth.role !== 'gestionnaire' || auth.gest.is_manager || auth.gest.peut_facturer !== false; }
-function peutEncaisser(auth) { return auth.role !== 'gestionnaire' || auth.gest.is_manager || auth.gest.peut_encaisser !== false; }
+function categorieOk(db, scope, vehiculeId) {
+  if (scope === 'tous' || !vehiculeId) return true;
+  const veh = db.vehicules.find(v => v.id === vehiculeId);
+  if (!veh) return true;
+  const isMoto = veh.categorie === 'moto';
+  return scope === 'moto' ? isMoto : !isMoto;
+}
+function peutFacturer(db, auth, vehiculeId) {
+  if (auth.role !== 'gestionnaire' || auth.gest.is_manager) return true;
+  const scope = auth.gest.facturer_scope || 'tous';
+  if (scope === 'aucun') return false;
+  return categorieOk(db, scope, vehiculeId);
+}
+function peutEncaisser(db, auth, vehiculeId) {
+  if (auth.role !== 'gestionnaire' || auth.gest.is_manager) return true;
+  const scope = auth.gest.encaisser_scope || 'tous';
+  if (scope === 'aucun') return false;
+  return categorieOk(db, scope, vehiculeId);
+}
 
 // Véhicules visibles selon rôle
 function vehsVisibles(db, auth) {
@@ -253,8 +270,8 @@ async function handleAPI(req, res, body) {
       vehicules_ids:gt.vehicules_ids||[],
       is_manager: gt.is_manager || false,         // Affiche comme Manager dans l'UI
       affiche_comme: gt.is_manager ? 'Manager' : 'Gestionnaire',
-      peut_facturer: gt.peut_facturer !== false,
-      peut_encaisser: gt.peut_encaisser !== false
+      facturer_scope: gt.facturer_scope || 'tous',
+      encaisser_scope: gt.encaisser_scope || 'tous'
     }));
     if (data.telephone && data.pin) {
       const tel = String(data.telephone).trim();
@@ -686,9 +703,9 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/versements'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutEncaisser(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     const aff=db.affectations.find(a=>a.id===data.affectation_id);
     if(!aff) return res.end(JSON.stringify({detail:'Affectation introuvable'}));
+    if(!peutEncaisser(db,auth,aff.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(aff.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const attendu=aff.montant_journalier,montant=Number(data.montant);
     const statut=montant>=attendu?'recu':montant>0?'partiel':'en_retard';
@@ -700,10 +717,10 @@ async function handleAPI(req, res, body) {
   const versM=p.match(/^\/api\/versements\/([^/]+)$/);
   if(versM&&method==='DELETE'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutEncaisser(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     const vs=db.versements.find(v=>v.id===versM[1]);
     if(!vs){res.writeHead(404);return res.end(JSON.stringify({detail:'Versement introuvable'}));}
     const aff=db.affectations.find(a=>a.id===vs.affectation_id);
+    if(!peutEncaisser(db,auth,aff?aff.vehicule_id:null)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     if(isGest&&aff&&!auth.gest.vehicules_ids.includes(aff.vehicule_id)){
       res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
     }
@@ -717,7 +734,15 @@ async function handleAPI(req, res, body) {
   }
 
   if(vsM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}db.versements=db.versements.filter(v=>v.id!==vsM[1]);saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));}
-  if(vsM&&method==='PATCH'){if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}if(!peutEncaisser(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}const idx=db.versements.findIndex(v=>v.id===vsM[1]);if(idx!==-1){const at=db.versements[idx].montant_attendu;const m=data.montant!==undefined?Number(data.montant):db.versements[idx].montant;const s=m>=at?'recu':m>0?'partiel':'en_retard';db.versements[idx]={...db.versements[idx],...data,montant:m,statut:s};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+  if(vsM&&method==='PATCH'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.versements.findIndex(v=>v.id===vsM[1]);
+    if(idx===-1) return res.end(JSON.stringify({message:'Mis à jour'}));
+    const affPatch=db.affectations.find(a=>a.id===db.versements[idx].affectation_id);
+    if(!peutEncaisser(db,auth,affPatch?affPatch.vehicule_id:null)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
+    const at=db.versements[idx].montant_attendu;const m=data.montant!==undefined?Number(data.montant):db.versements[idx].montant;const s=m>=at?'recu':m>0?'partiel':'en_retard';db.versements[idx]={...db.versements[idx],...data,montant:m,statut:s};saveDB(db);
+    return res.end(JSON.stringify({message:'Mis à jour'}));
+  }
 
   // ── DEPENSES ──────────────────────────────────────────────
   if(p==='/api/depenses'&&method==='GET'){
@@ -907,7 +932,7 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/facturations'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutFacturer(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
+    if(!peutFacturer(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     // Gestionnaire : vérifier que le véhicule lui est assigné (via tags ou ids)
     if(isGest){
       const myVehs=vehsVisibles(db,auth).map(v=>v.id);
@@ -927,9 +952,9 @@ async function handleAPI(req, res, body) {
   const facM=p.match(/^\/api\/facturations\/([^/]+)$/);
   if(facM&&method==='PATCH'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refus\u00e9'}));}
-    if(!peutFacturer(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     const idx=db.facturations.findIndex(f=>f.id===facM[1]);
     if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
+    if(!peutFacturer(db,auth,db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
     const old=db.facturations[idx];
     db.facturations[idx]={...old,...data,updated_at:new Date().toISOString()};
@@ -943,9 +968,9 @@ async function handleAPI(req, res, body) {
   // SUPPRIMER une facturation
   if(facM&&method==='DELETE'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refus\u00e9'}));}
-    if(!peutFacturer(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     const fac=db.facturations.find(f=>f.id===facM[1]);
     if(!fac){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
+    if(!peutFacturer(db,auth,fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
     db.facturations=db.facturations.filter(f=>f.id!==facM[1]);
     db.historique=(db.historique||[]);
@@ -958,12 +983,13 @@ async function handleAPI(req, res, body) {
   // FACTURATION MULTIPLE
   if(p==='/api/facturations/multiple'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutFacturer(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
+    if(!peutFacturer(db,auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     const {vehicules_ids, type_journee, date} = data;
     if(!vehicules_ids||!vehicules_ids.length) return res.end(JSON.stringify({detail:'Aucun véhicule sélectionné'}));
     const results=[];
     for(const vid of vehicules_ids){
       if(isGest&&!auth.gest.vehicules_ids.includes(vid)) continue;
+      if(!peutFacturer(db,auth,vid)) continue;
       const aff=db.affectations.find(a=>a.vehicule_id===vid&&!a.date_fin);
       if(!aff) continue;
       const montant_base=aff.montant_journalier;
@@ -985,10 +1011,10 @@ async function handleAPI(req, res, body) {
   // ── ENCAISSEMENT ──────────────────────────────────────────
   if(p==='/api/encaissements'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutEncaisser(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     const{chauffeur_id,montant_recu,mode_paiement,date_encaissement,mode_imputation}=data;
     const aff_active=db.affectations.find(a=>a.chauffeur_id===chauffeur_id&&!a.date_fin);
     if(!aff_active) return res.end(JSON.stringify({detail:'Aucune affectation active'}));
+    if(!peutEncaisser(db,auth,aff_active.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
     if(isGest&&!auth.gest.vehicules_ids.includes(aff_active.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const montant=Number(montant_recu);
     const affIds=db.affectations.filter(a=>a.chauffeur_id===chauffeur_id).map(a=>a.id);
@@ -1114,7 +1140,10 @@ async function handleAPI(req, res, body) {
   if(p==='/api/gestionnaires'&&method==='POST'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(db.gestionnaires.find(g=>g.password===data.password)) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
-    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:data.password||uid().slice(0,8),vehicules_ids:data.vehicules_ids||[],tag:data.tag||'',proprio_id:data.proprio_id||null,peut_facturer:data.peut_facturer!==false,peut_encaisser:data.peut_encaisser!==false};
+    const scopesValides=['tous','moto','voiture','aucun'];
+    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:data.password||uid().slice(0,8),vehicules_ids:data.vehicules_ids||[],tag:data.tag||'',proprio_id:data.proprio_id||null,
+      facturer_scope:scopesValides.includes(data.facturer_scope)?data.facturer_scope:'tous',
+      encaisser_scope:scopesValides.includes(data.encaisser_scope)?data.encaisser_scope:'tous'};
     db.gestionnaires.push(g);saveDB(db);return res.end(JSON.stringify({id:g.id,password:g.password,message:'Gestionnaire créé'}));
   }
   const gM=p.match(/^\/api\/gestionnaires\/([^/]+)$/);
@@ -1205,7 +1234,7 @@ async function handleAPI(req, res, body) {
   // Panne ou Repos ou Inactif → facture = 0 pour ce jour
   if(p==='/api/activites/auto_facture'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!peutFacturer(auth)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
+    if(!peutFacturer(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
     const {vehicule_id, statut_jour, date} = data;
     const targetDate = date || today();
     
