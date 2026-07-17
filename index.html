@@ -24,45 +24,45 @@ body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a18}
 .logo{font-size:17px;font-weight:700}
 .logo span{color:#185FA5}
 .nav{display:flex;background:#fff;border-bottom:1px solid #e0dfd8;padding:0 12px;overflow-x:auto;gap:0}
-.nav-item{font-size:13px;padding:10px 14px;cursor:pointer;color:#6b6b67;border-bottom:2px solid transparent;white-space:nowrap}
+.nav-item{font-size:14px;padding:10px 14px;cursor:pointer;color:#6b6b67;border-bottom:2px solid transparent;white-space:nowrap}
 .nav-item.active{color:#1a1a18;border-bottom-color:#1a1a18;font-weight:600}
 .main{padding:16px;max-width:1200px;margin:0 auto}
 .page{display:none}
 .page.active{display:block}
 .card{background:#fff;border:1px solid #e0dfd8;border-radius:12px;padding:16px 18px;margin-bottom:12px}
-.card-title{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.card-title{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 .kpi-row2{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
 .kpi{background:#fff;border:1px solid #e0dfd8;border-radius:12px;padding:12px 14px}
-.kpi-label{font-size:11px;color:#6b6b67;margin-bottom:3px}
-.kpi-val{font-size:18px;font-weight:700}
+.kpi-label{font-size:12px;color:#6b6b67;margin-bottom:3px}
+.kpi-val{font-size:20px;font-weight:700}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 .form-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
 .field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:11px;color:#6b6b67;font-weight:600}
-input,select,textarea{font-size:13px;padding:8px 10px;border:1px solid #c0bfb8;border-radius:8px;background:#f5f4f0;color:#1a1a18;width:100%}
+.field label{font-size:12px;color:#6b6b67;font-weight:600}
+input,select,textarea{font-size:15px;padding:8px 10px;border:1px solid #c0bfb8;border-radius:8px;background:#f5f4f0;color:#1a1a18;width:100%}
 input:focus,select:focus{outline:2px solid #185FA5}
-.btn{font-size:13px;padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+.btn{font-size:15px;padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
 .btn-blue{background:#185FA5;color:#fff}
 .btn-green{background:#3B6D11;color:#fff}
 .btn-red{background:#A32D2D;color:#fff}
 .btn-gray{background:#e0dfd8;color:#444}
-.btn-sm{font-size:11px;padding:3px 9px;border-radius:5px;border:none;cursor:pointer;font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:12px}
+.btn-sm{font-size:12px;padding:3px 9px;border-radius:5px;border:none;cursor:pointer;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:left;color:#6b6b67;font-weight:600;padding:6px 8px;border-bottom:1px solid #e0dfd8}
 td{padding:7px 8px;border-bottom:1px solid #e0dfd8;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#fafaf8}
-.pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px}
 .pill-ok{background:#EAF3DE;color:#27500A}
 .pill-warn{background:#FAEEDA;color:#633806}
 .pill-err{background:#FCEBEB;color:#791F1F}
 .pill-blue{background:#E6F1FB;color:#0C447C}
 .pill-gray{background:#F1EFE8;color:#444}
 .pill-purple{background:#EEEDFE;color:#3C3489}
-.empty{text-align:center;color:#6b6b67;font-size:13px;padding:24px}
+.empty{text-align:center;color:#6b6b67;font-size:14px;padding:24px}
 .toast-area{position:fixed;top:60px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;animation:fadeIn .2s;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.toast{padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600;animation:fadeIn .2s;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .toast-ok{background:#EAF3DE;color:#27500A;border:1px solid #C0DD97}
 .toast-err{background:#FCEBEB;color:#791F1F;border:1px solid #F7C1C1}
 .toast-info{background:#E6F1FB;color:#0C447C;border:1px solid #B5D4F4}
@@ -84,8 +84,8 @@ tr:hover td{background:#fafaf8}
 .modal-close{cursor:pointer;font-size:22px;color:#6b6b67;background:none;border:none;line-height:1}
 .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
 .stat-box{background:#f5f4f0;border-radius:8px;padding:10px;text-align:center}
-.stat-val{font-size:17px;font-weight:700}
-.stat-label{font-size:10px;color:#6b6b67;margin-top:2px}
+.stat-val{font-size:19px;font-weight:700}
+.stat-label{font-size:11px;color:#6b6b67;margin-top:2px}
 .histo{display:flex;gap:3px;margin:8px 0}
 .histo-day{flex:1;height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600}
 .histo-day.actif{background:#EAF3DE;color:#27500A}
@@ -583,7 +583,7 @@ tr:hover td{background:#fafaf8}
     <div class="page" id="page-caisse">
 
       <!-- Saisie rapide multiple (en-tête) -->
-      <div class="card" style="border-top:3px solid #8B5CF6;margin-bottom:12px">
+      <div class="card" id="card-saisie-multiple" style="border-top:3px solid #8B5CF6;margin-bottom:12px">
         <div class="card-title">
           ⚡ Saisie rapide multiple
           <div style="display:flex;gap:8px;align-items:center">
@@ -608,7 +608,7 @@ tr:hover td{background:#fafaf8}
 
       <!-- Formulaires Facturation + Encaissement côte à côte -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div class="card" style="border-top:3px solid #185FA5">
+        <div class="card" id="card-facturation" style="border-top:3px solid #185FA5">
           <div class="card-title">Facturation</div>
           <div class="form-row">
             <div class="field">
@@ -685,7 +685,7 @@ tr:hover td{background:#fafaf8}
           </div>
           <button class="btn btn-blue" style="width:100%" onclick="validerFac(this)">Valider la facturation</button>
         </div>
-        <div class="card" style="border-top:3px solid #3B6D11">
+        <div class="card" id="card-encaissement" style="border-top:3px solid #3B6D11">
           <div class="card-title">Encaissement</div>
           <div class="field" style="margin-bottom:10px">
             <label>Chauffeur *</label>
@@ -1370,6 +1370,10 @@ tr:hover td{background:#fafaf8}
         <div style="font-size:11px;color:#6b6b67;margin-bottom:10px;padding:7px 10px;background:#EAF3DE;border-radius:6px">
           💡 <strong>Priorité :</strong> Tag(s) &gt; Propriétaire lié. Si un tag est sélectionné, tous les véhicules de ce tag seront automatiquement assignés au gestionnaire.
         </div>
+        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="g-peut-facturer" checked style="width:auto"> Peut facturer</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="g-peut-encaisser" checked style="width:auto"> Peut encaisser</label>
+        </div>
         <button class="btn btn-blue" onclick="addGestionnaire(this)">Créer le gestionnaire</button>
       </div>
       <div class="card manager-only"><div class="card-title">Gestionnaires actifs</div><div id="t-gest"><div class="empty">Chargement…</div></div></div>
@@ -1551,7 +1555,7 @@ const API = window.location.hostname === 'localhost'
   : window.location.origin + '/api';
 
 let TOKEN = '', ROLE = '', USER = '', LIVREUR_ID = '';
-let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'' }; // Infos du gestionnaire connecté
+let GEST_INFO = { tags:[], tag:'', vehicules_ids:[], gest_id:'', peut_facturer:true, peut_encaisser:true }; // Infos du gestionnaire connecté
 let allTags = [], allVehs = [], allChaufs = [], allAffs = [];
 
 const fmt = n => Math.round(n || 0).toLocaleString('fr-FR') + ' F';
@@ -1612,6 +1616,9 @@ async function login() {
     if (!r.ok) { document.getElementById('login-err').style.display = 'block'; return; }
     const d = await r.json();
     TOKEN = d.token; ROLE = d.role; USER = d.nom;
+    if (d.role === 'gestionnaire') {
+      GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', peut_facturer: d.peut_facturer!==false, peut_encaisser: d.peut_encaisser!==false };
+    }
     localStorage.setItem('snd_tk', TOKEN);
     demarrerApp();
   } catch(e) {
@@ -1664,7 +1671,7 @@ window.addEventListener('load', async function() {
       const d = await r.json();
       TOKEN = d.token; ROLE = d.role; USER = d.nom; LIVREUR_ID = d.livreur_id || '';
       if (d.role === 'gestionnaire') {
-        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire' };
+        GEST_INFO = { tags: d.tags||[], tag: d.tag||'', vehicules_ids: d.vehicules_ids||[], gest_id: d.gest_id||'', is_manager: d.is_manager||false, affiche_comme: d.affiche_comme||'Gestionnaire', peut_facturer: d.peut_facturer!==false, peut_encaisser: d.peut_encaisser!==false };
       } else {
         const savedGest = localStorage.getItem('snd_gest');
         if (savedGest) try { GEST_INFO = JSON.parse(savedGest); } catch(e) {}
@@ -1783,6 +1790,19 @@ function demarrerApp() {
     ['veh-form-card','chauf-form-card','prop-form-card'].forEach(function(id){
       var e = document.getElementById(id); if (e) e.style.display = 'block';
     });
+    // Masquer Facturation/Encaissement si la permission n'est pas accordée
+    // (un gestionnaire marqué "Manager de tag" garde tout, comme côté serveur)
+    if (!GEST_INFO.is_manager) {
+      if (GEST_INFO.peut_facturer === false) {
+        ['card-facturation', 'card-saisie-multiple'].forEach(function(id) {
+          var e = document.getElementById(id); if (e) e.style.display = 'none';
+        });
+      }
+      if (GEST_INFO.peut_encaisser === false) {
+        var eEnc = document.getElementById('card-encaissement');
+        if (eEnc) eEnc.style.display = 'none';
+      }
+    }
     // Pré-sélectionner son tag dans le formulaire véhicule
     setTimeout(function() {
       var myTag = (GEST_INFO.tags && GEST_INFO.tags.length) ? GEST_INFO.tags[0] : GEST_INFO.tag;
@@ -3963,7 +3983,10 @@ async function loadGestionnaires() {
       '<div style="margin-bottom:6px"><div style="font-size:10px;color:#6b6b67;margin-bottom:3px;font-weight:600">VÉHICULES (' + gvehs.length + ')</div>' +
       (gvehs.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px">' + gvehs.map(function(v) { return '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:#E6F1FB;color:#0C447C">' + v.immatriculation + '</span>'; }).join('') + '</div>' : '<span style="font-size:12px;color:#aaa">Aucun</span>') + '</div>' +
       '<div style="font-size:10px;color:#6b6b67;margin-bottom:3px;font-weight:600">PERMISSIONS</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:3px">' + ['Saisir statut', 'Facturer J-1', 'Encaisser', 'Voir retards', 'Voir rapports'].map(function(p) { return '<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:#EAF3DE;color:#27500A;font-weight:600">' + p + '</span>'; }).join('') + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:3px">' +
+      '<span onclick="togglePermissionGest(\'' + g.id + '\',\'peut_facturer\',' + (g.peut_facturer===false) + ')" title="Cliquer pour activer/désactiver" style="cursor:pointer;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:600;background:' + (g.peut_facturer===false?'#F1EFE8':'#EAF3DE') + ';color:' + (g.peut_facturer===false?'#444':'#27500A') + '">Facturer ' + (g.peut_facturer===false?'✕':'✓') + '</span>' +
+      '<span onclick="togglePermissionGest(\'' + g.id + '\',\'peut_encaisser\',' + (g.peut_encaisser===false) + ')" title="Cliquer pour activer/désactiver" style="cursor:pointer;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:600;background:' + (g.peut_encaisser===false?'#F1EFE8':'#EAF3DE') + ';color:' + (g.peut_encaisser===false?'#444':'#27500A') + '">Encaisser ' + (g.peut_encaisser===false?'✕':'✓') + '</span>' +
+      ['Saisir statut', 'Voir retards', 'Voir rapports'].map(function(p) { return '<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:#EAF3DE;color:#27500A;font-weight:600">' + p + '</span>'; }).join('') + '</div>' +
       '</div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">' +
       '<div style="font-size:10px;color:#6b6b67">Mot de passe :</div>' +
       '<div onclick="navigator.clipboard.writeText(\'' + (g.password || '') + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:12px;background:#f5f4f0;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer" title="Cliquer pour copier">' + (g.password || '—') + ' 📋</div>' +
@@ -4017,7 +4040,9 @@ async function addGestionnaire(btn) {
     tags: tagsFinaux,
     tag: tagsFinaux[0] || '',
     vehicules_ids: vehicules_ids,
-    is_manager: (document.getElementById('g-is-manager')||{}).checked || false
+    is_manager: (document.getElementById('g-is-manager')||{}).checked || false,
+    peut_facturer: (document.getElementById('g-peut-facturer')||{}).checked !== false,
+    peut_encaisser: (document.getElementById('g-peut-encaisser')||{}).checked !== false
   });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
@@ -4056,6 +4081,14 @@ async function assignerVehGest(gid, gnom) {
         '<span><strong>' + v.immatriculation + '</strong> ' + v.marque + (v.tag ? ' ' + pill(v.tag, 'purple') : '') + '</span></label>';
     }).join('');
   ouvrir('m-assign-gest');
+}
+
+async function togglePermissionGest(gid, champ, nouvelleValeur) {
+  const patch = {};
+  patch[champ] = nouvelleValeur;
+  await api('PATCH', '/gestionnaires/' + gid, patch);
+  toast(nouvelleValeur ? 'Permission activée' : 'Permission désactivée', 'info');
+  loadGestionnaires();
 }
 
 async function toggleVehGest(gid, vid, checked) {
