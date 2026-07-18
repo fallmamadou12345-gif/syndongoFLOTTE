@@ -5001,8 +5001,15 @@ async function filtrerInspections(statut) {
         (typeof CONTROLE_PHOTOS !== 'undefined' ? CONTROLE_PHOTOS : [{key:'exterieur',label:'🚗 Extérieur'},{key:'interieur',label:'🪑 Intérieur'},{key:'tableau_bord',label:'🎛️ Tableau de bord'}]).map(function(p) {
           var ph = c.photos[p.key];
           if (!ph || !ph.data) return '';
-          return '<div style="text-align:center"><img src="' + ph.data + '" style="max-width:140px;max-height:120px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer;display:block" onclick="window.open(this.src)">' +
-            '<div style="font-size:10px;color:#6b6b67;margin-top:2px">' + p.label + '</div></div>';
+          var meta = (c.photos_meta || {})[p.key] || {};
+          var takenTxt = meta.taken_at ? meta.taken_at.slice(0,16).replace('T',' ') : null;
+          var gpsLink = meta.gps ? '<a href="https://www.google.com/maps?q=' + meta.gps.lat + ',' + meta.gps.lon + '" target="_blank" style="color:#0C447C">📍 GPS</a>' : '';
+          return '<div style="text-align:center">' +
+            '<img src="' + ph.data + '" style="max-width:140px;max-height:120px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer;display:block" onclick="window.open(this.src)">' +
+            '<div style="font-size:10px;color:#6b6b67;margin-top:2px">' + p.label + '</div>' +
+            (takenTxt ? '<div style="font-size:9px;color:#6b6b67">📷 ' + takenTxt + '</div>' : '') +
+            (gpsLink ? '<div style="font-size:9px">' + gpsLink + '</div>' : '') +
+          '</div>';
         }).join('') + '</div>' : '') +
       (c.statut === 'rejete' && c.commentaire_gestionnaire ? '<div style="font-size:12px;color:#A32D2D;margin-bottom:8px">Motif du rejet : ' + c.commentaire_gestionnaire + '</div>' : '') +
       (c.statut === 'en_attente' ? '<div style="display:flex;gap:8px">' +
