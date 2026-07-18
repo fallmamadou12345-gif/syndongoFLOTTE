@@ -944,9 +944,13 @@ async function handleAPI(req, res, body) {
     const lvId=auth.livreur.id;
     const aff=db.affectations.find(a=>a.chauffeur_id===lvId&&!a.date_fin);
     if(!aff) return res.end(JSON.stringify({detail:'Aucun véhicule affecté'}));
+    const photos=data.photos||{};
+    if(!photos.exterieur||!photos.exterieur.data||!photos.interieur||!photos.interieur.data||!photos.tableau_bord||!photos.tableau_bord.data){
+      return res.end(JSON.stringify({detail:'Les 3 photos (extérieur, intérieur, tableau de bord) sont obligatoires'}));
+    }
     const c={id:uid(),vehicule_id:aff.vehicule_id,chauffeur_id:lvId,date_soumission:today(),
       checklist:data.checklist||{},commentaire_chauffeur:data.commentaire_chauffeur||'',
-      photo:data.photo||null,statut:'en_attente',
+      photos:{exterieur:photos.exterieur,interieur:photos.interieur,tableau_bord:photos.tableau_bord},statut:'en_attente',
       commentaire_gestionnaire:'',traite_par:'',date_traitement:null,
       created_at:new Date().toISOString()};
     db.controles_vehicule.push(c);saveDB(db);

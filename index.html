@@ -987,7 +987,8 @@ tr:hover td{background:#fafaf8}
           <div style="font-size:11px;color:#6b6b67;margin-bottom:6px;font-weight:600">État des lieux</div>
           <div id="me-checklist" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
           <div class="field" style="margin-bottom:10px"><label>Commentaire</label><textarea id="me-ctrl-commentaire" placeholder="Précisions éventuelles…" rows="2"></textarea></div>
-          <div class="field" style="margin-bottom:10px"><label>Photo (optionnel)</label><input type="file" id="me-ctrl-photo" accept="image/*"></div>
+          <div style="font-size:11px;color:#6b6b67;margin-bottom:6px;font-weight:600">📸 Photos obligatoires — prises directement avec l'appareil</div>
+          <div id="me-ctrl-photos" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px"></div>
           <button class="btn btn-blue" onclick="soumettreControle(this)">Soumettre le contrôle</button>
         </div>
       </div>
@@ -4893,7 +4894,13 @@ async function filtrerInspections(statut) {
       '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + checklistHtml + '</div>' +
       (c.commentaire_chauffeur ? '<div style="font-size:13px;color:#1a1a18;margin-bottom:8px">💬 ' + c.commentaire_chauffeur + '</div>' : '') +
-      (c.photo && c.photo.data ? '<div style="margin-bottom:8px"><img src="' + c.photo.data + '" style="max-width:200px;max-height:160px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer" onclick="window.open(this.src)"></div>' : '') +
+      (c.photos ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+        [['exterieur','🚗 Extérieur'],['interieur','🪑 Intérieur'],['tableau_bord','🎛️ Tableau de bord']].map(function(pk) {
+          var ph = c.photos[pk[0]];
+          if (!ph || !ph.data) return '';
+          return '<div style="text-align:center"><img src="' + ph.data + '" style="max-width:140px;max-height:120px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer;display:block" onclick="window.open(this.src)">' +
+            '<div style="font-size:10px;color:#6b6b67;margin-top:2px">' + pk[1] + '</div></div>';
+        }).join('') + '</div>' : '') +
       (c.statut === 'rejete' && c.commentaire_gestionnaire ? '<div style="font-size:12px;color:#A32D2D;margin-bottom:8px">Motif du rejet : ' + c.commentaire_gestionnaire + '</div>' : '') +
       (c.statut === 'en_attente' ? '<div style="display:flex;gap:8px">' +
         '<button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="validerControle(\'' + c.id + '\')">✅ Valider</button>' +
@@ -5465,7 +5472,44 @@ const CONTROLE_ITEMS = [
   { key:'carrosserie', label:'🚗 Carrosserie' },
   { key:'niveaux', label:'🛢️ Niveaux (huile, etc.)' }
 ];
+const CONTROLE_PHOTOS = [
+  { key:'exterieur', label:'🚗 Extérieur' },
+  { key:'interieur', label:'🪑 Intérieur' },
+  { key:'tableau_bord', label:'🎛️ Tableau de bord' }
+];
 let _meChecklistState = {};
+let _mePhotosState = {};
+
+function renderCtrlPhotos() {
+  var el = document.getElementById('me-ctrl-photos');
+  if (!el) return;
+  el.innerHTML = CONTROLE_PHOTOS.map(function(p) {
+    var got = _mePhotosState[p.key];
+    return '<div style="border:1px solid #e0dfd8;border-radius:8px;padding:10px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:' + (got ? '8px' : '0') + '">' +
+        '<span style="font-size:13px;font-weight:600">' + p.label + (got ? ' ✅' : '') + '</span>' +
+        '<input type="file" id="me-ctrl-photo-' + p.key + '" accept="image/*" capture="environment" style="display:none">' +
+        '<button type="button" class="btn-sm" style="background:' + (got ? '#e0dfd8' : '#0C447C') + ';color:' + (got ? '#444' : '#fff') + '" onclick="document.getElementById(\'me-ctrl-photo-' + p.key + '\').click()">📷 ' + (got ? 'Reprendre' : 'Prendre la photo') + '</button>' +
+      '</div>' +
+      (got ? '<img src="' + got.data + '" style="max-width:100%;max-height:160px;border-radius:6px;display:block">' : '') +
+      '</div>';
+  }).join('');
+  CONTROLE_PHOTOS.forEach(function(p) {
+    var input = document.getElementById('me-ctrl-photo-' + p.key);
+    if (!input) return;
+    input.onchange = function() {
+      var file = input.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { toast('Photo trop lourde (max 5 Mo)', 'err'); input.value = ''; return; }
+      var r = new FileReader();
+      r.onload = function(ev) {
+        _mePhotosState[p.key] = { data: ev.target.result, nom: file.name, type: file.type };
+        renderCtrlPhotos();
+      };
+      r.readAsDataURL(file);
+    };
+  });
+}
 
 function renderChecklist() {
   var el = document.getElementById('me-checklist');
@@ -5488,7 +5532,9 @@ function setChecklistEtat(key, val) {
 
 async function initMeControle() {
   _meChecklistState = {};
+  _mePhotosState = {};
   renderChecklist();
+  renderCtrlPhotos();
   const el = document.getElementById('me-controle-statut');
   if (!el) return;
   const list = await api('GET', '/livreur/controle');
@@ -5509,28 +5555,22 @@ async function initMeControle() {
 async function soumettreControle(btn) {
   var manquant = CONTROLE_ITEMS.filter(function(i) { return !_meChecklistState[i.key]; });
   if (manquant.length) { toast('Merci de renseigner tous les points du contrôle', 'err'); return; }
+  var photosManquantes = CONTROLE_PHOTOS.filter(function(p) { return !_mePhotosState[p.key]; });
+  if (photosManquantes.length) { toast('Merci de prendre les 3 photos obligatoires', 'err'); return; }
   setBtnLoad(btn, true);
-  var fileInput = document.getElementById('me-ctrl-photo');
-  var photo = null;
-  if (fileInput && fileInput.files[0]) {
-    photo = await new Promise(function(resolve) {
-      var r = new FileReader();
-      r.onload = function(ev) { resolve({ data: ev.target.result, nom: fileInput.files[0].name, type: fileInput.files[0].type }); };
-      r.readAsDataURL(fileInput.files[0]);
-    });
-  }
   const res = await api('POST', '/livreur/controle', {
     checklist: _meChecklistState,
     commentaire_chauffeur: (document.getElementById('me-ctrl-commentaire') || {}).value || '',
-    photo: photo
+    photos: _mePhotosState
   });
   setBtnLoad(btn, false);
   if (res.detail) { toast(res.detail, 'err'); return; }
   toast('Contrôle soumis, en attente de validation');
   document.getElementById('me-ctrl-commentaire').value = '';
-  if (fileInput) fileInput.value = '';
   _meChecklistState = {};
+  _mePhotosState = {};
   renderChecklist();
+  renderCtrlPhotos();
   initMeControle();
 }
 
