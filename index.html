@@ -4723,11 +4723,16 @@ var _toutesAlertesTech = [];
 var _alerteFiltreType = 'tous';
 
 async function genererAlertesTechniques() {
-  const vehs = await api('GET', '/vehicules');
+  const [vehs, affs] = await Promise.all([api('GET', '/vehicules'), api('GET', '/affectations')]);
   if (!Array.isArray(vehs)) return [];
   const alertes = [];
   const todayD = new Date();
   const todayStr = todayD.toISOString().split('T')[0];
+  const chauffeursParVeh = {};
+  (Array.isArray(affs) ? affs : []).forEach(function(a) {
+    if (!chauffeursParVeh[a.vehicule_id]) chauffeursParVeh[a.vehicule_id] = [];
+    chauffeursParVeh[a.vehicule_id].push(a.chauffeur);
+  });
 
   function joursAvant(dateStr) {
     if (!dateStr) return null;
@@ -4801,9 +4806,11 @@ async function genererAlertesTechniques() {
 
     // ── Contrôle véhicule périodique (état des lieux) ─────────
     if (v.frequence_controle_jours) {
+      var chaufNoms = chauffeursParVeh[v.id] || [];
+      var chaufTxt = chaufNoms.length ? chaufNoms.join(' / ') : 'Aucun chauffeur affecté';
       if (!v.date_dernier_controle) {
         alertes.push({ type:'warn', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
-          message:'🔧 Aucun contrôle véhicule enregistré — '+v.immatriculation,
+          message:'🔧 Aucun contrôle véhicule enregistré — '+v.immatriculation+' · '+chaufTxt,
           detail:'Fréquence configurée : tous les '+v.frequence_controle_jours+' jours', urgence: 2 });
       } else {
         var prochainCtrl = new Date(v.date_dernier_controle);
@@ -4811,15 +4818,15 @@ async function genererAlertesTechniques() {
         var j4 = Math.ceil((prochainCtrl - todayD) / (1000*60*60*24));
         if (j4 < 0) {
           alertes.push({ type:'danger', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
-            message:'🔧 Contrôle véhicule <strong>EN RETARD de '+(Math.abs(j4))+' jour(s)</strong> — '+v.immatriculation,
+            message:'🔧 Contrôle véhicule <strong>EN RETARD de '+(Math.abs(j4))+' jour(s)</strong> — '+v.immatriculation+' · '+chaufTxt,
             detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 3 });
         } else if (j4 <= 7) {
           alertes.push({ type:'danger', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
-            message:'🔧 Contrôle véhicule dû dans <strong>'+j4+' jour(s)</strong> — '+v.immatriculation,
+            message:'🔧 Contrôle véhicule dû dans <strong>'+j4+' jour(s)</strong> — '+v.immatriculation+' · '+chaufTxt,
             detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 3 });
         } else if (j4 <= 30) {
           alertes.push({ type:'warn', cat:'controle', vehicule_id:v.id, immat:v.immatriculation, tag:v.tag||'',
-            message:'🔧 Contrôle véhicule dû dans '+j4+' jours — '+v.immatriculation,
+            message:'🔧 Contrôle véhicule dû dans '+j4+' jours — '+v.immatriculation+' · '+chaufTxt,
             detail:'Dernier contrôle validé : '+v.date_dernier_controle, urgence: 2 });
         }
       }

@@ -964,15 +964,28 @@ async function handleAPI(req, res, body) {
     if(!aff) return res.end(JSON.stringify({detail:'Aucun véhicule affecté'}));
     const photos=data.photos||{};
     const PHOTO_KEYS=['ext_avant','ext_arriere','ext_gauche','ext_droit','int_avant','int_arriere','tableau_bord'];
+    const PHOTO_LABELS={ext_avant:'Extérieur — Avant',ext_arriere:'Extérieur — Arrière',ext_gauche:'Extérieur — Côté gauche',ext_droit:'Extérieur — Côté droit',int_avant:'Intérieur — Sièges avant',int_arriere:'Intérieur — Arrière / coffre',tableau_bord:'Tableau de bord'};
     const photosManquantes=PHOTO_KEYS.filter(k=>!photos[k]||!photos[k].data);
     if(photosManquantes.length){
       return res.end(JSON.stringify({detail:'Photos obligatoires manquantes ('+photosManquantes.length+'/'+PHOTO_KEYS.length+')'}));
+    }
+    // Anti-fraude : chaque photo doit être inédite pour ce véhicule (pas une ancienne photo réenvoyée)
+    const crypto=require('crypto');
+    const hashPhoto=data=>crypto.createHash('sha256').update(data||'').digest('hex');
+    const hashesActuels={};
+    PHOTO_KEYS.forEach(k=>{hashesActuels[k]=hashPhoto(photos[k].data);});
+    const soumissionsVeh=db.controles_vehicule.filter(c=>c.vehicule_id===aff.vehicule_id&&c.photos_hashes);
+    for(const k of PHOTO_KEYS){
+      const dejaUtilisee=soumissionsVeh.some(c=>c.photos_hashes[k]===hashesActuels[k]);
+      if(dejaUtilisee){
+        return res.end(JSON.stringify({detail:'La photo "'+PHOTO_LABELS[k]+'" a déjà été envoyée précédemment. Merci de reprendre une photo actuelle.'}));
+      }
     }
     const photosSaved={};
     PHOTO_KEYS.forEach(k=>{photosSaved[k]=photos[k];});
     const c={id:uid(),vehicule_id:aff.vehicule_id,chauffeur_id:lvId,date_soumission:today(),
       checklist:data.checklist||{},commentaire_chauffeur:data.commentaire_chauffeur||'',
-      photos:photosSaved,statut:'en_attente',
+      photos:photosSaved,photos_hashes:hashesActuels,statut:'en_attente',
       commentaire_gestionnaire:'',traite_par:'',date_traitement:null,
       created_at:new Date().toISOString()};
     db.controles_vehicule.push(c);saveDB(db);
