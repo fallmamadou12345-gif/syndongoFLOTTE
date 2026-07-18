@@ -767,19 +767,6 @@ async function handleAPI(req, res, body) {
     return res.end(JSON.stringify({message:'Mis à jour'}));
   }
 
-  // ── FACTURES / VERSEMENTS — vue lecture seule côté chauffeur ──
-  if(p==='/api/livreur/facturations'&&method==='GET'){
-    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const list=db.facturations.filter(f=>f.chauffeur_id===auth.livreur.id).sort((a,b)=>b.date.localeCompare(a.date));
-    return res.end(JSON.stringify(list.slice(0,100)));
-  }
-  if(p==='/api/livreur/versements'&&method==='GET'){
-    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const mesAffIds=db.affectations.filter(a=>a.chauffeur_id===auth.livreur.id).map(a=>a.id);
-    const list=db.versements.filter(v=>mesAffIds.includes(v.affectation_id)).sort((a,b)=>b.date_versement.localeCompare(a.date_versement));
-    return res.end(JSON.stringify(list.slice(0,100)));
-  }
-
   // ── DEPENSES ──────────────────────────────────────────────
   if(p==='/api/depenses'&&method==='GET'){
     const myVehs=vehsVisibles(db,auth).map(v=>v.id);
