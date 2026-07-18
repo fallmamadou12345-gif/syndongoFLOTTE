@@ -5759,33 +5759,84 @@ async function loadMonEspaceLivreur() {
     ? '<div class="stat-box"><div class="stat-val">' + fmt(_meCache.montant_journalier) + '</div><div class="stat-label">Objectif quotidien à verser</div></div>'
     : '';
   var boxes = [];
-  if (estLivreurMoto) boxes.push('<div class="stat-box"><div class="stat-val">' + formatHeures(r.total_heures) + '</div><div class="stat-label">Heures travaillées</div></div>');
-  boxes.push('<div class="stat-box"><div class="stat-val">' + fmt(r.total_verse) + '</div><div class="stat-label">Montant versé</div></div>');
+  if (estLivreurMoto) boxes.push(kpiBox('heures', formatHeures(r.total_heures), 'Heures travaillées', null));
+  boxes.push(kpiBox('verse', fmt(r.total_verse), 'Montant versé', null));
   boxes.push(objectifBox);
-  boxes.push('<div class="stat-box"><div class="stat-val" style="color:' + (r.manquant > 0 ? '#A32D2D' : '#27500A') + '">' + fmt(r.manquant) + '</div><div class="stat-label">Manquant</div></div>');
+  boxes.push(kpiBox('manquant', fmt(r.manquant), 'Manquant', r.manquant > 0 ? '#A32D2D' : '#27500A'));
   if (estLivreurMoto) {
-    boxes.push('<div class="stat-box"><div class="stat-val" style="color:#27500A">' + fmt(r.prime) + '</div><div class="stat-label">' + (r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)') + '</div></div>');
-    boxes.push('<div class="stat-box"><div class="stat-val" style="color:#0C447C;font-size:18px">' + fmt(r.montant_a_payer) + '</div><div class="stat-label">TOTAL À PAYER (période)</div></div>');
+    boxes.push(kpiBox('prime', fmt(r.prime), r.nb_jours_primes ? 'Prime (' + r.nb_jours_primes + ' jour(s) primé(s))' : 'Prime (aucun jour primé)', '#27500A'));
+    boxes.push(kpiBox('total', fmt(r.montant_a_payer), 'TOTAL À PAYER (période)', '#0C447C', '18px'));
   }
   el.innerHTML = '<div class="stat-box-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">' + boxes.join('') + '</div>';
 
   _meJoursCache = Array.isArray(r.detail_jours) ? r.detail_jours : [];
+  _meJoursPage = 1;
   if (!elJ) return;
   filtrerMeJours();
 }
 
+function kpiBox(kpi, val, label, color, fontSize) {
+  var active = _meKpiActif === kpi;
+  return '<div class="stat-box kpi-link" data-kpi="' + kpi + '" onclick="setKpiFiltre(\'' + kpi + '\')" title="Cliquer pour voir le détail par jour"' +
+    (active ? ' style="border:2px solid #185FA5"' : '') + '>' +
+    '<div class="stat-val"' + (color ? ' style="color:' + color + (fontSize ? ';font-size:' + fontSize : '') + '"' : '') + '>' + val + '</div>' +
+    '<div class="stat-label">' + label + '</div></div>';
+}
+
 let _meJoursCache = [];
+let _meKpiActif = null;
+let _meJoursPage = 1;
+const ME_JOURS_PAR_PAGE = 10;
+const ME_KPI_INFO = {
+  verse: 'Jours triés par montant versé (du plus élevé au plus faible)',
+  manquant: 'Jours avec un manquant uniquement',
+  heures: 'Jours triés par heures travaillées (du plus élevé au plus faible)',
+  prime: 'Jours primés uniquement',
+  total: 'Jours triés par montant à payer (du plus élevé au plus faible)'
+};
+
+function setKpiFiltre(kpi) {
+  _meKpiActif = (_meKpiActif === kpi) ? null : kpi;
+  _meJoursPage = 1;
+  loadMonEspaceLivreur();
+}
+
+function setMeJoursPage(n) {
+  _meJoursPage = n;
+  filtrerMeJours();
+}
+
 function filtrerMeJours() {
   const elJ = document.getElementById('me-jours');
   if (!elJ) return;
   const q = (document.getElementById('me-jour-q') || {}).value || '';
-  const jours = q ? _meJoursCache.filter(function(j) { return j.date === q; }) : _meJoursCache;
-  if (!jours.length) { elJ.innerHTML = '<div class="empty">' + (q ? 'Aucune donnée pour le ' + q : 'Aucune donnée sur cette période') + '</div>'; return; }
+  var jours = q ? _meJoursCache.filter(function(j) { return j.date === q; }) : _meJoursCache.slice();
+
+  if (_meKpiActif === 'manquant') jours = jours.filter(function(j) { return j.manquant > 0; }).sort(function(a, b) { return b.manquant - a.manquant; });
+  else if (_meKpiActif === 'verse') jours = jours.sort(function(a, b) { return b.verse - a.verse; });
+  else if (_meKpiActif === 'heures') jours = jours.sort(function(a, b) { return b.heures - a.heures; });
+  else if (_meKpiActif === 'prime') jours = jours.filter(function(j) { return j.prime > 0; });
+  else if (_meKpiActif === 'total') jours = jours.sort(function(a, b) { return b.montant_a_payer - a.montant_a_payer; });
+
+  var banniere = _meKpiActif
+    ? '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#E6F1FB;color:#0C447C;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:12px">' +
+        '<span>🔎 ' + ME_KPI_INFO[_meKpiActif] + '</span>' +
+        '<button class="btn-sm" style="background:#fff" onclick="setKpiFiltre(\'' + _meKpiActif + '\')">✕ Réinitialiser</button>' +
+      '</div>'
+    : '';
+
+  if (!jours.length) { elJ.innerHTML = banniere + '<div class="empty">' + (q ? 'Aucune donnée pour le ' + q : 'Aucune donnée pour ce filtre') + '</div>'; return; }
+
+  var totalPages = Math.max(1, Math.ceil(jours.length / ME_JOURS_PAR_PAGE));
+  if (_meJoursPage > totalPages) _meJoursPage = totalPages;
+  var startIdx = (_meJoursPage - 1) * ME_JOURS_PAR_PAGE;
+  var joursPage = jours.slice(startIdx, startIdx + ME_JOURS_PAR_PAGE);
+
   var estLivreurMotoJ = LIVREUR_CATEGORIE === 'livreur';
   var theadExtra = estLivreurMotoJ ? '<th>Heures</th>' : '';
   var theadExtra2 = estLivreurMotoJ ? '<th>Prime</th><th>Montant à payer</th>' : '';
-  elJ.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th>' + theadExtra + '<th>Versé</th><th>Manquant</th>' + theadExtra2 + '</tr></thead><tbody>' +
-    jours.map(function(j) {
+  var table = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th>' + theadExtra + '<th>Versé</th><th>Manquant</th>' + theadExtra2 + '</tr></thead><tbody>' +
+    joursPage.map(function(j) {
       var rowExtra = estLivreurMotoJ ? '<td data-label="Heures">' + formatHeures(j.heures) + '</td>' : '';
       var rowExtra2 = estLivreurMotoJ
         ? '<td data-label="Prime"' + (j.prime ? ' style="color:#27500A;font-weight:700"' : '') + '>' + fmt(j.prime) + '</td>' +
@@ -5795,6 +5846,17 @@ function filtrerMeJours() {
         '<td data-label="Manquant"' + (j.manquant > 0 ? ' style="color:#A32D2D;font-weight:700"' : '') + '>' + fmt(j.manquant) + '</td>' +
         rowExtra2 + '</tr>';
     }).join('') + '</tbody></table></div>';
+
+  var pagination = '';
+  if (totalPages > 1) {
+    var pageBtns = '';
+    for (var pnum = 1; pnum <= totalPages; pnum++) {
+      pageBtns += '<button class="btn-sm" style="' + (pnum === _meJoursPage ? 'background:#185FA5;color:#fff' : 'background:#f0f0f0;color:#444') + ';min-width:28px" onclick="setMeJoursPage(' + pnum + ')">' + pnum + '</button>';
+    }
+    pagination = '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:10px">' + pageBtns + '</div>';
+  }
+
+  elJ.innerHTML = banniere + table + pagination;
 }
 
 async function loadMesPaiementsLivreur() {
