@@ -4895,11 +4895,11 @@ async function filtrerInspections(statut) {
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + checklistHtml + '</div>' +
       (c.commentaire_chauffeur ? '<div style="font-size:13px;color:#1a1a18;margin-bottom:8px">💬 ' + c.commentaire_chauffeur + '</div>' : '') +
       (c.photos ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
-        [['exterieur','🚗 Extérieur'],['interieur','🪑 Intérieur'],['tableau_bord','🎛️ Tableau de bord']].map(function(pk) {
-          var ph = c.photos[pk[0]];
+        (typeof CONTROLE_PHOTOS !== 'undefined' ? CONTROLE_PHOTOS : [{key:'exterieur',label:'🚗 Extérieur'},{key:'interieur',label:'🪑 Intérieur'},{key:'tableau_bord',label:'🎛️ Tableau de bord'}]).map(function(p) {
+          var ph = c.photos[p.key];
           if (!ph || !ph.data) return '';
           return '<div style="text-align:center"><img src="' + ph.data + '" style="max-width:140px;max-height:120px;border-radius:8px;border:1px solid #e0dfd8;cursor:pointer;display:block" onclick="window.open(this.src)">' +
-            '<div style="font-size:10px;color:#6b6b67;margin-top:2px">' + pk[1] + '</div></div>';
+            '<div style="font-size:10px;color:#6b6b67;margin-top:2px">' + p.label + '</div></div>';
         }).join('') + '</div>' : '') +
       (c.statut === 'rejete' && c.commentaire_gestionnaire ? '<div style="font-size:12px;color:#A32D2D;margin-bottom:8px">Motif du rejet : ' + c.commentaire_gestionnaire + '</div>' : '') +
       (c.statut === 'en_attente' ? '<div style="display:flex;gap:8px">' +
@@ -5473,9 +5473,13 @@ const CONTROLE_ITEMS = [
   { key:'niveaux', label:'🛢️ Niveaux (huile, etc.)' }
 ];
 const CONTROLE_PHOTOS = [
-  { key:'exterieur', label:'🚗 Extérieur' },
-  { key:'interieur', label:'🪑 Intérieur' },
-  { key:'tableau_bord', label:'🎛️ Tableau de bord' }
+  { key:'ext_avant', label:'🚗 Extérieur — Avant', hint:'Face avant du véhicule, plaque d\'immatriculation visible' },
+  { key:'ext_arriere', label:'🚗 Extérieur — Arrière', hint:'Face arrière du véhicule, plaque d\'immatriculation visible' },
+  { key:'ext_gauche', label:'🚗 Extérieur — Côté gauche', hint:'Tout le flanc gauche du véhicule' },
+  { key:'ext_droit', label:'🚗 Extérieur — Côté droit', hint:'Tout le flanc droit du véhicule' },
+  { key:'int_avant', label:'🪑 Intérieur — Sièges avant', hint:'Sièges avant et volant/guidon' },
+  { key:'int_arriere', label:'🪑 Intérieur — Arrière / coffre', hint:'Banquette arrière ou coffre/rangement' },
+  { key:'tableau_bord', label:'🎛️ Tableau de bord', hint:'Compteur kilométrique bien lisible' }
 ];
 let _meChecklistState = {};
 let _mePhotosState = {};
@@ -5486,11 +5490,12 @@ function renderCtrlPhotos() {
   el.innerHTML = CONTROLE_PHOTOS.map(function(p) {
     var got = _mePhotosState[p.key];
     return '<div style="border:1px solid #e0dfd8;border-radius:8px;padding:10px">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:' + (got ? '8px' : '0') + '">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:' + (got ? '8px' : '2px') + '">' +
         '<span style="font-size:13px;font-weight:600">' + p.label + (got ? ' ✅' : '') + '</span>' +
         '<input type="file" id="me-ctrl-photo-' + p.key + '" accept="image/*" capture="environment" style="display:none">' +
-        '<button type="button" class="btn-sm" style="background:' + (got ? '#e0dfd8' : '#0C447C') + ';color:' + (got ? '#444' : '#fff') + '" onclick="document.getElementById(\'me-ctrl-photo-' + p.key + '\').click()">📷 ' + (got ? 'Reprendre' : 'Prendre la photo') + '</button>' +
+        '<button type="button" class="btn-sm" style="background:' + (got ? '#e0dfd8' : '#0C447C') + ';color:' + (got ? '#444' : '#fff') + ';flex-shrink:0" onclick="document.getElementById(\'me-ctrl-photo-' + p.key + '\').click()">📷 ' + (got ? 'Reprendre' : 'Prendre la photo') + '</button>' +
       '</div>' +
+      (!got && p.hint ? '<div style="font-size:11px;color:#6b6b67;margin-bottom:2px">' + p.hint + '</div>' : '') +
       (got ? '<img src="' + got.data + '" style="max-width:100%;max-height:160px;border-radius:6px;display:block">' : '') +
       '</div>';
   }).join('');
@@ -5556,7 +5561,7 @@ async function soumettreControle(btn) {
   var manquant = CONTROLE_ITEMS.filter(function(i) { return !_meChecklistState[i.key]; });
   if (manquant.length) { toast('Merci de renseigner tous les points du contrôle', 'err'); return; }
   var photosManquantes = CONTROLE_PHOTOS.filter(function(p) { return !_mePhotosState[p.key]; });
-  if (photosManquantes.length) { toast('Merci de prendre les 3 photos obligatoires', 'err'); return; }
+  if (photosManquantes.length) { toast('Merci de prendre les ' + CONTROLE_PHOTOS.length + ' photos obligatoires (' + photosManquantes.map(function(p){return p.label;}).join(', ') + ' manquante(s))', 'err'); return; }
   setBtnLoad(btn, true);
   const res = await api('POST', '/livreur/controle', {
     checklist: _meChecklistState,

@@ -945,12 +945,16 @@ async function handleAPI(req, res, body) {
     const aff=db.affectations.find(a=>a.chauffeur_id===lvId&&!a.date_fin);
     if(!aff) return res.end(JSON.stringify({detail:'Aucun véhicule affecté'}));
     const photos=data.photos||{};
-    if(!photos.exterieur||!photos.exterieur.data||!photos.interieur||!photos.interieur.data||!photos.tableau_bord||!photos.tableau_bord.data){
-      return res.end(JSON.stringify({detail:'Les 3 photos (extérieur, intérieur, tableau de bord) sont obligatoires'}));
+    const PHOTO_KEYS=['ext_avant','ext_arriere','ext_gauche','ext_droit','int_avant','int_arriere','tableau_bord'];
+    const photosManquantes=PHOTO_KEYS.filter(k=>!photos[k]||!photos[k].data);
+    if(photosManquantes.length){
+      return res.end(JSON.stringify({detail:'Photos obligatoires manquantes ('+photosManquantes.length+'/'+PHOTO_KEYS.length+')'}));
     }
+    const photosSaved={};
+    PHOTO_KEYS.forEach(k=>{photosSaved[k]=photos[k];});
     const c={id:uid(),vehicule_id:aff.vehicule_id,chauffeur_id:lvId,date_soumission:today(),
       checklist:data.checklist||{},commentaire_chauffeur:data.commentaire_chauffeur||'',
-      photos:{exterieur:photos.exterieur,interieur:photos.interieur,tableau_bord:photos.tableau_bord},statut:'en_attente',
+      photos:photosSaved,statut:'en_attente',
       commentaire_gestionnaire:'',traite_par:'',date_traitement:null,
       created_at:new Date().toISOString()};
     db.controles_vehicule.push(c);saveDB(db);
