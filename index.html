@@ -981,6 +981,29 @@ tr:hover td{background:#fafaf8}
       </div>
 
       <div class="card">
+        <div class="card-title">🧾 Mes factures</div>
+        <div id="me-factures"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">💰 Déclarer un versement</div>
+        <div id="me-versement-statut"><div class="empty">Chargement…</div></div>
+        <div id="me-versement-form" style="margin-top:12px">
+          <div class="form-row">
+            <div class="field"><label>Montant versé (FCFA)</label><input id="me-vd-montant" type="number" placeholder="Ex: 15000"></div>
+            <div class="field"><label>Mode</label><select id="me-vd-mode">
+              <option value="especes">Espèces</option>
+              <option value="wave">Wave 📱</option>
+              <option value="orange_money">Orange Money 📱</option>
+              <option value="virement">Virement</option>
+            </select></div>
+          </div>
+          <div class="field" style="margin-bottom:10px"><label>Commentaire (optionnel)</label><textarea id="me-vd-commentaire" placeholder="Précisions éventuelles…" rows="2"></textarea></div>
+          <button class="btn btn-blue" onclick="declarerVersement(this)">Déclarer le versement</button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">🔧 Contrôle véhicule</div>
         <div id="me-controle-statut"><div class="empty">Chargement…</div></div>
         <div id="me-controle-form" style="display:none;margin-top:12px">
@@ -1230,6 +1253,21 @@ tr:hover td{background:#fafaf8}
           </div>
         </div>
         <div id="insp-list"><div class="empty">Chargement…</div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-versements-declares">
+      <div class="card">
+        <div class="card-title">
+          💰 Versements déclarés par les chauffeurs
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="chip active-blue" id="vd-chip-en_attente" onclick="filtrerVersementsDeclares('en_attente')">⏳ En attente</button>
+            <button class="chip inactive" id="vd-chip-valide" onclick="filtrerVersementsDeclares('valide')">✅ Validés</button>
+            <button class="chip inactive" id="vd-chip-rejete" onclick="filtrerVersementsDeclares('rejete')">❌ Rejetés</button>
+            <button class="chip inactive" id="vd-chip-tous" onclick="filtrerVersementsDeclares('')">Tous</button>
+          </div>
+        </div>
+        <div id="vd-list"><div class="empty">Chargement…</div></div>
       </div>
     </div>
 
@@ -1809,6 +1847,7 @@ function demarrerApp() {
       { id: 'livreurs', label: '🏍️ Livreurs Moto' },
       { id: 'alertes', label: 'Alertes' },
       { id: 'inspections', label: '✅ Inspections' },
+      { id: 'versements-declares', label: '💰 Versements' },
       { id: 'rapports', label: 'Rapports' },
       { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
@@ -1827,6 +1866,7 @@ function demarrerApp() {
       { id: 'livreurs', label: '🏍️ Livreurs Moto' },
       { id: 'alertes', label: 'Alertes' },
       { id: 'inspections', label: '✅ Inspections' },
+      { id: 'versements-declares', label: '💰 Versements' },
       { id: 'rapports', label: 'Rapports' },
       { id: 'controle', label: '🔍 Contrôle' },
       { id: 'historique', label: 'Historique' },
@@ -1984,6 +2024,8 @@ function loadPage(id) {
     loadAlertes();
   } else if (id === 'inspections') {
     loadInspections();
+  } else if (id === 'versements-declares') {
+    loadVersementsDeclares();
   } else if (id === 'rapports') {
     if (typeof filtrerRapport === 'function') filtrerRapport();
     // Ajouter bouton CSV si absent
@@ -5021,6 +5063,71 @@ async function rejeterControle(id) {
   filtrerInspections(_inspectionsFiltre);
 }
 
+// ═══════════════════════════════════════════════════════
+// VERSEMENTS DÉCLARÉS — validation manager/gestionnaire
+// ═══════════════════════════════════════════════════════
+let _vdFiltre = 'en_attente';
+const VD_MODE_LABELS = { especes:'💵 Espèces', wave:'📱 Wave', orange_money:'📱 Orange Money', virement:'🏦 Virement' };
+
+async function loadVersementsDeclares() {
+  filtrerVersementsDeclares(_vdFiltre);
+}
+
+async function filtrerVersementsDeclares(statut) {
+  _vdFiltre = statut;
+  ['en_attente','valide','rejete','tous'].forEach(function(t) {
+    var c = document.getElementById('vd-chip-' + t);
+    if (c) c.className = 'chip ' + ((statut===t || (statut==='' && t==='tous')) ? 'active-blue' : 'inactive');
+  });
+  var el = document.getElementById('vd-list');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">Chargement…</div>';
+  var list = await api('GET', '/versements_declares' + (statut ? '?statut=' + statut : ''));
+  if (!Array.isArray(list) || !list.length) {
+    el.innerHTML = '<div class="empty">Aucune déclaration pour ce filtre</div>';
+    return;
+  }
+  var statutCols = { en_attente: ['#FFF8E6','#BA7517','⏳ En attente'], valide: ['#EAF3DE','#3B6D11','✅ Validé'], rejete: ['#FCEBEB','#A32D2D','❌ Rejeté'] };
+  el.innerHTML = list.map(function(v) {
+    var sc = statutCols[v.statut] || ['#f5f4f0','#444', v.statut];
+    return '<div style="border:1px solid #e0dfd8;border-left:3px solid ' + sc[1] + ';border-radius:8px;padding:12px 14px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;background:' + sc[0] + ';color:' + sc[1] + '">' + sc[2] + '</span>' +
+          '<span style="font-size:12px;font-weight:600">' + (v.vehicule||'?') + '</span>' +
+          '<span style="font-size:11px;color:#6b6b67">· ' + (v.chauffeur||'?') + '</span>' +
+          '<span style="font-size:11px;color:#6b6b67">· ' + (v.date_declaration||'') + '</span>' +
+        '</div>' +
+        '<span style="font-size:14px;font-weight:700;color:#185FA5">' + fmt(v.montant) + '</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#6b6b67;margin-bottom:8px">' + (VD_MODE_LABELS[v.mode_paiement] || v.mode_paiement) + '</div>' +
+      (v.commentaire ? '<div style="font-size:13px;color:#1a1a18;margin-bottom:8px">💬 ' + v.commentaire + '</div>' : '') +
+      (v.statut === 'rejete' && v.commentaire_gestionnaire ? '<div style="font-size:12px;color:#A32D2D;margin-bottom:8px">Motif du rejet : ' + v.commentaire_gestionnaire + '</div>' : '') +
+      (v.statut === 'en_attente' ? '<div style="display:flex;gap:8px">' +
+        '<button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick="validerVersementDeclare(\'' + v.id + '\')">✅ Valider</button>' +
+        '<button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="rejeterVersementDeclare(\'' + v.id + '\')">❌ Rejeter</button>' +
+      '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+async function validerVersementDeclare(id) {
+  if (!confirm('Valider ce versement ?')) return;
+  const r = await api('POST', '/versements_declares/' + id + '/valider');
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Versement validé');
+  filtrerVersementsDeclares(_vdFiltre);
+}
+
+async function rejeterVersementDeclare(id) {
+  var motif = prompt('Motif du rejet (obligatoire) :');
+  if (!motif || !motif.trim()) { if (motif !== null) toast('Motif obligatoire', 'err'); return; }
+  const r = await api('POST', '/versements_declares/' + id + '/rejeter', { commentaire_gestionnaire: motif.trim() });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Versement rejeté');
+  filtrerVersementsDeclares(_vdFiltre);
+}
+
 // Charger les échéances d'un véhicule dans le formulaire
 async function chargerEcheancesVeh() {
   var vid = (document.getElementById('al-veh')||{}).value || '';
@@ -5557,6 +5664,8 @@ async function initMonEspaceLivreur() {
   if (LIVREUR_CATEGORIE === 'livreur') await loadMesPaiementsLivreur();
   await initMeControle();
   await loadMeChat();
+  await loadMeFactures();
+  await initMeVersement();
 }
 
 // ── Messages (chat) — côté chauffeur ──
@@ -5607,6 +5716,54 @@ async function envoyerChatLivreur(btn) {
   document.getElementById('me-chat-fichier').value = '';
   document.getElementById('me-chat-attach-preview').style.display = 'none';
   await loadMeChat();
+}
+
+// ── Mes factures (lecture seule) — côté chauffeur ──
+async function loadMeFactures() {
+  const el = document.getElementById('me-factures');
+  if (!el) return;
+  const list = await api('GET', '/livreur/facturations');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune facture pour l\'instant</div>'; return; }
+  const typeLabels = { complet: 'Complète', demi_panne: 'Demi-panne', repos: 'Repos', inactif: 'Inactif' };
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Montant</th></tr></thead><tbody>' +
+    list.slice(0, 30).map(function(f) {
+      return '<tr><td style="color:#6b6b67">' + f.date + '</td><td>' + (typeLabels[f.type_journee] || f.type_journee || '—') + '</td>' +
+        '<td style="color:#185FA5;font-weight:700;text-align:right">' + fmt(f.montant_facture) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+// ── Déclarer un versement — côté chauffeur ──
+async function initMeVersement() {
+  const el = document.getElementById('me-versement-statut');
+  if (!el) return;
+  const list = await api('GET', '/livreur/versement_declare');
+  const dernier = Array.isArray(list) && list.length ? list[0] : null;
+  if (!dernier) {
+    el.innerHTML = '<div class="empty">Aucun versement déclaré pour l\'instant</div>';
+  } else if (dernier.statut === 'en_attente') {
+    el.innerHTML = '<div class="warn-box">⏳ Versement de ' + fmt(dernier.montant) + ' déclaré le ' + dernier.date_declaration + ' — en attente de validation par votre gestionnaire</div>';
+  } else if (dernier.statut === 'valide') {
+    el.innerHTML = '<div class="info-box" style="background:#EAF3DE;border-color:#C0DD97;color:#27500A">✅ Versement de ' + fmt(dernier.montant) + ' validé le ' + (dernier.date_traitement || dernier.date_declaration).slice(0,10) + '</div>';
+  } else if (dernier.statut === 'rejete') {
+    el.innerHTML = '<div class="err-box">❌ Versement de ' + fmt(dernier.montant) + ' du ' + dernier.date_declaration + ' rejeté' + (dernier.commentaire_gestionnaire ? ' : ' + dernier.commentaire_gestionnaire : '') + ' — merci de resoumettre</div>';
+  }
+}
+
+async function declarerVersement(btn) {
+  const montant = (document.getElementById('me-vd-montant') || {}).value;
+  if (!montant || +montant <= 0) { toast('Montant invalide', 'err'); return; }
+  setBtnLoad(btn, true);
+  const res = await api('POST', '/livreur/versement_declare', {
+    montant: +montant,
+    mode_paiement: (document.getElementById('me-vd-mode') || {}).value || 'especes',
+    commentaire: (document.getElementById('me-vd-commentaire') || {}).value || ''
+  });
+  setBtnLoad(btn, false);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  toast('Versement déclaré, en attente de validation');
+  document.getElementById('me-vd-montant').value = '';
+  document.getElementById('me-vd-commentaire').value = '';
+  await initMeVersement();
 }
 
 // ── Contrôle véhicule (état des lieux) — soumission côté chauffeur ──
