@@ -562,6 +562,14 @@ tr:hover td{background:#fafaf8}
       </div>
     </div>
 
+    <!-- MESSAGES -->
+    <div class="page" id="page-messages">
+      <div class="card">
+        <div class="card-title">💬 Messages — échanges avec vos chauffeurs</div>
+        <div id="msg-conversations-list"><div class="empty">Chargement…</div></div>
+      </div>
+    </div>
+
     <!-- AFFECTATIONS -->
     <div class="page" id="page-affectations">
       <div class="card">
@@ -1770,6 +1778,7 @@ function demarrerApp() {
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'vehicules', label: 'Véhicules' },
       { id: 'chauffeurs', label: 'Chauffeurs' },
+      { id: 'messages', label: '💬 Messages' },
       { id: 'affectations', label: 'Affectations' },
       { id: 'caisse', label: 'Caisse & Facturation' },
       { id: 'retards', label: 'Retards' },
@@ -1787,6 +1796,7 @@ function demarrerApp() {
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'vehicules', label: 'Véhicules' },
       { id: 'chauffeurs', label: 'Chauffeurs' },
+      { id: 'messages', label: '💬 Messages' },
       { id: 'affectations', label: 'Affectations' },
       { id: 'caisse', label: 'Caisse & Facturation' },
       { id: 'retards', label: 'Retards' },
@@ -1925,6 +1935,8 @@ function loadPage(id) {
     loadVehicules(); loadTags();
   } else if (id === 'chauffeurs') {
     loadChauffeurs();
+  } else if (id === 'messages') {
+    loadMessagesPage();
   } else if (id === 'affectations') {
     loadAffectations();
   } else if (id === 'caisse') {
@@ -3208,7 +3220,7 @@ async function loadChatManager() {
   const el = document.getElementById('chat-messages');
   if (!el || !_chatChauffeurId) return;
   const list = await api('GET', '/chat/' + _chatChauffeurId);
-  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun message pour l\'instant</div>'; await loadChauffeurs(); return; }
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun message pour l\'instant</div>'; await loadChauffeurs(); if (document.getElementById('msg-conversations-list')) await loadMessagesPage(); return; }
   el.innerHTML = list.map(function(m) {
     var mine = m.expediteur === 'gestionnaire';
     return '<div style="align-self:' + (mine ? 'flex-end' : 'flex-start') + ';max-width:80%;background:' + (mine ? '#0C447C' : '#f5f4f0') + ';color:' + (mine ? '#fff' : '#1a1a18') + ';border-radius:10px;padding:8px 12px">' +
@@ -3222,6 +3234,31 @@ async function loadChatManager() {
   }).join('');
   el.scrollTop = el.scrollHeight;
   await loadChauffeurs();
+  if (document.getElementById('msg-conversations-list')) await loadMessagesPage();
+}
+
+// ── Page Messages — vue d'ensemble des conversations ──
+async function loadMessagesPage() {
+  const el = document.getElementById('msg-conversations-list');
+  if (!el) return;
+  const list = await api('GET', '/chat/conversations');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
+  el.innerHTML = list.map(function(c) {
+    var dm = c.dernier_message;
+    var preview = !dm ? '<span style="color:#aaa;font-style:italic">Aucun message pour l\'instant</span>'
+      : (dm.expediteur === 'gestionnaire' ? 'Vous : ' : '') + (dm.texte ? dm.texte : (dm.a_piece_jointe ? '📎 Pièce jointe' : ''));
+    var heure = dm && dm.created_at ? dm.created_at.slice(0,16).replace('T',' ') : '';
+    return '<div onclick="ouvrirChat(\'' + c.chauffeur_id + '\',\'' + c.chauffeur.replace(/'/g,"\\'") + '\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid #f0efeb;cursor:pointer">' +
+      '<div style="min-width:0">' +
+        '<div style="font-weight:600;font-size:13px">' + c.chauffeur + '</div>' +
+        '<div style="font-size:12px;color:#6b6b67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px">' + preview + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        (heure ? '<div style="font-size:10px;color:#aaa">' + heure + '</div>' : '') +
+        (c.non_lus ? '<div style="background:#A32D2D;color:#fff;border-radius:99px;font-size:10px;padding:2px 7px;margin-top:3px;display:inline-block">' + c.non_lus + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 document.addEventListener('change', function(e) {

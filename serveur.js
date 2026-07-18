@@ -985,6 +985,30 @@ async function handleAPI(req, res, body) {
     });
     return res.end(JSON.stringify(counts));
   }
+  if(p==='/api/chat/conversations'&&method==='GET'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const myIds=isGest?chauffeursVisiblesIds(db,auth):db.chauffeurs.filter(c=>c.statut==='actif').map(c=>c.id);
+    const list=myIds.map(chId=>{
+      const ch=db.chauffeurs.find(c=>c.id===chId);
+      const msgs=db.chat_messages.filter(m=>m.chauffeur_id===chId).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+      const dernier=msgs[0]||null;
+      const nonLus=msgs.filter(m=>m.expediteur==='chauffeur'&&!m.lu_gestionnaire).length;
+      return {
+        chauffeur_id:chId,
+        chauffeur:ch?ch.prenom+' '+ch.nom:'?',
+        categorie:ch?ch.categorie:'',
+        dernier_message:dernier?{texte:dernier.texte,a_piece_jointe:!!dernier.piece_jointe,expediteur:dernier.expediteur,created_at:dernier.created_at}:null,
+        non_lus:nonLus
+      };
+    });
+    list.sort((a,b)=>{
+      if(!a.dernier_message&&!b.dernier_message) return (a.chauffeur||'').localeCompare(b.chauffeur||'');
+      if(!a.dernier_message) return 1;
+      if(!b.dernier_message) return -1;
+      return b.dernier_message.created_at.localeCompare(a.dernier_message.created_at);
+    });
+    return res.end(JSON.stringify(list));
+  }
   const chatGetM=p.match(/^\/api\/chat\/([^/]+)$/);
   if(chatGetM&&method==='GET'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
