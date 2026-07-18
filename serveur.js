@@ -81,7 +81,7 @@ function loadDB() {
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
-   'livreurs','recettes_livreurs','paiements_livreurs','controles_vehicule','chat_messages','versements_declares'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'livreurs','recettes_livreurs','paiements_livreurs','controles_vehicule','chat_messages'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   return db;
@@ -778,71 +778,6 @@ async function handleAPI(req, res, body) {
     const mesAffIds=db.affectations.filter(a=>a.chauffeur_id===auth.livreur.id).map(a=>a.id);
     const list=db.versements.filter(v=>mesAffIds.includes(v.affectation_id)).sort((a,b)=>b.date_versement.localeCompare(a.date_versement));
     return res.end(JSON.stringify(list.slice(0,100)));
-  }
-
-  // ── VERSEMENTS DÉCLARÉS — déclaration chauffeur, validation gestionnaire ──
-  if(p==='/api/livreur/versement_declare'&&method==='POST'){
-    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const lvId=auth.livreur.id;
-    const aff=db.affectations.find(a=>a.chauffeur_id===lvId&&!a.date_fin);
-    if(!aff) return res.end(JSON.stringify({detail:'Aucun véhicule affecté'}));
-    const montant=Number(data.montant);
-    if(!montant||montant<=0) return res.end(JSON.stringify({detail:'Montant invalide'}));
-    const vd={id:uid(),chauffeur_id:lvId,affectation_id:aff.id,vehicule_id:aff.vehicule_id,
-      montant,mode_paiement:data.mode_paiement||'especes',commentaire:data.commentaire||'',
-      date_declaration:today(),statut:'en_attente',
-      commentaire_gestionnaire:'',traite_par:'',date_traitement:null,versement_id:null,
-      created_at:new Date().toISOString()};
-    db.versements_declares.push(vd);saveDB(db);
-    return res.end(JSON.stringify({id:vd.id,message:'Versement déclaré, en attente de validation'}));
-  }
-  if(p==='/api/livreur/versement_declare'&&method==='GET'){
-    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const list=db.versements_declares.filter(v=>v.chauffeur_id===auth.livreur.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
-    return res.end(JSON.stringify(list.slice(0,50)));
-  }
-  if(p==='/api/versements_declares'&&method==='GET'){
-    if(!isManager&&!isGest&&!isProprio){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
-    let list=db.versements_declares.filter(v=>myVehs.includes(v.vehicule_id));
-    if(q.statut) list=list.filter(v=>v.statut===q.statut);
-    list=list.map(v=>{
-      const veh=db.vehicules.find(x=>x.id===v.vehicule_id);
-      const ch=db.chauffeurs.find(x=>x.id===v.chauffeur_id);
-      return{...v,vehicule:veh?veh.immatriculation:'?',chauffeur:ch?ch.prenom+' '+ch.nom:'?'};
-    });
-    return res.end(JSON.stringify(list.sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,200)));
-  }
-  const vdValiderM=p.match(/^\/api\/versements_declares\/([^/]+)\/valider$/);
-  if(vdValiderM&&method==='POST'){
-    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    const idx=db.versements_declares.findIndex(v=>v.id===vdValiderM[1]);
-    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Déclaration introuvable'}));}
-    const vd=db.versements_declares[idx];
-    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(vd.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
-    const aff=db.affectations.find(a=>a.id===vd.affectation_id);
-    const attendu=aff?aff.montant_journalier:0;
-    const statut=vd.montant>=attendu?'recu':vd.montant>0?'partiel':'en_retard';
-    const versement={id:uid(),affectation_id:vd.affectation_id,montant:vd.montant,montant_attendu:attendu,
-      date_versement:vd.date_declaration,mode_paiement:vd.mode_paiement,statut,created_at:new Date().toISOString()};
-    db.versements.push(versement);
-    vd.statut='valide';vd.versement_id=versement.id;
-    vd.traite_par=isGest?auth.gest.nom:'Manager';vd.date_traitement=new Date().toISOString();
-    saveDB(db);
-    return res.end(JSON.stringify({message:'Versement validé',versement_id:versement.id}));
-  }
-  const vdRejeterM=p.match(/^\/api\/versements_declares\/([^/]+)\/rejeter$/);
-  if(vdRejeterM&&method==='POST'){
-    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(!data.commentaire_gestionnaire||!data.commentaire_gestionnaire.trim()) return res.end(JSON.stringify({detail:'Un motif de rejet est requis'}));
-    const idx=db.versements_declares.findIndex(v=>v.id===vdRejeterM[1]);
-    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Déclaration introuvable'}));}
-    const vd=db.versements_declares[idx];
-    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(vd.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
-    vd.statut='rejete';vd.commentaire_gestionnaire=data.commentaire_gestionnaire.trim();
-    vd.traite_par=isGest?auth.gest.nom:'Manager';vd.date_traitement=new Date().toISOString();
-    saveDB(db);
-    return res.end(JSON.stringify({message:'Versement rejeté'}));
   }
 
   // ── DEPENSES ──────────────────────────────────────────────
