@@ -992,6 +992,18 @@ tr:hover td{background:#fafaf8}
           <button class="btn btn-blue" onclick="soumettreControle(this)">Soumettre le contrôle</button>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-title">💬 Messages</div>
+        <div id="me-chat-messages" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px;padding:4px"><div class="empty">Chargement…</div></div>
+        <div id="me-chat-attach-preview" style="display:none;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <textarea id="me-chat-texte" placeholder="Écrire un message à votre gestionnaire…" rows="2" style="flex:1"></textarea>
+          <input type="file" id="me-chat-fichier" accept="image/*,.pdf" style="display:none">
+          <button type="button" class="btn-sm" style="flex-shrink:0" onclick="document.getElementById('me-chat-fichier').click()">📎</button>
+          <button type="button" class="btn btn-blue" style="flex-shrink:0" onclick="envoyerChatLivreur(this)">Envoyer</button>
+        </div>
+      </div>
     </div>
 
     <!-- ALERTES -->
@@ -1466,6 +1478,24 @@ tr:hover td{background:#fafaf8}
       </div>
     </div>
     <div id="fc-body" style="overflow-y:auto;max-height:70vh"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="m-chat" style="display:none">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <div id="chat-titre" class="modal-title">💬 Messages</div>
+      <button class="modal-close" onclick="fermer('m-chat')">×</button>
+    </div>
+    <input type="hidden" id="chat-chauffeur-id">
+    <div id="chat-messages" style="max-height:50vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;margin-bottom:10px"><div class="empty">Chargement…</div></div>
+    <div id="chat-attach-preview" style="display:none;margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px;align-items:flex-end">
+      <textarea id="chat-texte" placeholder="Écrire un message…" rows="2" style="flex:1"></textarea>
+      <input type="file" id="chat-fichier" accept="image/*,.pdf" style="display:none">
+      <button type="button" class="btn-sm" style="flex-shrink:0" onclick="document.getElementById('chat-fichier').click()">📎</button>
+      <button type="button" class="btn btn-blue" style="flex-shrink:0" onclick="envoyerChatManager(this)">Envoyer</button>
+    </div>
   </div>
 </div>
 
@@ -3189,17 +3219,20 @@ async function loadChauffeurs() {
   const el = document.getElementById('t-chauffeurs');
   if (!list.length) { el.innerHTML = '<div class="empty">Aucun chauffeur</div>'; return; }
   const isM = ROLE === 'manager' || ROLE === 'gestionnaire';
+  const unread = isM ? (await api('GET', '/chat/unread') || {}) : {};
   el.innerHTML = '<table><thead><tr><th>Nom</th><th>Téléphone</th><th>Véhicule</th><th>Permis</th>' + (isM ? '<th>Code PIN (espace chauffeur)</th><th>Actions</th>' : '') + '</tr></thead><tbody>' +
     list.map(function(c) {
       var pinChip = c.pin
         ? '<div onclick="navigator.clipboard.writeText(\'' + c.pin + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:13px;background:#f5f4f0;padding:4px 10px;border-radius:6px;border:1px solid #e0dfd8;cursor:pointer;display:inline-block" title="Cliquer pour copier">' + c.pin + ' 📋</div>' +
           '<button class="btn-sm" style="margin-left:5px" onclick="regenPinChauffeur(\'' + c.id + '\')">Régénérer</button>'
         : '<button class="btn-sm" onclick="regenPinChauffeur(\'' + c.id + '\')">Générer un PIN</button>';
+      var nbUnread = unread[c.id] || 0;
+      var chatBtn = '<button class="btn-sm" style="position:relative;background:#E6F1FB;color:#0C447C" onclick="ouvrirChat(\'' + c.id + '\',\'' + c.prenom + ' ' + c.nom + '\')">💬' + (nbUnread ? '<span style="position:absolute;top:-6px;right:-6px;background:#A32D2D;color:#fff;border-radius:99px;font-size:9px;padding:1px 5px">' + nbUnread + '</span>' : '') + '</button>';
       return '<tr><td onclick="ouvrirFicheChauf(\'' + c.id + '\')" style="cursor:pointer;color:#185FA5;font-weight:700">' + c.prenom + ' ' + c.nom + '</td>' +
         '<td>' + c.telephone + '</td>' +
         '<td>' + (c.vehicule_actuel ? pill(c.vehicule_actuel.split('·')[0].trim(), 'blue') : '<span style="color:#aaa;font-size:11px">Non affecté</span>') + '</td>' +
         '<td>' + (c.numero_permis || '—') + '</td>' +
-        (isM ? '<td>' + pinChip + '</td><td style="display:flex;gap:3px"><button class="btn-sm btn-blue" onclick="ouvrirFicheChauf(\'' + c.id + '\')">Fiche</button><button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick=\'editChauf(' + JSON.stringify(c) + ')\'>Modif.</button><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delChauf(\'' + c.id + '\',\'' + c.prenom + ' ' + c.nom + '\')">Suppr.</button></td>' : '') + '</tr>';
+        (isM ? '<td>' + pinChip + '</td><td style="display:flex;gap:3px">' + chatBtn + '<button class="btn-sm btn-blue" onclick="ouvrirFicheChauf(\'' + c.id + '\')">Fiche</button><button class="btn-sm" style="background:#EAF3DE;color:#27500A" onclick=\'editChauf(' + JSON.stringify(c) + ')\'>Modif.</button><button class="btn-sm" style="background:#FCEBEB;color:#A32D2D" onclick="delChauf(\'' + c.id + '\',\'' + c.prenom + ' ' + c.nom + '\')">Suppr.</button></td>' : '') + '</tr>';
     }).join('') + '</tbody></table>';
 }
 
@@ -3209,6 +3242,67 @@ async function regenPinChauffeur(id) {
   if (!r || (r.detail && !r.pin)) { toast(r.detail || 'Erreur', 'err'); return; }
   toast('Nouveau code PIN : ' + r.pin);
   await loadChauffeurs();
+}
+
+// ── Messages (chat) — côté manager/gestionnaire ──
+let _chatFichier = null;
+let _chatChauffeurId = null;
+async function ouvrirChat(chauffeurId, nom) {
+  _chatChauffeurId = chauffeurId;
+  document.getElementById('chat-chauffeur-id').value = chauffeurId;
+  document.getElementById('chat-titre').textContent = '💬 ' + nom;
+  ouvrir('m-chat');
+  await loadChatManager();
+}
+
+async function loadChatManager() {
+  const el = document.getElementById('chat-messages');
+  if (!el || !_chatChauffeurId) return;
+  const list = await api('GET', '/chat/' + _chatChauffeurId);
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun message pour l\'instant</div>'; await loadChauffeurs(); return; }
+  el.innerHTML = list.map(function(m) {
+    var mine = m.expediteur === 'gestionnaire';
+    return '<div style="align-self:' + (mine ? 'flex-end' : 'flex-start') + ';max-width:80%;background:' + (mine ? '#0C447C' : '#f5f4f0') + ';color:' + (mine ? '#fff' : '#1a1a18') + ';border-radius:10px;padding:8px 12px">' +
+      (!mine ? '<div style="font-size:10px;font-weight:600;opacity:.7;margin-bottom:2px">' + (m.auteur_nom || 'Chauffeur') + '</div>' : '') +
+      (m.texte ? '<div style="font-size:13px;white-space:pre-wrap">' + m.texte + '</div>' : '') +
+      (m.piece_jointe && m.piece_jointe.data ? (m.piece_jointe.type && m.piece_jointe.type.indexOf('image') === 0
+        ? '<img src="' + m.piece_jointe.data + '" style="max-width:100%;max-height:160px;border-radius:6px;margin-top:4px;cursor:pointer" onclick="window.open(this.src)">'
+        : '<div style="margin-top:4px"><a href="' + m.piece_jointe.data + '" download="' + (m.piece_jointe.nom || 'fichier') + '" style="color:inherit;text-decoration:underline;font-size:12px">📄 ' + (m.piece_jointe.nom || 'Fichier joint') + '</a></div>') : '') +
+      '<div style="font-size:9px;opacity:.6;margin-top:3px">' + (m.created_at ? m.created_at.slice(0,16).replace('T',' ') : '') + '</div>' +
+    '</div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+  await loadChauffeurs();
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target.id !== 'chat-fichier') return;
+  var file = e.target.files[0];
+  var prev = document.getElementById('chat-attach-preview');
+  if (!file || !prev) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Fichier trop lourd (max 5 Mo)', 'err'); e.target.value = ''; return; }
+  var r = new FileReader();
+  r.onload = function(ev) {
+    _chatFichier = { data: ev.target.result, nom: file.name, type: file.type };
+    prev.style.display = 'block';
+    prev.innerHTML = '<span style="font-size:12px;background:#E6F1FB;color:#0C447C;padding:4px 10px;border-radius:99px">📎 ' + file.name + ' <span style="cursor:pointer;font-weight:700" onclick="_chatFichier=null;document.getElementById(\'chat-fichier\').value=\'\';document.getElementById(\'chat-attach-preview\').style.display=\'none\'">✕</span></span>';
+  };
+  r.readAsDataURL(file);
+});
+
+async function envoyerChatManager(btn) {
+  const texte = (document.getElementById('chat-texte') || {}).value || '';
+  if (!texte.trim() && !_chatFichier) { toast('Message vide', 'err'); return; }
+  if (!_chatChauffeurId) return;
+  setBtnLoad(btn, true);
+  const res = await api('POST', '/chat/' + _chatChauffeurId, { texte: texte.trim(), piece_jointe: _chatFichier });
+  setBtnLoad(btn, false);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  document.getElementById('chat-texte').value = '';
+  _chatFichier = null;
+  document.getElementById('chat-fichier').value = '';
+  document.getElementById('chat-attach-preview').style.display = 'none';
+  await loadChatManager();
 }
 
 async function addChauffeur(btn) {
@@ -5462,6 +5556,57 @@ async function initMonEspaceLivreur() {
   await loadMonEspaceLivreur();
   if (LIVREUR_CATEGORIE === 'livreur') await loadMesPaiementsLivreur();
   await initMeControle();
+  await loadMeChat();
+}
+
+// ── Messages (chat) — côté chauffeur ──
+let _meChatFichier = null;
+async function loadMeChat() {
+  const el = document.getElementById('me-chat-messages');
+  if (!el) return;
+  const list = await api('GET', '/livreur/chat');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun message pour l\'instant</div>'; return; }
+  el.innerHTML = list.map(function(m) {
+    var mine = m.expediteur === 'chauffeur';
+    return '<div style="align-self:' + (mine ? 'flex-end' : 'flex-start') + ';max-width:80%;background:' + (mine ? '#0C447C' : '#f5f4f0') + ';color:' + (mine ? '#fff' : '#1a1a18') + ';border-radius:10px;padding:8px 12px">' +
+      (!mine ? '<div style="font-size:10px;font-weight:600;opacity:.7;margin-bottom:2px">' + (m.auteur_nom || 'Gestionnaire') + '</div>' : '') +
+      (m.texte ? '<div style="font-size:13px;white-space:pre-wrap">' + m.texte + '</div>' : '') +
+      (m.piece_jointe && m.piece_jointe.data ? (m.piece_jointe.type && m.piece_jointe.type.indexOf('image') === 0
+        ? '<img src="' + m.piece_jointe.data + '" style="max-width:100%;max-height:160px;border-radius:6px;margin-top:4px;cursor:pointer" onclick="window.open(this.src)">'
+        : '<div style="margin-top:4px"><a href="' + m.piece_jointe.data + '" download="' + (m.piece_jointe.nom || 'fichier') + '" style="color:inherit;text-decoration:underline;font-size:12px">📄 ' + (m.piece_jointe.nom || 'Fichier joint') + '</a></div>') : '') +
+      '<div style="font-size:9px;opacity:.6;margin-top:3px">' + (m.created_at ? m.created_at.slice(0,16).replace('T',' ') : '') + '</div>' +
+    '</div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target.id !== 'me-chat-fichier') return;
+  var file = e.target.files[0];
+  var prev = document.getElementById('me-chat-attach-preview');
+  if (!file || !prev) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Fichier trop lourd (max 5 Mo)', 'err'); e.target.value = ''; return; }
+  var r = new FileReader();
+  r.onload = function(ev) {
+    _meChatFichier = { data: ev.target.result, nom: file.name, type: file.type };
+    prev.style.display = 'block';
+    prev.innerHTML = '<span style="font-size:12px;background:#E6F1FB;color:#0C447C;padding:4px 10px;border-radius:99px">📎 ' + file.name + ' <span style="cursor:pointer;font-weight:700" onclick="_meChatFichier=null;document.getElementById(\'me-chat-fichier\').value=\'\';document.getElementById(\'me-chat-attach-preview\').style.display=\'none\'">✕</span></span>';
+  };
+  r.readAsDataURL(file);
+});
+
+async function envoyerChatLivreur(btn) {
+  const texte = (document.getElementById('me-chat-texte') || {}).value || '';
+  if (!texte.trim() && !_meChatFichier) { toast('Message vide', 'err'); return; }
+  setBtnLoad(btn, true);
+  const res = await api('POST', '/livreur/chat', { texte: texte.trim(), piece_jointe: _meChatFichier });
+  setBtnLoad(btn, false);
+  if (res.detail) { toast(res.detail, 'err'); return; }
+  document.getElementById('me-chat-texte').value = '';
+  _meChatFichier = null;
+  document.getElementById('me-chat-fichier').value = '';
+  document.getElementById('me-chat-attach-preview').style.display = 'none';
+  await loadMeChat();
 }
 
 // ── Contrôle véhicule (état des lieux) — soumission côté chauffeur ──

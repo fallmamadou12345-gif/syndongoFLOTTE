@@ -81,7 +81,7 @@ function loadDB() {
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
-   'livreurs','recettes_livreurs','paiements_livreurs','controles_vehicule'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'livreurs','recettes_livreurs','paiements_livreurs','controles_vehicule','chat_messages'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   return db;
@@ -169,6 +169,24 @@ function livreursVisiblesIds(db, auth) {
     const affVeh = db.affectations.filter(a => myVehs.includes(a.vehicule_id) && !a.date_fin).map(a => a.chauffeur_id);
     const mesLivreurs = list.filter(c => c.cree_par === auth.gest.id).map(c => c.id);
     const tousIds = new Set([...affVeh, ...mesLivreurs]);
+    return list.filter(c => tousIds.has(c.id)).map(c => c.id);
+  }
+  if (auth.role === 'proprietaire') {
+    const affVeh = db.affectations.filter(a => myVehs.includes(a.vehicule_id) && !a.date_fin).map(a => a.chauffeur_id);
+    return list.filter(c => affVeh.includes(c.id)).map(c => c.id);
+  }
+  return [];
+}
+
+// Ids de TOUS les chauffeurs (toute catégorie) visibles par l'utilisateur courant — même logique que GET /api/chauffeurs
+function chauffeursVisiblesIds(db, auth) {
+  const myVehs = vehsVisibles(db, auth).map(v => v.id);
+  let list = db.chauffeurs.filter(c => c.statut === 'actif');
+  if (auth.role === 'manager') return list.map(c => c.id);
+  if (auth.role === 'gestionnaire') {
+    const affVeh = db.affectations.filter(a => myVehs.includes(a.vehicule_id) && !a.date_fin).map(a => a.chauffeur_id);
+    const mesChauffeurs = list.filter(c => c.cree_par === auth.gest.id).map(c => c.id);
+    const tousIds = new Set([...affVeh, ...mesChauffeurs]);
     return list.filter(c => tousIds.has(c.id)).map(c => c.id);
   }
   if (auth.role === 'proprietaire') {
@@ -1005,6 +1023,59 @@ async function handleAPI(req, res, body) {
     ctrl.traite_par=isGest?auth.gest.nom:'Manager';ctrl.date_traitement=new Date().toISOString();
     saveDB(db);
     return res.end(JSON.stringify({message:'Contrôle rejeté'}));
+  }
+
+  // ── CHAT — messagerie gestionnaire ↔ chauffeur ────────────
+  if(p==='/api/livreur/chat'&&method==='GET'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const lvId=auth.livreur.id;
+    db.chat_messages.forEach(m=>{ if(m.chauffeur_id===lvId&&m.expediteur==='gestionnaire') m.lu_chauffeur=true; });
+    saveDB(db);
+    const list=db.chat_messages.filter(m=>m.chauffeur_id===lvId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+    return res.end(JSON.stringify(list.slice(-200)));
+  }
+  if(p==='/api/livreur/chat'&&method==='POST'){
+    if(auth.role!=='livreur'){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if((!data.texte||!data.texte.trim())&&!data.piece_jointe) return res.end(JSON.stringify({detail:'Message vide'}));
+    const m={id:uid(),chauffeur_id:auth.livreur.id,expediteur:'chauffeur',
+      auteur_nom:auth.livreur.prenom+' '+auth.livreur.nom,texte:(data.texte||'').trim(),
+      piece_jointe:data.piece_jointe||null,lu_gestionnaire:false,lu_chauffeur:true,
+      created_at:new Date().toISOString()};
+    db.chat_messages.push(m);saveDB(db);
+    return res.end(JSON.stringify({id:m.id,message:'Message envoyé'}));
+  }
+  if(p==='/api/chat/unread'&&method==='GET'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const myIds=isGest?chauffeursVisiblesIds(db,auth):null;
+    const counts={};
+    db.chat_messages.forEach(m=>{
+      if(m.expediteur!=='chauffeur'||m.lu_gestionnaire) return;
+      if(myIds&&!myIds.includes(m.chauffeur_id)) return;
+      counts[m.chauffeur_id]=(counts[m.chauffeur_id]||0)+1;
+    });
+    return res.end(JSON.stringify(counts));
+  }
+  const chatGetM=p.match(/^\/api\/chat\/([^/]+)$/);
+  if(chatGetM&&method==='GET'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const chId=chatGetM[1];
+    if(isGest&&!chauffeursVisiblesIds(db,auth).includes(chId)){res.writeHead(403);return res.end(JSON.stringify({detail:'Chauffeur non assigné'}));}
+    db.chat_messages.forEach(m=>{ if(m.chauffeur_id===chId&&m.expediteur==='chauffeur') m.lu_gestionnaire=true; });
+    saveDB(db);
+    const list=db.chat_messages.filter(m=>m.chauffeur_id===chId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+    return res.end(JSON.stringify(list.slice(-200)));
+  }
+  if(chatGetM&&method==='POST'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const chId=chatGetM[1];
+    if(isGest&&!chauffeursVisiblesIds(db,auth).includes(chId)){res.writeHead(403);return res.end(JSON.stringify({detail:'Chauffeur non assigné'}));}
+    if((!data.texte||!data.texte.trim())&&!data.piece_jointe) return res.end(JSON.stringify({detail:'Message vide'}));
+    const m={id:uid(),chauffeur_id:chId,expediteur:'gestionnaire',
+      auteur_nom:isGest?auth.gest.nom:'Manager',texte:(data.texte||'').trim(),
+      piece_jointe:data.piece_jointe||null,lu_gestionnaire:true,lu_chauffeur:false,
+      created_at:new Date().toISOString()};
+    db.chat_messages.push(m);saveDB(db);
+    return res.end(JSON.stringify({id:m.id,message:'Message envoyé'}));
   }
 
   // ── FACTURATIONS ──────────────────────────────────────────
