@@ -509,7 +509,7 @@ function loadDB() {
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
-   'livreurs','recettes_livreurs','paiements_livreurs','chat_messages'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'livreurs','recettes_livreurs','paiements_livreurs','chat_messages','traites'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   if(!db.config_frais_moto) db.config_frais_moto = { frais_gestion_jour: 1000, commission_pct: 0, tags: ['MOTO GESTION','MOTO SY TRANSPORT'] };
@@ -1508,6 +1508,66 @@ async function handleAPI(req, res, body) {
       created_at:new Date().toISOString()};
     db.chat_messages.push(m);saveDB(db);
     return res.end(JSON.stringify({id:m.id,message:'Message envoyé'}));
+  }
+
+  // ── CRÉDIT VÉHICULES — traites mensuelles ───────────────────
+  if(p==='/api/traites'&&method==='GET'){
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=db.traites.filter(t=>myVehs.includes(t.vehicule_id));
+    if(q.vehicule_id) list=list.filter(t=>t.vehicule_id===q.vehicule_id);
+    return res.end(JSON.stringify(list.slice(-500).reverse()));
+  }
+  if(p==='/api/traites'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.vehicule_id) return res.end(JSON.stringify({detail:'Véhicule obligatoire'}));
+    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)&&!vehsVisibles(db,auth).map(v=>v.id).includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    const montant=Number(data.montant)||0;
+    if(!montant) return res.end(JSON.stringify({detail:'Montant obligatoire'}));
+    const t={id:uid(),vehicule_id:data.vehicule_id,mois:data.mois||today().slice(0,7),montant,
+      date_paiement:data.date_paiement||today(),note:data.note||'',
+      auteur:isGest?auth.gest.nom:'Manager',created_at:new Date().toISOString()};
+    db.traites.push(t);saveDB(db);
+    return res.end(JSON.stringify({id:t.id,message:'Traite enregistrée'}));
+  }
+  const trM=p.match(/^\/api\/traites\/([^/]+)$/);
+  if(trM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const tExist=db.traites.find(t=>t.id===trM[1]);
+    if(isGest&&tExist&&!vehsVisibles(db,auth).map(v=>v.id).includes(tExist.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    db.traites=db.traites.filter(t=>t.id!==trM[1]);
+    saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+  }
+
+  // ── CALCUL CRÉDIT (solde restant, retard) ───────────────────
+  const creditM=p.match(/^\/api\/vehicules\/([^/]+)\/credit_calcul$/);
+  if(creditM&&method==='GET'){
+    const veh=db.vehicules.find(v=>v.id===creditM[1]);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(creditM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!veh.achat_credit) return res.end(JSON.stringify({detail:'Ce véhicule n\'est pas à crédit'}));
+    const prixTotal=Number(veh.credit_prix_total)||0;
+    const apportPct=Number(veh.credit_apport_pct)||0;
+    const dureeMois=Number(veh.credit_duree_mois)||0;
+    const traiteMensuelle=Number(veh.credit_traite_mensuelle)||0;
+    const apportMontant=Math.round(prixTotal*apportPct/100);
+    const montantFinance=prixTotal-apportMontant;
+    const traites=db.traites.filter(t=>t.vehicule_id===creditM[1]);
+    const totalPaye=traites.reduce((s,t)=>s+t.montant,0);
+    let moisEcoules=0;
+    if(veh.credit_date_debut){
+      const debut=new Date(veh.credit_date_debut);
+      const now=new Date();
+      moisEcoules=(now.getFullYear()-debut.getFullYear())*12+(now.getMonth()-debut.getMonth())+1;
+      moisEcoules=Math.max(0,Math.min(moisEcoules,dureeMois||moisEcoules));
+    }
+    const totalAttendu=Math.min(montantFinance,moisEcoules*traiteMensuelle);
+    const retard=Math.max(0,totalAttendu-totalPaye);
+    const soldeRestant=Math.max(0,montantFinance-totalPaye);
+    const nbTraitesPayees=traites.length;
+    return res.end(JSON.stringify({vehicule_id:creditM[1],prix_total:prixTotal,apport_montant:apportMontant,montant_finance:montantFinance,
+      duree_mois:dureeMois,traite_mensuelle:traiteMensuelle,mois_ecoules:moisEcoules,nb_traites_payees:nbTraitesPayees,
+      total_paye:totalPaye,total_attendu:totalAttendu,retard,solde_restant:soldeRestant,
+      solde_avant_apport:prixTotal-apportMontant}));
   }
 
   // ── FACTURATIONS ──────────────────────────────────────────

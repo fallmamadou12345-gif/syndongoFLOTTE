@@ -575,6 +575,21 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
             <div style="font-size:10px;color:var(--muted);margin-top:3px">Une moto peut être affectée à 2 livreurs (relais).</div>
           </div>
         </div>
+        <div class="field" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="vcredit-on" onchange="toggleVCreditFields()"> Acheté à crédit</label>
+        </div>
+        <div id="vcredit-fields" style="display:none;margin-bottom:10px">
+          <div class="form-row">
+            <div class="field"><label>Prix total (FCFA)</label><input id="vcredit-prix" type="number" placeholder="1500000" oninput="calcVCreditTraite()"></div>
+            <div class="field"><label>Apport (%)</label><input id="vcredit-apport" type="number" placeholder="20" oninput="calcVCreditTraite()"></div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Durée (mois)</label><input id="vcredit-duree" type="number" placeholder="12" oninput="calcVCreditTraite()"></div>
+            <div class="field"><label>Traite mensuelle (FCFA)</label><input id="vcredit-traite" type="number" placeholder="Calculée automatiquement"></div>
+          </div>
+          <div class="field"><label>Date de début du crédit</label><input id="vcredit-date" type="date"></div>
+          <div id="vcredit-preview" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+        </div>
         <button class="btn btn-blue" onclick="addVehicule(this)">Enregistrer</button>
       </div>
       <div class="card">
@@ -1168,6 +1183,64 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
       </div>
     </div>
 
+    <!-- CRÉDIT VÉHICULES -->
+    <div class="page" id="page-credit">
+      <div class="card">
+        <div class="card-title">
+          Vue d'ensemble — Crédit véhicules
+        </div>
+        <div class="kpi-row-wrap" style="margin-bottom:12px">
+          <div class="kpi-stat blue">
+            <div class="kpi-label">Véhicules à crédit</div>
+            <div class="kpi-val" id="cr-k-nb" style="color:var(--blue)">—</div>
+          </div>
+          <div class="kpi-stat purple">
+            <div class="kpi-label">Total financé</div>
+            <div class="kpi-val" id="cr-k-finance" style="color:#8B5CF6">—</div>
+          </div>
+          <div class="kpi-stat green">
+            <div class="kpi-label">Total payé</div>
+            <div class="kpi-val" id="cr-k-paye" style="color:var(--green)">—</div>
+          </div>
+          <div class="kpi-stat orange">
+            <div class="kpi-label">Solde restant dû</div>
+            <div class="kpi-val" id="cr-k-solde" style="color:var(--orange)">—</div>
+          </div>
+          <div class="kpi-stat crimson">
+            <div class="kpi-label">En retard</div>
+            <div class="kpi-val" id="cr-k-retard" style="color:#DC2626">—</div>
+          </div>
+        </div>
+        <div id="cr-table"><div class="empty">Chargement…</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Enregistrer une traite</div>
+        <div class="form-row">
+          <div class="field">
+            <label>Véhicule à crédit *</label>
+            <div class="ac-wrap">
+              <input id="cr-veh-search" placeholder="🔍 Rechercher immat., marque…" autocomplete="off" oninput="acCreditVeh(this.value)" onfocus="acCreditVeh(this.value)">
+              <div class="ac-drop" id="cr-veh-ac-drop"></div>
+            </div>
+            <select id="cr-veh" style="margin-top:6px" onchange="onCreditVehChange()"><option value="">— choisir —</option></select>
+          </div>
+          <div class="field"><label>Mois</label><input id="cr-mois" type="month"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Montant versé (FCFA) *</label><input id="cr-montant" type="number" placeholder="Traite mensuelle"></div>
+          <div class="field"><label>Date du paiement</label><input id="cr-date" type="date"></div>
+        </div>
+        <div id="cr-veh-info" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
+        <button class="btn btn-blue" onclick="addTraite(this)">Enregistrer la traite</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Historique des traites</div>
+        <div id="cr-hist"><div class="empty">Aucune traite enregistrée</div></div>
+      </div>
+    </div>
+
     <!-- MON ESPACE (livreur) -->
     <div class="page" id="page-mon-espace">
       <div class="card">
@@ -1714,9 +1787,27 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
     <div class="form-row"><div class="field"><label>Km actuel</label><input id="ev-km" type="number"></div><div class="field"><label>Km vidange</label><input id="ev-vid" type="number"></div></div>
     <div class="form-row"><div class="field"><label>Tag</label><select id="ev-tag"><option value="">— Aucun —</option></select></div><div class="field"><label>Statut</label><select id="ev-st"><option value="actif">Actif</option><option value="en_maintenance">En maintenance</option><option value="en_panne">En panne</option></select></div></div>
     <div class="field" style="margin-bottom:14px"><label>Propriétaire</label><select id="ev-prop"><option value="">— Aucun —</option></select></div>
+    <div class="field" style="margin-bottom:14px"><label>Catégorie</label>
+      <select id="ev-cat"><option value="vtc">VTC (voiture)</option><option value="moto">Moto</option></select>
+    </div>
     <div class="field" style="margin-bottom:14px">
       <label>🗺️ Zones GPS autorisées <span style="font-weight:400;color:var(--muted)">(alerte si le véhicule en sort — voir page Activité GPS)</span></label>
       <div id="ev-zones" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px"><span style="color:var(--muted)">Chargement…</span></div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="ev-credit-on" onchange="toggleEVCreditFields()"> Acheté à crédit</label>
+    </div>
+    <div id="ev-credit-fields" style="display:none;margin-bottom:10px">
+      <div class="form-row">
+        <div class="field"><label>Prix total (FCFA)</label><input id="ev-credit-prix" type="number" oninput="calcEVCreditTraite()"></div>
+        <div class="field"><label>Apport (%)</label><input id="ev-credit-apport" type="number" oninput="calcEVCreditTraite()"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Durée (mois)</label><input id="ev-credit-duree" type="number" oninput="calcEVCreditTraite()"></div>
+        <div class="field"><label>Traite mensuelle (FCFA)</label><input id="ev-credit-traite" type="number"></div>
+      </div>
+      <div class="field"><label>Date de début du crédit</label><input id="ev-credit-date" type="date"></div>
+      <div id="ev-credit-preview" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-gray" onclick="fermer('m-edit-veh')">Annuler</button>
@@ -2163,6 +2254,7 @@ function demarrerApp() {
       { id: 'caisse', icon: '💰', label: 'Caisse & Facturation' },
       { id: 'retards', icon: '⏰', label: 'Retards' },
       { id: 'depenses', icon: '💸', label: 'Dépenses' },
+      { id: 'credit', icon: '💳', label: 'Crédit Véhicules' },
       { id: 'livreurs', icon: '🏍️', label: 'Livreurs Moto' },
       { id: 'alertes', icon: '🔔', label: 'Alertes' },
       { id: 'rapports', icon: '📄', label: 'Rapports' },
@@ -2183,6 +2275,7 @@ function demarrerApp() {
       { id: 'caisse', icon: '💰', label: 'Caisse & Facturation' },
       { id: 'retards', icon: '⏰', label: 'Retards' },
       { id: 'depenses', icon: '💸', label: 'Dépenses' },
+      { id: 'credit', icon: '💳', label: 'Crédit Véhicules' },
       { id: 'livreurs', icon: '🏍️', label: 'Livreurs Moto' },
       { id: 'alertes', icon: '🔔', label: 'Alertes' },
       { id: 'rapports', icon: '📄', label: 'Rapports' },
@@ -2376,6 +2469,8 @@ function loadPage(id) {
     loadDepenses();
   } else if (id === 'livreurs') {
     initLivreursPage();
+  } else if (id === 'credit') {
+    initCreditPage();
   } else if (id === 'mon-espace') {
     initMonEspaceLivreur();
   } else if (id === 'alertes') {
@@ -2946,6 +3041,7 @@ function rechargerPageActive() {
     case 'retards':     loadRetards(); break;
     case 'depenses':    loadDepenses(); break;
     case 'livreurs':    if(typeof initLivreursPage==='function') initLivreursPage(); break;
+    case 'credit':      if(typeof initCreditPage==='function') initCreditPage(); break;
     case 'alertes':     loadAlertes(); break;
     case 'rapports':    if(typeof filtrerRapport==='function') filtrerRapport(); break;
     case 'historique':  if(typeof loadHistorique==='function') loadHistorique(); break;
@@ -3289,10 +3385,32 @@ async function setSJ(vid, sj, e) {
   loadVehicules(); loadDashboard();
 }
 
+function toggleVCreditFields() {
+  var on = document.getElementById('vcredit-on').checked;
+  document.getElementById('vcredit-fields').style.display = on ? '' : 'none';
+}
+
+function creditPreviewText(prix, apportPct, duree, traite) {
+  var apportMontant = Math.round(prix * apportPct / 100);
+  var finance = prix - apportMontant;
+  return 'Apport : ' + fmt(apportMontant) + ' · Montant financé : ' + fmt(finance) + ' · ' + duree + ' traites de ' + fmt(traite || 0);
+}
+
+function calcVCreditTraite() {
+  var prix = +(document.getElementById('vcredit-prix').value || 0);
+  var apportPct = +(document.getElementById('vcredit-apport').value || 0);
+  var duree = +(document.getElementById('vcredit-duree').value || 0);
+  var finance = prix - Math.round(prix * apportPct / 100);
+  var traite = duree > 0 ? Math.round(finance / duree) : 0;
+  document.getElementById('vcredit-traite').value = traite || '';
+  document.getElementById('vcredit-preview').textContent = prix ? creditPreviewText(prix, apportPct, duree, traite) : '';
+}
+
 async function addVehicule(btn) {
   const immat = document.getElementById('vi').value.trim();
   const marque = document.getElementById('vm').value.trim();
   if (!immat || !marque) { toast('Immatriculation et marque obligatoires', 'err'); return; }
+  const achatCredit = document.getElementById('vcredit-on').checked;
   setBtnLoad(btn, true);
   const r = await api('POST', '/vehicules', {
     immatriculation: immat, marque: marque,
@@ -3303,12 +3421,20 @@ async function addVehicule(btn) {
     tag: document.getElementById('vtag').value,
     statut: document.getElementById('vst').value,
     proprio_id: document.getElementById('vprop').value || null,
-    categorie: (document.getElementById('vcat') || {}).value || 'vtc'
+    categorie: (document.getElementById('vcat') || {}).value || 'vtc',
+    achat_credit: achatCredit,
+    credit_prix_total: achatCredit ? +(document.getElementById('vcredit-prix').value || 0) : null,
+    credit_apport_pct: achatCredit ? +(document.getElementById('vcredit-apport').value || 0) : null,
+    credit_duree_mois: achatCredit ? +(document.getElementById('vcredit-duree').value || 0) : null,
+    credit_traite_mensuelle: achatCredit ? +(document.getElementById('vcredit-traite').value || 0) : null,
+    credit_date_debut: achatCredit ? (document.getElementById('vcredit-date').value || null) : null
   });
   setBtnLoad(btn, false);
   if (r.detail) { toast(r.detail, 'err'); return; }
   toast('Véhicule ' + immat.toUpperCase() + ' enregistré');
-  ['vi', 'vm', 'vmo', 'vvid'].forEach(function(id) { document.getElementById(id).value = ''; });
+  ['vi', 'vm', 'vmo', 'vvid', 'vcredit-prix', 'vcredit-apport', 'vcredit-duree', 'vcredit-traite', 'vcredit-date'].forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('vcredit-on').checked = false;
+  toggleVCreditFields();
   loadVehicules(); refreshSelects();
 }
 
@@ -3317,6 +3443,21 @@ async function delVeh(id, immat) {
   const r = await api('DELETE', '/vehicules/' + id);
   if (r.detail) { toast(r.detail, 'err'); return; }
   toast('Supprimé', 'info'); loadVehicules(); refreshSelects();
+}
+
+function toggleEVCreditFields() {
+  var on = document.getElementById('ev-credit-on').checked;
+  document.getElementById('ev-credit-fields').style.display = on ? '' : 'none';
+}
+
+function calcEVCreditTraite() {
+  var prix = +(document.getElementById('ev-credit-prix').value || 0);
+  var apportPct = +(document.getElementById('ev-credit-apport').value || 0);
+  var duree = +(document.getElementById('ev-credit-duree').value || 0);
+  var finance = prix - Math.round(prix * apportPct / 100);
+  var traite = duree > 0 ? Math.round(finance / duree) : 0;
+  document.getElementById('ev-credit-traite').value = traite || '';
+  document.getElementById('ev-credit-preview').textContent = prix ? creditPreviewText(prix, apportPct, duree, traite) : '';
 }
 
 function editVeh(v) {
@@ -3328,6 +3469,15 @@ function editVeh(v) {
   document.getElementById('ev-km').value = v.km_actuel || 0;
   document.getElementById('ev-vid').value = v.km_prochain_vidange || '';
   document.getElementById('ev-st').value = v.statut;
+  document.getElementById('ev-cat').value = v.categorie || 'vtc';
+  document.getElementById('ev-credit-on').checked = !!v.achat_credit;
+  document.getElementById('ev-credit-prix').value = v.credit_prix_total || '';
+  document.getElementById('ev-credit-apport').value = v.credit_apport_pct || '';
+  document.getElementById('ev-credit-duree').value = v.credit_duree_mois || '';
+  document.getElementById('ev-credit-traite').value = v.credit_traite_mensuelle || '';
+  document.getElementById('ev-credit-date').value = v.credit_date_debut || '';
+  toggleEVCreditFields();
+  if (v.achat_credit) document.getElementById('ev-credit-preview').textContent = creditPreviewText(v.credit_prix_total || 0, v.credit_apport_pct || 0, v.credit_duree_mois || 0, v.credit_traite_mensuelle || 0);
   loadTags().then(function() { document.getElementById('ev-tag').value = v.tag || ''; });
   refreshPropSelect('ev-prop').then(function() {
     api('GET', '/proprietaires').then(function(props) {
@@ -3351,6 +3501,7 @@ function editVeh(v) {
 
 async function saveVeh(btn) {
   const id = document.getElementById('ev-id').value;
+  const achatCredit = document.getElementById('ev-credit-on').checked;
   setBtnLoad(btn, true);
   var zoneIds = Array.prototype.slice.call(document.querySelectorAll('.ev-zone-chk:checked')).map(function(c){ return c.value; });
   await api('PATCH', '/vehicules/' + id, {
@@ -3363,7 +3514,14 @@ async function saveVeh(btn) {
     statut: document.getElementById('ev-st').value,
     tag: document.getElementById('ev-tag').value,
     proprio_id: document.getElementById('ev-prop').value || null,
-    zone_ids: zoneIds
+    categorie: document.getElementById('ev-cat').value,
+    zone_ids: zoneIds,
+    achat_credit: achatCredit,
+    credit_prix_total: achatCredit ? +(document.getElementById('ev-credit-prix').value || 0) : null,
+    credit_apport_pct: achatCredit ? +(document.getElementById('ev-credit-apport').value || 0) : null,
+    credit_duree_mois: achatCredit ? +(document.getElementById('ev-credit-duree').value || 0) : null,
+    credit_traite_mensuelle: achatCredit ? +(document.getElementById('ev-credit-traite').value || 0) : null,
+    credit_date_debut: achatCredit ? (document.getElementById('ev-credit-date').value || null) : null
   });
   setBtnLoad(btn, false);
   toast('Mis à jour'); fermer('m-edit-veh'); loadVehicules();
@@ -5960,6 +6118,135 @@ async function delPaiementLivreur(id) {
   await api('DELETE', '/paiements_livreurs/' + id);
   toast('Supprimé', 'info');
   await loadPaiementsLivreursList();
+}
+
+// ═══════════════════════════════════════════════════════
+// CRÉDIT VÉHICULES — traites mensuelles, apport, solde
+// ═══════════════════════════════════════════════════════
+let _creditVehsCache = [];
+
+async function initCreditPage() {
+  if (!allVehs.length) allVehs = await api('GET', '/vehicules') || [];
+  _creditVehsCache = allVehs.filter(function(v) { return v.achat_credit; });
+  const selVeh = document.getElementById('cr-veh');
+  selVeh.innerHTML = '<option value="">— choisir —</option>' + _creditVehsCache.map(function(v) {
+    return '<option value="' + v.id + '">' + v.immatriculation + ' · ' + v.marque + '</option>';
+  }).join('');
+  const moisEl = document.getElementById('cr-mois'), dateEl = document.getElementById('cr-date');
+  if (moisEl && !moisEl.value) moisEl.value = new Date().toISOString().slice(0, 7);
+  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split('T')[0];
+  await loadCreditOverview();
+  await loadTraitesHistory();
+}
+
+async function acCreditVeh(q) {
+  const sq = (q || '').toLowerCase().trim();
+  if (!sq) { hideAcDrop('cr-veh-ac-drop'); return; }
+  const filtered = _creditVehsCache.filter(function(v) {
+    return v.immatriculation.toLowerCase().includes(sq) || (v.marque || '').toLowerCase().includes(sq);
+  }).slice(0, 8);
+  const items = filtered.map(function(v) {
+    return { main: v.immatriculation, sub: v.marque || '', badge: null,
+      onclick: "selectAcCreditVeh('" + v.id + "', '" + v.immatriculation.replace(/'/g, "\\'") + "')" };
+  });
+  showAcDrop('cr-veh-ac-drop', items);
+}
+
+function selectAcCreditVeh(id, immat) {
+  document.getElementById('cr-veh-search').value = immat;
+  document.getElementById('cr-veh').value = id;
+  hideAcDrop('cr-veh-ac-drop');
+  onCreditVehChange();
+}
+
+async function onCreditVehChange() {
+  const vid = document.getElementById('cr-veh').value;
+  const info = document.getElementById('cr-veh-info');
+  if (!vid) { info.textContent = ''; return; }
+  const r = await api('GET', '/vehicules/' + vid + '/credit_calcul');
+  if (!r || r.detail) { info.textContent = r ? r.detail : ''; return; }
+  document.getElementById('cr-montant').value = r.traite_mensuelle || '';
+  info.innerHTML = 'Traite habituelle : <strong>' + fmt(r.traite_mensuelle) + '</strong> · Déjà payé : ' + fmt(r.total_paye) +
+    ' · Solde restant : ' + fmt(r.solde_restant) + (r.retard > 0 ? ' · <span style="color:var(--red)">Retard : ' + fmt(r.retard) + '</span>' : '');
+}
+
+async function addTraite(btn) {
+  const vid = document.getElementById('cr-veh').value;
+  const montant = +(document.getElementById('cr-montant').value || 0);
+  if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
+  setBtnLoad(btn, true);
+  const r = await api('POST', '/traites', {
+    vehicule_id: vid, montant,
+    mois: document.getElementById('cr-mois').value,
+    date_paiement: document.getElementById('cr-date').value
+  });
+  setBtnLoad(btn, false);
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Traite de ' + fmt(montant) + ' enregistrée');
+  document.getElementById('cr-montant').value = '';
+  onCreditVehChange();
+  loadCreditOverview();
+  loadTraitesHistory();
+}
+
+async function loadCreditOverview() {
+  const el = document.getElementById('cr-table');
+  if (!_creditVehsCache.length) {
+    el.innerHTML = '<div class="empty">Aucun véhicule à crédit — coche "Acheté à crédit" en créant ou modifiant un véhicule</div>';
+    ['cr-k-nb', 'cr-k-finance', 'cr-k-paye', 'cr-k-solde', 'cr-k-retard'].forEach(function(id) { document.getElementById(id).textContent = '—'; });
+    return;
+  }
+  const results = await Promise.all(_creditVehsCache.map(function(v) {
+    return api('GET', '/vehicules/' + v.id + '/credit_calcul').then(function(r) { return { veh: v, r: r }; });
+  }));
+  let totFinance = 0, totPaye = 0, totSolde = 0, totRetard = 0, nbRetard = 0;
+  results.forEach(function(x) {
+    if (!x.r || x.r.detail) return;
+    totFinance += x.r.montant_finance || 0;
+    totPaye += x.r.total_paye || 0;
+    totSolde += x.r.solde_restant || 0;
+    if (x.r.retard > 0) { totRetard += x.r.retard; nbRetard++; }
+  });
+  document.getElementById('cr-k-nb').textContent = _creditVehsCache.length;
+  document.getElementById('cr-k-finance').textContent = fmt(totFinance);
+  document.getElementById('cr-k-paye').textContent = fmt(totPaye);
+  document.getElementById('cr-k-solde').textContent = fmt(totSolde);
+  document.getElementById('cr-k-retard').textContent = nbRetard + ' véh. (' + fmt(totRetard) + ')';
+
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Véhicule</th><th>Prix total</th><th>Apport</th><th>Traite/mois</th><th>Mois écoulés</th><th>Payé</th><th>Retard</th><th>Solde restant</th></tr></thead><tbody>' +
+    results.map(function(x) {
+      const r = x.r || {};
+      return '<tr onclick="ouvrirFicheVeh(\'' + x.veh.id + '\')" style="cursor:pointer">' +
+        '<td><strong style="color:var(--blue)">' + x.veh.immatriculation + '</strong> <span style="color:var(--muted);font-size:11px">' + (x.veh.marque || '') + '</span></td>' +
+        '<td>' + fmt(r.prix_total || 0) + '</td>' +
+        '<td>' + fmt(r.apport_montant || 0) + '</td>' +
+        '<td>' + fmt(r.traite_mensuelle || 0) + '</td>' +
+        '<td>' + (r.mois_ecoules || 0) + ' / ' + (r.duree_mois || 0) + '</td>' +
+        '<td style="color:var(--green)">' + fmt(r.total_paye || 0) + '</td>' +
+        '<td style="color:' + ((r.retard || 0) > 0 ? 'var(--red)' : 'var(--muted)') + '">' + fmt(r.retard || 0) + '</td>' +
+        '<td style="font-weight:700">' + fmt(r.solde_restant || 0) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+async function loadTraitesHistory() {
+  const list = await api('GET', '/traites');
+  const el = document.getElementById('cr-hist');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune traite enregistrée</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Mois</th><th>Montant</th><th>Par</th><th>Action</th></tr></thead><tbody>' +
+    list.slice(0, 100).map(function(t) {
+      const v = _creditVehsCache.find(function(x) { return x.id === t.vehicule_id; }) || allVehs.find(function(x) { return x.id === t.vehicule_id; });
+      return '<tr><td>' + t.date_paiement + '</td><td>' + (v ? v.immatriculation : '—') + '</td><td>' + (t.mois || '—') + '</td>' +
+        '<td style="font-weight:700;color:var(--green)">' + fmt(t.montant) + '</td><td>' + (t.auteur || '—') + '</td>' +
+        '<td><button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="delTraite(\'' + t.id + '\')">Suppr.</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+async function delTraite(id) {
+  if (!confirm('Supprimer cette traite ?')) return;
+  await api('DELETE', '/traites/' + id);
+  toast('Supprimé', 'info');
+  loadCreditOverview();
+  loadTraitesHistory();
 }
 
 // ═══════════════════════════════════════════════════════
