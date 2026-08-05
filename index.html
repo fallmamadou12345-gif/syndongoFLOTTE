@@ -3578,6 +3578,7 @@ async function renderFicheVeh() {
 
   if (!f || !f.vehicule) { body.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }
   const v = f.vehicule;
+  const creditCalc = v.achat_credit ? await api('GET', '/vehicules/' + _ficheVehIdCur + '/credit_calcul') : null;
 
   // Toutes les affectations de ce véhicule (historique complet)
   const affVeh = Array.isArray(affs) ? affs.filter(function(a){ return a.vehicule_id === _ficheVehIdCur; }) : [];
@@ -3776,13 +3777,37 @@ async function renderFicheVeh() {
       '</div>'
     : '<div style="font-size:12px;color:#aaa;margin-bottom:12px;font-style:italic">Aucun versement sur cette période</div>';
 
+  // ── Commission Yango & Frais de gestion — mis en avant séparément (motos)
+  var totCommissionFiche = depsFilt.filter(function(d){return d.categorie==='commission_yango';}).reduce(function(s,d){return s+d.montant;},0);
+  var totFraisGestionFiche = depsFilt.filter(function(d){return d.categorie==='frais_gestion';}).reduce(function(s,d){return s+d.montant;},0);
+  var totAutresFraisFiche = totDep - totCommissionFiche - totFraisGestionFiche;
+  var fraisMotoHTML = (totCommissionFiche > 0 || totFraisGestionFiche > 0) ?
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">' +
+      '<div class="stat-box"><div class="stat-val" style="color:#DC2626">' + fmt(totCommissionFiche) + '</div><div class="stat-label">Commission Yango</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:var(--orange)">' + fmt(totFraisGestionFiche) + '</div><div class="stat-label">Frais de gestion</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:var(--muted)">' + fmt(totAutresFraisFiche) + '</div><div class="stat-label">Autres dépenses</div></div>' +
+    '</div>' : '';
+
+  // ── Traite crédit mensuelle — déduite pour donner une marge nette "après crédit"
+  var creditHTML = '';
+  if (creditCalc && !creditCalc.detail) {
+    var traiteMens = creditCalc.traite_mensuelle || 0;
+    var margeApresCredit = marge - traiteMens;
+    creditHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">' +
+      '<div class="stat-box"><div class="stat-val" style="color:var(--purple-text)">' + fmt(traiteMens) + '</div><div class="stat-label">Traite crédit / mois</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:' + ((creditCalc.retard||0)>0?'var(--red)':'var(--green)') + '">' + fmt(creditCalc.retard||0) + '</div><div class="stat-label">Retard traites</div></div>' +
+      '<div class="stat-box"><div class="stat-val" style="color:' + (margeApresCredit>=0?'var(--green)':'var(--red)') + '">' + fmt(margeApresCredit) + '</div><div class="stat-label">Marge nette après crédit</div></div>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin:-8px 0 14px">Solde restant dû : ' + fmt(creditCalc.solde_restant||0) + ' · Voir page Crédit Véhicules pour le détail des traites</div>';
+  }
+
   // ── Dépenses
   var depHTML = depsFilt.length ? '<div style="margin-bottom:14px">' +
     '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">DÉPENSES ('+depsFilt.length+') — ' +
       fmt(depsFilt.reduce(function(s,d){return s+d.montant;},0)) + '</div>' +
     '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Catégorie</th><th style="text-align:right">Montant</th><th>Desc.</th></tr></thead><tbody>' +
     depsFilt.map(function(d){
-      return '<tr><td style="color:var(--muted)">'+d.date_depense+'</td><td>'+pill(d.categorie,'gray')+'</td>' +
+      return '<tr><td style="color:var(--muted)">'+d.date_depense+'</td><td>'+pill(labelCategorieDep(d.categorie),'gray')+'</td>' +
         '<td style="color:var(--red);font-weight:600;text-align:right">'+fmt(d.montant)+'</td>' +
         '<td style="font-size:11px">'+(d.description||'—')+'</td></tr>';
     }).join('') + '</tbody></table></div></div>' : '';
@@ -3794,7 +3819,13 @@ async function renderFicheVeh() {
     (v.km_actuel?'<div style="font-size:11px;color:var(--muted);margin-left:auto">'+v.km_actuel.toLocaleString('fr-FR')+' km</div>':'') +
     '</div>';
 
-  body.innerHTML = infoHTML + kpiHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML;
+  body.innerHTML = infoHTML + kpiHTML + fraisMotoHTML + creditHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML;
+}
+
+function labelCategorieDep(cat) {
+  var labels = { carburant:'Carburant', reparation:'Réparation (Xelcom)', commission_yango:'Commission Yango',
+    frais_gestion:'Frais de gestion', administratif:'Administratif', autre:'Autre' };
+  return labels[cat] || cat;
 }
 
 // ═══════════════════════════════════════════════════════
