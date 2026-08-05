@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const zlib = require('zlib');
 
 const DB_FILE = process.env.DATA_PATH || './syndongo_data.json';
 const PORT = process.env.PORT || 8000;
@@ -66,6 +67,430 @@ function verifyWaveSignature(body, signature) {
   return signature === expected;
 }
 
+// ── EZZLOC GPS CONFIG ──────────────────────────────────────────
+// Traceurs GPS installés sur les véhicules/motos. La flotte est répartie sur PLUSIEURS
+// comptes EZZloc (le compte principal + un sous-compte par gestionnaire/chauffeur —
+// chacun ne voit que ses propres appareils sur le site EZZloc). On se connecte à
+// chacun, on garde les tokens en mémoire, et on fusionne les résultats.
+// Format env EZZLOC_ACCOUNTS : "usercode1:passmd5_1,usercode2:passmd5_2,..."
+const EZZLOC_ACCOUNTS = (function(){
+  const raw = process.env.EZZLOC_ACCOUNTS || '';
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean).map(function(s){
+    const i = s.indexOf(':');
+    return { usercode: s.slice(0, i), password_md5: s.slice(i + 1), token: null };
+  });
+  // Compatibilité avec l'ancien format mono-compte (une seule variable EZZLOC_USERCODE/PASSWORD_MD5)
+  if (!list.length && process.env.EZZLOC_USERCODE && process.env.EZZLOC_PASSWORD_MD5) {
+    list.push({ usercode: process.env.EZZLOC_USERCODE, password_md5: process.env.EZZLOC_PASSWORD_MD5, token: null });
+  }
+  return list;
+})();
+
+// Retenu à chaque appel /api/ezzloc/vehicules ou ezzlocIdForVehicule : à quel compte
+// (index dans EZZLOC_ACCOUNTS) appartient tel VehicleID EZZloc, pour savoir quel token
+// utiliser lors des appels suivants (getTrackData, getOdometerDetail…) sur ce véhicule.
+let _ezzlocDeviceAccount = {};
+
+function ezzlocRawCall(cmd, token, params) {
+  const https = require('https');
+  const body = JSON.stringify({ cmd, token: token || '', params: params || {}, language: 2 });
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const req = https.request({
+      hostname: 'www.ezzloc.net',
+      path: '/api',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { finish(JSON.parse(data)); }
+        catch(e) { finish({ result: 0, resultNote: 'Réponse EZZloc invalide' }); }
+      });
+    });
+    // Sans timeout, une requête EZZloc qui ne répond jamais bloquerait indéfiniment
+    // l'appel — et donc la carte correspondante resterait sur son sablier pour toujours.
+    req.setTimeout(15000, () => { req.destroy(); finish({ result: 0, resultNote: 'Délai EZZloc dépassé' }); });
+    req.on('error', e => finish({ result: 0, resultNote: e.message }));
+    req.write(body);
+    req.end();
+  });
+}
+
+async function ezzlocLoginAccount(acc) {
+  const r = await ezzlocRawCall('login', '', { UserCode: acc.usercode, Password: acc.password_md5 });
+  acc.token = (r.result === 1 && r.detail && r.detail.token) ? r.detail.token : null;
+  return acc.token;
+}
+
+// Appelle une commande sur UN compte précis, avec reconnexion auto si le token a expiré.
+async function ezzlocCallOn(acc, cmd, params) {
+  if (!acc.token) await ezzlocLoginAccount(acc);
+  if (!acc.token) return { result: 0, resultNote: 'EZZloc non connecté (' + acc.usercode + ')' };
+  let r = await ezzlocRawCall(cmd, acc.token, params);
+  if (r.result === 400) {
+    await ezzlocLoginAccount(acc);
+    if (acc.token) r = await ezzlocRawCall(cmd, acc.token, params);
+  }
+  return r;
+}
+
+// Compat : appelle une commande sur le premier compte configuré (usage mono-compte).
+async function ezzlocCall(cmd, params) {
+  if (!EZZLOC_ACCOUNTS.length) return { result: 0, resultNote: 'Aucun compte EZZloc configuré' };
+  return ezzlocCallOn(EZZLOC_ACCOUNTS[0], cmd, params);
+}
+
+// Appelle la même commande sur TOUS les comptes en parallèle, fusionne les résultats.
+// Suppose que la commande renvoie un tableau (directement dans detail, ou detail.data).
+async function ezzlocCallAllAccounts(cmd, params) {
+  const results = await Promise.all(EZZLOC_ACCOUNTS.map(function(acc){ return ezzlocCallOn(acc, cmd, params); }));
+  const merged = [];
+  results.forEach(function(r, idx){
+    if (r.result !== 1) return;
+    const arr = Array.isArray(r.detail) ? r.detail : (r.detail && Array.isArray(r.detail.data) ? r.detail.data : []);
+    arr.forEach(function(item){ _ezzlocDeviceAccount[item.VehicleID] = idx; merged.push(item); });
+  });
+  return merged;
+}
+
+// getVehicleList (liste statique des appareils, pas la position) est interrogé une fois
+// par véhicule pour retrouver son compte/ID EZZloc (analyse 24h de chaque carte au
+// chargement de la page GPS) — sans cache, ça déclenchait un appel complet aux 7 comptes
+// PAR véhicule (jusqu'à 21 fois en rafale), ce qui saturait/ralentissait l'API EZZloc et
+// laissait certaines cartes bloquées en chargement indéfiniment. On met en cache la liste
+// fusionnée 30 secondes — largement suffisant pour couvrir le lot de requêtes d'une page.
+let _ezzlocDeviceListCache = null;
+let _ezzlocDeviceListCacheTime = 0;
+async function ezzlocGetAllDevicesCached() {
+  const now = Date.now();
+  if (_ezzlocDeviceListCache && (now - _ezzlocDeviceListCacheTime) < 30000) return _ezzlocDeviceListCache;
+  _ezzlocDeviceListCache = await ezzlocCallAllAccounts('getVehicleList', {});
+  _ezzlocDeviceListCacheTime = now;
+  return _ezzlocDeviceListCache;
+}
+
+// Retrouve le compte EZZloc (index) auquel appartient un VehicleID donné — en se basant
+// sur le cache rempli par le dernier appel getVehicleLocationByGroup/getVehicleList ;
+// si absent du cache, on recherche sur tous les comptes.
+async function ezzlocAccountForDevice(vehicleId) {
+  if (_ezzlocDeviceAccount[vehicleId] !== undefined) return EZZLOC_ACCOUNTS[_ezzlocDeviceAccount[vehicleId]];
+  await ezzlocGetAllDevicesCached();
+  if (_ezzlocDeviceAccount[vehicleId] !== undefined) return EZZLOC_ACCOUNTS[_ezzlocDeviceAccount[vehicleId]];
+  return null;
+}
+
+// Normalise une plaque/texte pour comparaison tolérante (espaces/tirets ignorés)
+function ezzlocNorm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+// Zone Dakar autorisée : centre approx. de la presqu'île + rayon couvrant Dakar/Pikine/
+// Guédiawaye/Rufisque/Bargny, mais excluant Thiès (~70km) et les autres villes.
+const DAKAR_CENTRE = { lat: 14.6928, lon: -17.4467 };
+const DAKAR_RAYON_KM = 40;
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Retrouve l'ID EZZloc d'un véhicule SyNdongo : priorité à l'association manuelle
+// (db.ezzloc_mapping), sinon on retente la correspondance automatique par plaque.
+async function ezzlocIdForVehicule(db, vehiculeId) {
+  const mapping = db.ezzloc_mapping || {};
+  for (const ezzId in mapping) { if (mapping[ezzId] === vehiculeId) return parseInt(ezzId); }
+  const veh = db.vehicules.find(v => v.id === vehiculeId);
+  if (!veh || !veh.immatriculation) return null;
+  const devices = await ezzlocGetAllDevicesCached();
+  const nplate = ezzlocNorm(veh.immatriculation);
+  const match = devices.find(d => mapping[String(d.VehicleID)] !== '__none__' && ezzlocNorm(d.RegName).includes(nplate));
+  return match ? match.VehicleID : null;
+}
+
+// Une journée déjà écoulée ne change plus (le GPS et les commandes Yango de ce jour-là
+// sont figés) — on met son résultat en cache indéfiniment pour que revisiter une même
+// date soit instantané au lieu de refaire les appels EZZloc à chaque fois. "Aujourd'hui"
+// est encore en cours, donc son cache expire vite (2 min) pour rester à peu près à jour.
+const _analyse24hCache = {};
+function analyse24hCacheKey(vehiculeId, date) { return vehiculeId + '|' + date; }
+
+// Calcule l'analyse 24h (GPS EZZloc croisé aux commandes Yango) pour un véhicule et une
+// date donnés. Fonction partagée par l'endpoint /api/analyse24h (consultation à la demande)
+// et la sauvegarde automatique quotidienne (snapshotAnalyse24hToutesMotos ci-dessous).
+async function calculerAnalyse24h(db, vehiculeId, date) {
+  const dm = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dm) return { detail: 'Format de date invalide (AAAA-MM-JJ)' };
+
+  const cacheKey = analyse24hCacheKey(vehiculeId, date);
+  const aujourdHui = new Date().toISOString().split('T')[0];
+  const estAujourdHui = date === aujourdHui;
+  const cached = _analyse24hCache[cacheKey];
+  if (cached && (!estAujourdHui || (Date.now() - cached.at) < 2 * 60 * 1000)) return cached.data;
+  const jourDebut = Date.UTC(+dm[1], +dm[2] - 1, +dm[3], 0, 0, 0);
+  const jourFin = jourDebut + 24 * 3600 * 1000 - 1;
+
+  const ezzId = await ezzlocIdForVehicule(db, vehiculeId);
+  let trackPoints = [];
+  let kmParcourus = 0;
+  if (ezzId) {
+    const acc = await ezzlocAccountForDevice(ezzId);
+    const tr = acc ? await ezzlocCallOn(acc, 'getTrackData', { VehicleID: ezzId, BeginTime: jourDebut, EndTime: jourFin }) : { result: 0 };
+    if (tr.result === 1) trackPoints = tr.detail || [];
+    // getOdometerDetail découpe ses journées sur un fuseau interne différent de celui
+    // du Sénégal (repéré empiriquement à UTC+8) — la borne d'une "journée" EZZloc ne
+    // tombe donc pas forcément dans notre fenêtre [jourDebut, jourFin]. On élargit la
+    // requête d'une journée avant, puis on ne garde que le bucket le plus récent qui
+    // ne dépasse pas la fin de notre journée : c'est celui qui couvre le mieux notre jour.
+    const od = acc ? await ezzlocCallOn(acc, 'getOdometerDetail', { VehicleIDs: String(ezzId), BeginTime: jourDebut - 24 * 3600 * 1000, EndTime: jourFin }) : { result: 0 };
+    if (od.result === 1 && Array.isArray(od.detail) && od.detail[0] && Array.isArray(od.detail[0].Detail)) {
+      const entries = od.detail[0].Detail.filter(function(d){ return d.Date <= jourFin; });
+      if (entries.length) {
+        const best = entries.reduce(function(a, b){ return b.Date > a.Date ? b : a; });
+        kmParcourus = parseFloat(best.Odometer) || 0;
+      }
+    }
+  }
+  const commandes = (db.yango_commandes || []).filter(c => c.vehicule_id === vehiculeId &&
+    ((c.debut && c.debut >= jourDebut && c.debut <= jourFin) || (c.fin && c.fin >= jourDebut && c.fin <= jourFin)));
+
+  // Bilan journalier : gains + répartition des annulations (client vs chauffeur).
+  // "Raison de l'annulation" du CSV Yango : mention explicite du client, sinon on
+  // considère que c'est le chauffeur qui a annulé/ignoré la course (reject, seen_timeout…).
+  function estAnnuleClient(c) { return /client/i.test(c.raison_annulation || ''); }
+  function estAnnuleChauffeur(c) { return !!c.raison_annulation && !estAnnuleClient(c); }
+
+  const termineJour = commandes.filter(c => c.statut === 'Terminé');
+  const annuleJour = commandes.filter(c => c.statut === 'Annulé');
+  const montantGagne = termineJour.reduce((s, c) => s + (c.tarif || 0), 0);
+  const nbAnnuleClient = annuleJour.filter(estAnnuleClient).length;
+  const nbAnnuleChauffeur = annuleJour.filter(estAnnuleChauffeur).length;
+  const nbAnnuleAutre = annuleJour.length - nbAnnuleClient - nbAnnuleChauffeur;
+
+  // Chaque commande doit compter dans UNE SEULE heure — sinon une course dont le début
+  // et la fin tombent dans deux heures différentes serait comptée deux fois (une fois
+  // par heure), et la somme des barres dépasserait le total réel de la journée.
+  // On retient la fin (heure de conclusion réelle) si connue, sinon le début.
+  function heureRepere(c) { return (c.fin != null ? c.fin : c.debut); }
+
+  const SEUIL_ACTIF_KMH = 5;
+  const heures = [];
+  for (let h = 0; h < 24; h++) {
+    const hDebut = jourDebut + h * 3600 * 1000, hFin = hDebut + 3600 * 1000;
+    const pts = trackPoints.filter(function(p){ const t = parseInt(p.GpsTime); return t >= hDebut && t < hFin; });
+    const vitesses = pts.map(function(p){ return parseFloat(p.Speed) || 0; });
+    const vitesseMoy = vitesses.length ? Math.round(vitesses.reduce(function(s,v){return s+v;},0) / vitesses.length) : 0;
+    const vitesseMax = vitesses.length ? Math.round(Math.max.apply(null, vitesses)) : 0;
+    const cmdsH = commandes.filter(function(c){
+      const t = heureRepere(c);
+      return t != null && t >= hDebut && t < hFin;
+    });
+    const cmdsAnnuleH = cmdsH.filter(function(c){ return c.statut === 'Annulé'; });
+    const nbTermine = cmdsH.filter(function(c){ return c.statut === 'Terminé'; }).length;
+    const nbAnnule = cmdsAnnuleH.length;
+    const nbAnnuleClientH = cmdsAnnuleH.filter(estAnnuleClient).length;
+    const nbAnnuleChauffeurH = cmdsAnnuleH.filter(estAnnuleChauffeur).length;
+    const actif = vitesseMax >= SEUIL_ACTIF_KMH;
+    heures.push({
+      heure: h, vitesse_moy: vitesseMoy, vitesse_max: vitesseMax,
+      nb_termine: nbTermine, nb_annule: nbAnnule,
+      nb_annule_client: nbAnnuleClientH, nb_annule_chauffeur: nbAnnuleChauffeurH,
+      actif: actif,
+      anomalie: actif && nbTermine === 0,
+      vide: !actif && nbTermine === 0 && nbAnnule === 0
+    });
+  }
+  const resultat = {
+    vehicule_id: vehiculeId, date: date, ezzloc_id: ezzId, km_parcourus: Math.round(kmParcourus * 10) / 10,
+    nb_points_gps: trackPoints.length, nb_commandes: commandes.length, heures: heures,
+    montant_gagne: montantGagne, nb_termine_jour: termineJour.length,
+    nb_annule_client: nbAnnuleClient, nb_annule_chauffeur: nbAnnuleChauffeur, nb_annule_autre: nbAnnuleAutre
+  };
+  _analyse24hCache[cacheKey] = { at: Date.now(), data: resultat };
+  return resultat;
+}
+
+// Sauvegarde quotidienne : calcule et enregistre l'analyse 24h de chaque véhicule/moto
+// suivi par EZZloc pour une date donnée, afin de garder un historique consultable même
+// si EZZloc finit par purger ses propres données anciennes (rétention limitée côté eux).
+async function snapshotAnalyse24hToutesMotos(db, date) {
+  const devices = await ezzlocGetAllDevicesCached();
+  const mapping = db.ezzloc_mapping || {};
+  const vehiculeIds = new Set();
+  devices.forEach(function(d){
+    const mappedId = mapping[String(d.VehicleID)];
+    if (mappedId && mappedId !== '__none__') { vehiculeIds.add(mappedId); return; }
+    if (mappedId === '__none__') return;
+    const nreg = ezzlocNorm(d.RegName);
+    const veh = db.vehicules.find(function(v){ return v.immatriculation && nreg.includes(ezzlocNorm(v.immatriculation)); });
+    if (veh) vehiculeIds.add(veh.id);
+  });
+
+  db.historique_analyse24h = db.historique_analyse24h || [];
+  const index = {};
+  db.historique_analyse24h.forEach(function(h, i){ index[h.vehicule_id + '|' + h.date] = i; });
+
+  let nbSauvegardes = 0;
+  for (const vehiculeId of vehiculeIds) {
+    const r = await calculerAnalyse24h(db, vehiculeId, date);
+    if (r.detail) continue;
+    const record = Object.assign({ saved_at: Date.now() }, r);
+    const key = vehiculeId + '|' + date;
+    if (index[key] !== undefined) db.historique_analyse24h[index[key]] = record;
+    else { db.historique_analyse24h.push(record); index[key] = db.historique_analyse24h.length - 1; }
+    nbSauvegardes++;
+  }
+  saveDB(db);
+  return { message: 'Historique sauvegardé', date: date, nb_vehicules: vehiculeIds.size, nb_sauvegardes: nbSauvegardes };
+}
+
+// Vérifie une fois par heure si la sauvegarde d'hier a déjà été faite ; sinon la lance.
+// Couvre le cas où le serveur tourne en continu (VPS) sans dépendre d'un cron externe.
+let _dernierSnapshotDate = null;
+function planifierSnapshotAutomatique() {
+  async function verifier() {
+    try {
+      if (!EZZLOC_ACCOUNTS.length) return;
+      const h = new Date(); h.setUTCDate(h.getUTCDate() - 1);
+      const hier = h.toISOString().split('T')[0];
+      if (_dernierSnapshotDate === hier) return;
+      const db = loadDB();
+      const dejaFait = (db.historique_analyse24h || []).some(function(x){ return x.date === hier; });
+      if (dejaFait) { _dernierSnapshotDate = hier; return; }
+      const r = await snapshotAnalyse24hToutesMotos(db, hier);
+      _dernierSnapshotDate = hier;
+      console.log('[snapshot auto] ' + hier + ' : ' + r.nb_sauvegardes + '/' + r.nb_vehicules + ' véhicule(s) sauvegardé(s)');
+    } catch (e) { console.log('[snapshot auto] erreur:', e.message); }
+  }
+  verifier();
+  setInterval(verifier, 60 * 60 * 1000);
+}
+
+// ── IMPORT CSV YANGO ────────────────────────────────────────────
+// Les exports Yango mélangent des lettres cyrilliques visuellement identiques aux
+// lettres latines (ex: "SSТ205" avec un Т cyrillique) — sans doute un artefact de leur
+// système. On les convertit avant toute comparaison de texte (nom de chauffeur, plaque).
+const CYRILLIC_TO_LATIN = {
+  'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
+  'а':'a','в':'b','е':'e','к':'k','м':'m','н':'h','о':'o','р':'p','с':'c','т':'t','у':'y','х':'x'
+};
+function deCyrillic(s) { return String(s || '').split('').map(ch => CYRILLIC_TO_LATIN[ch] || ch).join(''); }
+function normNomYango(s) {
+  return deCyrillic(s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '');
+}
+
+function splitCsvLine(line, delim) {
+  const result = [];
+  let cur = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQuotes && line[i+1] === '"') { cur += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === delim && !inQuotes) { result.push(cur); cur = ''; }
+    else cur += c;
+  }
+  result.push(cur);
+  return result;
+}
+
+// Le Sénégal est en GMT+0 toute l'année (pas d'heure d'été) — on traite donc les dates
+// Yango comme de l'UTC pur, ce qui évite toute dépendance au fuseau horaire du serveur
+// qui exécute ce code (Windows local en test, VPS en prod).
+function parseYangoDate(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, d, mo, y, h, mi, se] = m;
+  const t = Date.UTC(+y, +mo - 1, +d, +h, +mi, +se);
+  return isNaN(t) ? null : t;
+}
+
+function findAllIdx(headers, name) {
+  const idxs = [];
+  headers.forEach((h, i) => { if (h === name) idxs.push(i); });
+  return idxs;
+}
+
+// Transforme le texte brut du CSV Yango en tableau de commandes structurées
+function parseYangoCSV(text) {
+  text = String(text || '').replace(/^﻿/, '');
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+  if (lines.length < 2) return [];
+  const headers = splitCsvLine(lines[0], ';').map(h => h.trim());
+  const idIdentifiant = headers.indexOf('Identifiant');
+  const idStatut = headers.indexOf('Statut');
+  const idsConducteur = findAllIdx(headers, 'Conducteur');
+  const idsVehicule = findAllIdx(headers, 'Véhicule');
+  const idPriseEnCharge = headers.indexOf('Date de prise en charge');
+  const idRealisation = headers.indexOf('Date de réalisation');
+  const idRaisonAnnulation = headers.indexOf('Raison de l\'annulation');
+  const idDistance = headers.indexOf('Distance parcourue (en km)');
+  // "Tarif dans Yango Pro" est souvent vide dans cet export (constaté sur les données
+  // réelles) — le montant réellement payé se trouve dans les colonnes de règlement
+  // (espèces, sans espèces, compte partenaire, entreprise). On les additionne : une
+  // course n'est en général payée que par UN seul de ces moyens, donc la somme donne
+  // le montant réel encaissé pour la course.
+  const idTarif = headers.indexOf('Tarif dans Yango Pro');
+  const idEspeces = headers.indexOf('Espèces');
+  const idSansEspeces = headers.indexOf('Paiement sans espèces');
+  const idComptePartenaire = headers.indexOf('Paiements sur le compte du partenaire');
+  const idEntreprise = headers.indexOf('Paiement d’entreprise');
+  const idConducteurNom = idsConducteur.length > 1 ? idsConducteur[1] : idsConducteur[0];
+  const idVehiculeNom = idsVehicule.length > 1 ? idsVehicule[1] : idsVehicule[0];
+
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i], ';');
+    if (cols.length < 2) continue;
+    const identifiant = cols[idIdentifiant];
+    if (!identifiant) continue;
+    const montantPaiements = (parseFloat(cols[idEspeces]) || 0) + (parseFloat(cols[idSansEspeces]) || 0) +
+      (parseFloat(cols[idComptePartenaire]) || 0) + (parseFloat(cols[idEntreprise]) || 0);
+    out.push({
+      identifiant: identifiant,
+      statut: cols[idStatut] || '',
+      conducteur_nom: (cols[idConducteurNom] || '').trim(),
+      vehicule_nom: (cols[idVehiculeNom] || '').trim(),
+      debut: parseYangoDate(cols[idPriseEnCharge]),
+      fin: parseYangoDate(cols[idRealisation]),
+      raison_annulation: cols[idRaisonAnnulation] || '',
+      distance_km: parseFloat(cols[idDistance]) || 0,
+      tarif: montantPaiements || (parseFloat(cols[idTarif]) || 0)
+    });
+  }
+  return out;
+}
+
+// Associe une commande Yango à un véhicule/chauffeur SyNdongo : d'abord par nom de
+// chauffeur (le plus fiable, le nom du champ "Véhicule" Yango est souvent juste un
+// surnom sans plaque), sinon par plaque si elle apparaît dans le champ "Véhicule".
+function matchYangoCommande(cmd, db) {
+  const nomChauf = normNomYango(cmd.conducteur_nom);
+  let chauffeur = null;
+  if (nomChauf) {
+    chauffeur = db.chauffeurs.find(c => normNomYango((c.prenom||'') + (c.nom||'')) === nomChauf)
+      || db.chauffeurs.find(c => normNomYango((c.nom||'') + (c.prenom||'')) === nomChauf);
+  }
+  let vehicule = null;
+  if (chauffeur) {
+    const aff = db.affectations.find(a => a.chauffeur_id === chauffeur.id && !a.date_fin);
+    if (aff) vehicule = db.vehicules.find(v => v.id === aff.vehicule_id);
+  }
+  if (!vehicule && cmd.vehicule_nom) {
+    const nreg = normNomYango(cmd.vehicule_nom);
+    vehicule = db.vehicules.find(v => v.immatriculation && nreg.includes(normNomYango(v.immatriculation)));
+  }
+  return { chauffeur_id: chauffeur ? chauffeur.id : null, vehicule_id: vehicule ? vehicule.id : null };
+}
+
+// Cache mémoire de la base : évite de relire + reparser le fichier (plusieurs Mo)
+// à chaque appel API. Invalidé automatiquement si le fichier change (mtime).
+let _dbCache = null;
+let _dbCacheMtimeMs = 0;
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const dir = path.dirname(DB_FILE);
@@ -76,6 +501,9 @@ function loadDB() {
       facturations:[], tags:[], proprietaires:[], gestionnaires:[]
     }, null, 2));
   }
+  const mtimeMs = fs.statSync(DB_FILE).mtimeMs;
+  if (_dbCache && mtimeMs === _dbCacheMtimeMs) return _dbCache;
+
   const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   // Normaliser les tags (s'assurer qu'ils sont tous des strings)
   if(db.tags) db.tags = normalizeTags(db.tags);
@@ -84,13 +512,26 @@ function loadDB() {
    'livreurs','recettes_livreurs','paiements_livreurs','chat_messages'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
+  if(!db.config_frais_moto) db.config_frais_moto = { frais_gestion_jour: 1000, commission_pct: 0, tags: ['MOTO GESTION','MOTO SY TRANSPORT'] };
+  if(!Array.isArray(db.config_frais_moto.tags)) db.config_frais_moto.tags = ['MOTO GESTION','MOTO SY TRANSPORT'];
+
+  _dbCache = db;
+  _dbCacheMtimeMs = mtimeMs;
   return db;
 }
 
 function saveDB(db) {
   const dir = path.dirname(DB_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DB_FILE, JSON.stringify(db));
+  // Écriture atomique : on écrit dans un fichier temporaire puis on le renomme.
+  // Le renommage est une opération atomique du système de fichiers — le fichier
+  // final contient toujours soit l'ancien contenu complet, soit le nouveau complet,
+  // jamais un état intermédiaire corrompu (même en cas de coupure/crash pendant l'écriture).
+  const tmpFile = DB_FILE + '.tmp-' + process.pid;
+  fs.writeFileSync(tmpFile, JSON.stringify(db));
+  fs.renameSync(tmpFile, DB_FILE);
+  _dbCache = db;
+  _dbCacheMtimeMs = fs.statSync(DB_FILE).mtimeMs;
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -497,6 +938,10 @@ async function handleAPI(req, res, body) {
   }
   if (p==='/api/vehicules'&&method==='POST') {
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refuse'}));}
+    if(isGest){
+      const gTags=auth.gest.tags||(auth.gest.tag?[auth.gest.tag]:[]);
+      if(gTags.length&&!gTags.includes(data.tag)) return res.end(JSON.stringify({detail:'Vous ne pouvez créer un véhicule que sous vos tags assignés : '+gTags.join(', ')}));
+    }
     const immat=(data.immatriculation||'').toUpperCase().trim();
     if(db.vehicules.find(v=>v.immatriculation===immat)) return res.end(JSON.stringify({detail:immat+' deja enregistre'}));
     const v={id:uid(),...data,immatriculation:immat,tag:data.tag||''};
@@ -514,6 +959,11 @@ async function handleAPI(req, res, body) {
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const idx=db.vehicules.findIndex(v=>v.id===vM[1]);
     if(idx!==-1){
+      if(data.immatriculation!==undefined){
+        const immatMaj=(data.immatriculation||'').toUpperCase().trim();
+        if(db.vehicules.find(v=>v.id!==vM[1]&&v.immatriculation===immatMaj)) return res.end(JSON.stringify({detail:immatMaj+' déjà enregistré sur un autre véhicule'}));
+        data={...data,immatriculation:immatMaj};
+      }
       db.vehicules[idx]={...db.vehicules[idx],...data};
       if(data.proprio_id!==undefined){db.proprietaires.forEach(pr=>{pr.vehicules_ids=pr.vehicules_ids.filter(id=>id!==vM[1]);});if(data.proprio_id){const pr=db.proprietaires.find(x=>x.id===data.proprio_id);if(pr)pr.vehicules_ids.push(vM[1]);}}
       if(data.gest_id!==undefined){db.gestionnaires.forEach(gt=>{gt.vehicules_ids=gt.vehicules_ids.filter(id=>id!==vM[1]);});if(data.gest_id){const gt=db.gestionnaires.find(x=>x.id===data.gest_id);if(gt)gt.vehicules_ids.push(vM[1]);}}
@@ -569,6 +1019,13 @@ async function handleAPI(req, res, body) {
     if(existing!==-1)db.activites[existing]=entry;else db.activites.push(entry);
     saveDB(db);return res.end(JSON.stringify({message:'Statut enregistré',statut_jour}));
   }
+  if(p==='/api/activites'&&method==='GET'){
+    const nb=parseInt(q.jours||'60');
+    const depuis=new Date();depuis.setDate(depuis.getDate()-nb);
+    const myVehsAct=vehsVisibles(db,auth).map(v=>v.id);
+    const list=db.activites.filter(a=>myVehsAct.includes(a.vehicule_id)&&new Date(a.date)>=depuis);
+    return res.end(JSON.stringify(list));
+  }
   if(p==='/api/activites/stats'&&method==='GET'){
     const nb=parseInt(q.jours||'30');
     const depuis=new Date();depuis.setDate(depuis.getDate()-nb);
@@ -600,7 +1057,7 @@ async function handleAPI(req, res, body) {
     list=list.map(c=>{
       const aff=db.affectations.find(a=>a.chauffeur_id===c.id&&!a.date_fin);
       const veh=aff?db.vehicules.find(v=>v.id===aff.vehicule_id):null;
-      return{...c,vehicule_actuel:veh?veh.immatriculation+' · '+veh.marque:null,affectation_active:!!aff};
+      return{...c,vehicule_actuel:veh?veh.immatriculation+' · '+veh.marque:null,vehicule_id_actuel:veh?veh.id:null,affectation_active:!!aff};
     });
     return res.end(JSON.stringify(list));
   }
@@ -652,7 +1109,13 @@ async function handleAPI(req, res, body) {
   // ── AFFECTATIONS ──────────────────────────────────────────
   if(p==='/api/affectations'&&method==='GET'){
     const myVehs=vehsVisibles(db,auth).map(v=>v.id);
-    let list=db.affectations.filter(a=>!a.date_fin&&myVehs.includes(a.vehicule_id));
+    // tout=1 : renvoie aussi les affectations clôturées (nécessaire pour l'imputation FIFO
+    // des versements, qui doit couvrir tout l'historique d'un véhicule/chauffeur, pas
+    // seulement son affectation active — sinon les versements liés à une ancienne
+    // affectation clôturée sont exclus et faussent les calculs Facturé/Encaissé/Retard).
+    let list=q.tout==='1'
+      ? db.affectations.filter(a=>myVehs.includes(a.vehicule_id))
+      : db.affectations.filter(a=>!a.date_fin&&myVehs.includes(a.vehicule_id));
     return res.end(JSON.stringify(list.map(a=>{
       const v=db.vehicules.find(x=>x.id===a.vehicule_id);
       const c=db.chauffeurs.find(x=>x.id===a.chauffeur_id);
@@ -661,6 +1124,9 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/affectations'&&method==='POST'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(data.vehicule_id)){
+      res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule hors de votre périmètre'}));
+    }
     const vehPourAff=db.vehicules.find(v=>v.id===data.vehicule_id);
     const maxAffVeh=(vehPourAff&&vehPourAff.categorie==='moto')?2:1;
     const affActivesVeh=db.affectations.filter(a=>a.vehicule_id===data.vehicule_id&&!a.date_fin);
@@ -807,6 +1273,18 @@ async function handleAPI(req, res, body) {
         .sort((a,b)=>a.seuil-b.seuil);
     }
     saveDB(db);return res.end(JSON.stringify({message:'Configuration mise à jour',config:db.config_livreurs}));
+  }
+
+  // ── FRAIS DE GESTION MOTO (frais fixe/jour facturé + commission % — tags concernés) ──
+  if(p==='/api/config_frais_moto'&&method==='GET'){
+    return res.end(JSON.stringify(db.config_frais_moto));
+  }
+  if(p==='/api/config_frais_moto'&&method==='PATCH'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(data.frais_gestion_jour!==undefined) db.config_frais_moto.frais_gestion_jour=Number(data.frais_gestion_jour)||0;
+    if(data.commission_pct!==undefined) db.config_frais_moto.commission_pct=Number(data.commission_pct)||0;
+    if(Array.isArray(data.tags)) db.config_frais_moto.tags=data.tags.map(t=>String(t).trim()).filter(Boolean);
+    saveDB(db);return res.end(JSON.stringify({message:'Configuration mise à jour',config:db.config_frais_moto}));
   }
 
   // ── LIVREURS MOTO — liste (= chauffeurs de catégorie livreur) ───
@@ -1063,7 +1541,29 @@ async function handleAPI(req, res, body) {
       return res.end(JSON.stringify({message:'Facturation mise à jour',id:db.facturations[existing].id,updated:true}));
     }
     const f={id:uid(),...data,created_at:new Date().toISOString()};
-    db.facturations.push(f);saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée',updated:false}));
+    db.facturations.push(f);
+
+    // Génération automatique des frais de gestion moto (commission + frais fixe/jour)
+    // pour les véhicules dont le tag est configuré — une seule fois, à la création de la facturation.
+    const vFrais=db.vehicules.find(v=>v.id===f.vehicule_id);
+    const fraisCfg=db.config_frais_moto||{frais_gestion_jour:0,commission_pct:0,tags:[]};
+    if(vFrais&&(fraisCfg.tags||[]).includes(vFrais.tag)){
+      const montantFac=Number(f.montant_facture)||0;
+      const commission=Math.round(montantFac*(fraisCfg.commission_pct||0)/100);
+      const fraisFixe=Number(fraisCfg.frais_gestion_jour)||0;
+      if(commission>0){
+        db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'commission_yango',montant:commission,
+          description:'Commission de service auto ('+(fraisCfg.commission_pct||0)+'%) — facturation du '+f.date,
+          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:today(),created_at:new Date().toISOString()});
+      }
+      if(fraisFixe>0){
+        db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'frais_gestion',montant:fraisFixe,
+          description:'Frais de gestion fixe (moto) — facturation du '+f.date,
+          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:today(),created_at:new Date().toISOString()});
+      }
+    }
+
+    saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée',updated:false}));
   }
   // MODIFIER une facturation
   const facM=p.match(/^\/api\/facturations\/([^/]+)$/);
@@ -1598,14 +2098,200 @@ async function handleAPI(req, res, body) {
     return res.end(JSON.stringify(list.slice(-100).reverse()));
   }
 
+  // ── EZZLOC GPS ────────────────────────────────────────────
+  // Position temps réel de tous les traceurs + rattachement au véhicule SyNdongo
+  // correspondant (par plaque normalisée, ou via db.ezzloc_mapping si saisi à la main).
+  if (p === '/api/ezzloc/vehicules' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!EZZLOC_ACCOUNTS.length) return res.end(JSON.stringify({ detail: 'Aucun compte EZZloc configuré' }));
+    const devices = await ezzlocCallAllAccounts('getVehicleLocationByGroup', { Type: 0 });
+    const mapping = db.ezzloc_mapping || {};
+    const myVehs = vehsVisibles(db, auth);
+    const list = devices.map(d => {
+      let veh = null;
+      const mappedId = mapping[String(d.VehicleID)];
+      const dissocieManuel = mappedId === '__none__';
+      if (mappedId && !dissocieManuel) veh = db.vehicules.find(v => v.id === mappedId);
+      if (!veh && !dissocieManuel) {
+        const nreg = ezzlocNorm(d.RegName);
+        veh = db.vehicules.find(v => v.immatriculation && nreg.includes(ezzlocNorm(v.immatriculation)));
+      }
+      const lat = parseFloat(d.Lat) || null, lon = parseFloat(d.Lon) || null;
+      const distanceDakarKm = (lat && lon) ? Math.round(distanceKm(DAKAR_CENTRE.lat, DAKAR_CENTRE.lon, lat, lon)) : null;
+      return {
+        ezzloc_id: d.VehicleID, reg_name: (d.RegName || '').trim(),
+        vehicule_id: veh ? veh.id : null, immatriculation: veh ? veh.immatriculation : null,
+        lat, lon,
+        speed: parseFloat(d.Speed) || 0, direction: parseInt(d.Direction) || 0,
+        run_status: d.RunStatus || '', online_type: d.OnlineType, is_online: d.IsOnline === 1,
+        odometer: parseFloat(d.Odometer) || 0, gps_time: d.GpsTime ? parseInt(d.GpsTime) : null,
+        distance_dakar_km: distanceDakarKm,
+        hors_zone_dakar: distanceDakarKm !== null && distanceDakarKm > DAKAR_RAYON_KM
+      };
+    }).filter(x => !myVehs.length || !x.vehicule_id || myVehs.some(v => v.id === x.vehicule_id));
+    return res.end(JSON.stringify(list));
+  }
+
+  if (p === '/api/ezzloc/track' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!q.ezzloc_id || !q.debut || !q.fin) return res.end(JSON.stringify({ detail: 'ezzloc_id, debut et fin requis' }));
+    const acc = await ezzlocAccountForDevice(parseInt(q.ezzloc_id));
+    if (!acc) return res.end(JSON.stringify({ detail: 'Compte EZZloc introuvable pour cet appareil' }));
+    const r = await ezzlocCallOn(acc, 'getTrackData', { VehicleID: parseInt(q.ezzloc_id), BeginTime: q.debut, EndTime: q.fin });
+    if (r.result !== 1) return res.end(JSON.stringify({ detail: r.resultNote || 'Erreur EZZloc' }));
+    return res.end(JSON.stringify(r.detail || []));
+  }
+
+  if (p === '/api/ezzloc/mapping' && method === 'GET') {
+    if (!isManager) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    return res.end(JSON.stringify(db.ezzloc_mapping || {}));
+  }
+  if (p === '/api/ezzloc/mapping' && method === 'PATCH') {
+    if (!isManager) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!data.ezzloc_id || !data.vehicule_id) return res.end(JSON.stringify({ detail: 'ezzloc_id et vehicule_id requis' }));
+    db.ezzloc_mapping = db.ezzloc_mapping || {};
+    // '__none__' = dissociation explicite et durable — on ne se contente pas de retirer
+    // l'entrée, sinon la correspondance automatique par plaque la recréerait aussitôt.
+    if (data.vehicule_id === '__clear__') db.ezzloc_mapping[String(data.ezzloc_id)] = '__none__';
+    else db.ezzloc_mapping[String(data.ezzloc_id)] = data.vehicule_id;
+    saveDB(db);
+    // Une association véhicule↔traceur a changé (dans un sens ou dans l'autre) : on ne
+    // sait pas facilement quel(s) véhicule(s) étaient concernés avant/après, donc on vide
+    // tout le cache d'analyse par prudence — c'est une action manuelle rare, pas un coût.
+    Object.keys(_analyse24hCache).forEach(function(k){ delete _analyse24hCache[k]; });
+    return res.end(JSON.stringify({ message: 'Association enregistrée' }));
+  }
+
+  // ── YANGO — IMPORT CSV ───────────────────────────────────
+  if (p === '/api/yango/import' && method === 'POST') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!data.csv) return res.end(JSON.stringify({ detail: 'Fichier CSV vide ou manquant' }));
+    const parsed = parseYangoCSV(data.csv);
+    if (!parsed.length) return res.end(JSON.stringify({ detail: 'Aucune commande lisible dans ce fichier (vérifiez le format)' }));
+    db.yango_commandes = db.yango_commandes || [];
+    const byId = {};
+    db.yango_commandes.forEach(function(c, idx){ byId[c.identifiant] = idx; });
+    let nbAjoutes = 0, nbMiseAJour = 0, nbMatches = 0;
+    parsed.forEach(cmd => {
+      const match = matchYangoCommande(cmd, db);
+      if (match.vehicule_id) nbMatches++;
+      const record = Object.assign({}, cmd, match);
+      if (byId[cmd.identifiant] !== undefined) {
+        db.yango_commandes[byId[cmd.identifiant]] = record; // ré-import : on rafraîchit les données (montants, statut…)
+        nbMiseAJour++;
+      } else {
+        db.yango_commandes.push(record);
+        byId[cmd.identifiant] = db.yango_commandes.length - 1;
+        nbAjoutes++;
+      }
+    });
+    saveDB(db);
+    // Nouvelles commandes Yango importées : le cache d'analyse des véhicules concernés
+    // (potentiellement sur des dates déjà en cache) doit être recalculé.
+    Object.keys(_analyse24hCache).forEach(function(k){ delete _analyse24hCache[k]; });
+    return res.end(JSON.stringify({ message: 'Import terminé', total_lignes: parsed.length, nb_ajoutees: nbAjoutes, nb_mises_a_jour: nbMiseAJour, nb_associees: nbMatches }));
+  }
+
+  if (p === '/api/yango/commandes' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    let list = db.yango_commandes || [];
+    if (q.vehicule_id) list = list.filter(c => c.vehicule_id === q.vehicule_id);
+    if (q.debut && q.fin) {
+      const bornDebut = parseInt(q.debut), bornFin = parseInt(q.fin);
+      list = list.filter(c => (c.debut && c.debut >= bornDebut && c.debut <= bornFin) || (c.fin && c.fin >= bornDebut && c.fin <= bornFin));
+    }
+    return res.end(JSON.stringify(list));
+  }
+
+  // ── ANALYSE 24H — Croisement GPS EZZloc / Commandes Yango ────
+  if (p === '/api/analyse24h' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!q.vehicule_id || !q.date) return res.end(JSON.stringify({ detail: 'vehicule_id et date (AAAA-MM-JJ) requis' }));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(q.date)) return res.end(JSON.stringify({ detail: 'Format de date invalide (AAAA-MM-JJ)' }));
+    const r = await calculerAnalyse24h(db, q.vehicule_id, q.date);
+    if (r.detail) return res.end(JSON.stringify(r));
+    return res.end(JSON.stringify(r));
+  }
+
+  // ── ANALYSE PÉRIODE — plage de dates avec total agrégé ───────
+  if (p === '/api/analyse-periode' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    if (!q.vehicule_id || !q.debut || !q.fin) return res.end(JSON.stringify({ detail: 'vehicule_id, debut et fin (AAAA-MM-JJ) requis' }));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(q.debut) || !/^\d{4}-\d{2}-\d{2}$/.test(q.fin)) return res.end(JSON.stringify({ detail: 'Format de date invalide (AAAA-MM-JJ)' }));
+    const dDebut = new Date(q.debut + 'T00:00:00Z'), dFin = new Date(q.fin + 'T00:00:00Z');
+    const nbJours = Math.round((dFin - dDebut) / (24*3600*1000)) + 1;
+    if (nbJours < 1 || nbJours > 62) return res.end(JSON.stringify({ detail: 'Période invalide (max 62 jours)' }));
+
+    // Un jour de la période est indépendant des autres — on les calcule tous en parallèle
+    // (chacun profite du cache pour les journées déjà consultées) au lieu de les enchaîner
+    // un par un, ce qui rendait une période de plusieurs jours plusieurs fois plus lente
+    // qu'un jour seul.
+    const dates = [];
+    for (let i = 0; i < nbJours; i++) {
+      const d = new Date(dDebut); d.setUTCDate(d.getUTCDate() + i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    const resultats = await Promise.all(dates.map(function(dateStr){ return calculerAnalyse24h(db, q.vehicule_id, dateStr); }));
+
+    const jours = [];
+    let totKm = 0, totGagne = 0, totTermine = 0, totAnnuleClient = 0, totAnnuleChauffeur = 0, totAnomalies = 0, totPointsGps = 0;
+    resultats.forEach(function(r, i){
+      if (r.detail) return;
+      const nbAnomaliesJour = r.heures.filter(function(h){ return h.anomalie; }).length;
+      jours.push({
+        date: dates[i], km_parcourus: r.km_parcourus, montant_gagne: r.montant_gagne,
+        nb_termine_jour: r.nb_termine_jour, nb_annule_client: r.nb_annule_client,
+        nb_annule_chauffeur: r.nb_annule_chauffeur, nb_anomalies: nbAnomaliesJour
+      });
+      totKm += r.km_parcourus; totGagne += r.montant_gagne; totTermine += r.nb_termine_jour;
+      totAnnuleClient += r.nb_annule_client; totAnnuleChauffeur += r.nb_annule_chauffeur;
+      totAnomalies += nbAnomaliesJour; totPointsGps += r.nb_points_gps;
+    });
+    return res.end(JSON.stringify({
+      vehicule_id: q.vehicule_id, debut: q.debut, fin: q.fin, nb_jours: nbJours,
+      km_parcourus: Math.round(totKm * 10) / 10, montant_gagne: totGagne, nb_termine_jour: totTermine,
+      nb_annule_client: totAnnuleClient, nb_annule_chauffeur: totAnnuleChauffeur, nb_anomalies: totAnomalies,
+      nb_points_gps: totPointsGps, jours: jours
+    }));
+  }
+
+  // ── HISTORIQUE DES ANALYSES — sauvegarde/consultation ────────
+  if (p === '/api/historique-analyse' && method === 'GET') {
+    if (!isManager && !isGest) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    let list = db.historique_analyse24h || [];
+    if (q.vehicule_id) list = list.filter(h => h.vehicule_id === q.vehicule_id);
+    if (q.date) list = list.filter(h => h.date === q.date);
+    if (q.debut && q.fin) list = list.filter(h => h.date >= q.debut && h.date <= q.fin);
+    return res.end(JSON.stringify(list.sort((a, b) => b.date.localeCompare(a.date))));
+  }
+  if (p === '/api/historique-analyse/snapshot' && method === 'POST') {
+    if (!isManager) { res.writeHead(403); return res.end(JSON.stringify({ detail: 'Refusé' })); }
+    const dateSnap = data.date || (function(){ const h = new Date(); h.setUTCDate(h.getUTCDate() - 1); return h.toISOString().split('T')[0]; })();
+    const resSnap = await snapshotAnalyse24hToutesMotos(db, dateSnap);
+    return res.end(JSON.stringify(resSnap));
+  }
+
   res.writeHead(404);res.end(JSON.stringify({detail:'Route introuvable'}));
 }
 
 const server=http.createServer((req,res)=>{
+  // ── Compression gzip transparente (réponses JSON/HTML souvent volumineuses) ──
+  if ((req.headers['accept-encoding']||'').includes('gzip')) {
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Vary', 'Accept-Encoding');
+    const origEnd = res.end.bind(res);
+    res.end = function(chunk, encoding, cb) {
+      if (!chunk || typeof chunk === 'function') return origEnd(chunk, encoding, cb);
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, typeof encoding === 'string' ? encoding : 'utf8');
+      try { return origEnd(zlib.gzipSync(buf)); }
+      catch (e) { res.removeHeader('Content-Encoding'); return origEnd(buf); }
+    };
+  }
   cors(res);
   if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
   if(req.url.startsWith('/api/')){let body='';req.on('data',c=>body+=c);req.on('end',()=>handleAPI(req,res,body));return;}
-  if(req.url==='/'||req.url.startsWith('/index')){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(__dirname,'index.html'),'utf8'));return;}
+  if(req.url==='/'||req.url.startsWith('/index')){res.setHeader('Content-Type','text/html; charset=utf-8');res.setHeader('Cache-Control','no-cache, must-revalidate');res.end(fs.readFileSync(path.join(__dirname,'index.html'),'utf8'));return;}
   res.writeHead(404);res.end('Not found');
 });
 server.listen(PORT,()=>console.log('\n  SyNdongo v9 — port '+PORT+'\n  DB: '+DB_FILE+'\n'));
+planifierSnapshotAutomatique();
