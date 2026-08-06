@@ -9812,16 +9812,13 @@ async function loadAnalysePage() {
 }
 
 // ── 1. Taux d'utilisation du parc ──────────────────────────
+// Utilise v.statut_jour, déjà calculé côté serveur (activité du jour, ou
+// présomption "actif" si affectation en cours sans saisie) — la même logique
+// que le Dashboard et la page Véhicules, pour rester cohérent partout.
 function anBuildUtilisation(vehs, acts, facsAll) {
-  const t0 = new Date().toISOString().split('T')[0];
-  const byVeh = {};
-  (acts||[]).forEach(function(a){ if (a.date===t0) byVeh[a.vehicule_id]=a.statut_jour; });
-  const facVehT0 = new Set((facsAll||[]).filter(function(f){ return f.date===t0; }).map(function(f){ return f.vehicule_id; }));
-  const counts = { actif:0, panne:0, repos:0, non_saisi:0 };
-  // "Actif" ne compte que s'il y a une facturation aujourd'hui ; sinon on respecte panne/repos/inactif saisis.
+  const counts = { actif:0, panne:0, repos:0, inactif:0, non_saisi:0 };
   vehs.forEach(function(v){
-    var saisie = byVeh[v.id];
-    var s = facVehT0.has(v.id) ? 'actif' : (saisie && saisie!=='actif' ? saisie : 'non_saisi');
+    var s = v.statut_jour || 'non_saisi';
     counts[s] = (counts[s]||0)+1;
   });
   const total = vehs.length || 1;

@@ -1614,12 +1614,12 @@ async function handleAPI(req, res, body) {
       if(commission>0){
         db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'commission_yango',montant:commission,
           description:'Commission de service auto ('+(fraisCfg.commission_pct||0)+'%) — facturation du '+f.date,
-          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:today(),created_at:new Date().toISOString()});
+          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
       }
       if(fraisFixe>0){
         db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'frais_gestion',montant:fraisFixe,
           description:'Frais de gestion fixe (moto) — facturation du '+f.date,
-          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:today(),created_at:new Date().toISOString()});
+          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
       }
     }
 
