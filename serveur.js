@@ -601,6 +601,15 @@ function vehsVisibles(db, auth) {
   return [];
 }
 
+// Un gestionnaire peut agir sur un véhicule s'il lui est visible — via tag OU via
+// affectation directe (vehicules_ids). Ne JAMAIS vérifier auth.gest.vehicules_ids seul :
+// ça ignore l'accès par tag et bloque à tort les gestionnaires assignés par tag
+// (ex. Papa Sakho / Ibrahima Sy sur la flotte moto).
+function gestPeutVoirVehicule(db, auth, vehiculeId) {
+  if (!vehiculeId) return false;
+  return vehsVisibles(db, auth).some(v => v.id === vehiculeId);
+}
+
 // Ids des livreurs (chauffeurs catégorie 'livreur') visibles par l'utilisateur courant
 function livreursVisiblesIds(db, auth) {
   const myVehs = vehsVisibles(db, auth).map(v => v.id);
@@ -1012,7 +1021,7 @@ async function handleAPI(req, res, body) {
   if(p==='/api/activites'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     // Gestionnaire : vérifier que le véhicule lui appartient
-    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const statut_jour=data.statut_jour||'actif';
     const existing=db.activites.findIndex(a=>a.vehicule_id===data.vehicule_id&&a.date===today());
     const entry={id:existing!==-1?db.activites[existing].id:uid(),vehicule_id:data.vehicule_id,date:today(),statut_jour};
@@ -1149,7 +1158,7 @@ async function handleAPI(req, res, body) {
     const idx=db.affectations.findIndex(a=>a.id===aM[1]);
     if(idx!==-1){
       // Gestionnaire : vérifier que le véhicule lui appartient
-      if(isGest&&!auth.gest.vehicules_ids.includes(db.affectations[idx].vehicule_id)){
+      if(isGest&&!gestPeutVoirVehicule(db,auth,db.affectations[idx].vehicule_id)){
         res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
       }
       db.affectations[idx].date_fin=today();
@@ -1195,7 +1204,7 @@ async function handleAPI(req, res, body) {
     const aff=db.affectations.find(a=>a.id===data.affectation_id);
     if(!aff) return res.end(JSON.stringify({detail:'Affectation introuvable'}));
     if(!peutEncaisser(db,auth,aff.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(aff.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,aff.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const attendu=aff.montant_journalier,montant=Number(data.montant);
     const statut=montant>=attendu?'recu':montant>0?'partiel':'en_retard';
     const v={id:uid(),...data,montant,montant_attendu:attendu,statut,created_at:new Date().toISOString()};
@@ -1210,7 +1219,7 @@ async function handleAPI(req, res, body) {
     if(!vs){res.writeHead(404);return res.end(JSON.stringify({detail:'Versement introuvable'}));}
     const aff=db.affectations.find(a=>a.id===vs.affectation_id);
     if(!peutEncaisser(db,auth,aff?aff.vehicule_id:null)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
-    if(isGest&&aff&&!auth.gest.vehicules_ids.includes(aff.vehicule_id)){
+    if(isGest&&aff&&!gestPeutVoirVehicule(db,auth,aff.vehicule_id)){
       res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
     }
     db.versements=db.versements.filter(v=>v.id!==versM[1]);
@@ -1242,7 +1251,7 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/depenses'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const payeur=data.payeur==='tiers'?'tiers':'gestionnaire';
     const d={id:uid(),...data,montant:Number(data.montant),justificatif:data.justificatif||null,date_facture:data.date_facture||null,payeur,tiers_nom:payeur==='tiers'?(data.tiers_nom||'').trim()||null:null,tiers_statut:payeur==='tiers'?(data.tiers_statut==='rembourse'?'rembourse':'a_rembourser'):null,date_depense:today(),created_at:new Date().toISOString()};
     db.depenses.push(d);saveDB(db);return res.end(JSON.stringify({id:d.id,message:'Dépense enregistrée'}));
@@ -1253,7 +1262,7 @@ async function handleAPI(req, res, body) {
     // Gestionnaire : vérifier que la dépense appartient à un de ses véhicules
     if(isGest){
       const dep=db.depenses.find(d=>d.id===dM[1]);
-      if(dep&&!auth.gest.vehicules_ids.includes(dep.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Accès refusé'}));}
+      if(dep&&!gestPeutVoirVehicule(db,auth,dep.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Accès refusé'}));}
     }
     db.depenses=db.depenses.filter(d=>d.id!==dM[1]);
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
@@ -1285,6 +1294,16 @@ async function handleAPI(req, res, body) {
     if(data.commission_pct!==undefined) db.config_frais_moto.commission_pct=Number(data.commission_pct)||0;
     if(Array.isArray(data.tags)) db.config_frais_moto.tags=data.tags.map(t=>String(t).trim()).filter(Boolean);
     saveDB(db);return res.end(JSON.stringify({message:'Configuration mise à jour',config:db.config_frais_moto}));
+  }
+  // Resynchronise commission/frais de gestion sur TOUT l'historique des facturations
+  // (utile après un changement de taux, de tags, ou pour rattraper des facturations
+  // créées via un point d'entrée qui ne générait pas encore les frais).
+  if(p==='/api/config_frais_moto/resync'&&method==='POST'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    let n=0;
+    for(const f of db.facturations){ genererFraisMoto(db,f); n++; }
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Resynchronisation terminée',facturations_traitees:n}));
   }
 
   // ── LIVREURS MOTO — liste (= chauffeurs de catégorie livreur) ───
@@ -1520,7 +1539,7 @@ async function handleAPI(req, res, body) {
   if(p==='/api/traites'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(!data.vehicule_id) return res.end(JSON.stringify({detail:'Véhicule obligatoire'}));
-    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)&&!vehsVisibles(db,auth).map(v=>v.id).includes(data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const montant=Number(data.montant)||0;
     if(!montant) return res.end(JSON.stringify({detail:'Montant obligatoire'}));
     const t={id:uid(),vehicule_id:data.vehicule_id,mois:data.mois||today().slice(0,7),montant,
@@ -1570,6 +1589,31 @@ async function handleAPI(req, res, body) {
       solde_avant_apport:prixTotal-apportMontant}));
   }
 
+  // Génération (idempotente) des frais de gestion moto (commission + frais fixe/jour)
+  // pour une facturation donnée, selon le tag du véhicule. Appelée à chaque création
+  // OU mise à jour de facturation, quel que soit le point d'entrée (facturation simple,
+  // facturation multiple, auto-facturation par statut) — recalcule proprement si le
+  // montant ou le statut change, sans jamais dupliquer.
+  function genererFraisMoto(db,f){
+    db.depenses=db.depenses.filter(d=>!(d.facturation_id===f.id&&(d.categorie==='commission_yango'||d.categorie==='frais_gestion')));
+    const vFrais=db.vehicules.find(v=>v.id===f.vehicule_id);
+    const fraisCfg=db.config_frais_moto||{frais_gestion_jour:0,commission_pct:0,tags:[]};
+    if(!vFrais||!(fraisCfg.tags||[]).includes(vFrais.tag)) return;
+    const montantFac=Number(f.montant_facture)||0;
+    const commission=Math.round(montantFac*(fraisCfg.commission_pct||0)/100);
+    const fraisFixe=Number(fraisCfg.frais_gestion_jour)||0;
+    if(commission>0){
+      db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'commission_yango',montant:commission,
+        description:'Commission de service auto ('+(fraisCfg.commission_pct||0)+'%) — facturation du '+f.date,
+        auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
+    }
+    if(fraisFixe>0){
+      db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'frais_gestion',montant:fraisFixe,
+        description:'Frais de gestion fixe (moto) — facturation du '+f.date,
+        auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
+    }
+  }
+
   // ── FACTURATIONS ──────────────────────────────────────────
   if(p==='/api/facturations'&&method==='GET'){
     let visVehsFac=vehsVisibles(db,auth);
@@ -1597,32 +1641,13 @@ async function handleAPI(req, res, body) {
     if(existing!==-1){
       // Mise à jour si même véhicule/date (pas un vrai doublon — c'est une correction)
       db.facturations[existing]={...db.facturations[existing],...data,updated_at:new Date().toISOString()};
+      genererFraisMoto(db,db.facturations[existing]);
       saveDB(db);
       return res.end(JSON.stringify({message:'Facturation mise à jour',id:db.facturations[existing].id,updated:true}));
     }
     const f={id:uid(),...data,created_at:new Date().toISOString()};
     db.facturations.push(f);
-
-    // Génération automatique des frais de gestion moto (commission + frais fixe/jour)
-    // pour les véhicules dont le tag est configuré — une seule fois, à la création de la facturation.
-    const vFrais=db.vehicules.find(v=>v.id===f.vehicule_id);
-    const fraisCfg=db.config_frais_moto||{frais_gestion_jour:0,commission_pct:0,tags:[]};
-    if(vFrais&&(fraisCfg.tags||[]).includes(vFrais.tag)){
-      const montantFac=Number(f.montant_facture)||0;
-      const commission=Math.round(montantFac*(fraisCfg.commission_pct||0)/100);
-      const fraisFixe=Number(fraisCfg.frais_gestion_jour)||0;
-      if(commission>0){
-        db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'commission_yango',montant:commission,
-          description:'Commission de service auto ('+(fraisCfg.commission_pct||0)+'%) — facturation du '+f.date,
-          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
-      }
-      if(fraisFixe>0){
-        db.depenses.push({id:uid(),vehicule_id:f.vehicule_id,categorie:'frais_gestion',montant:fraisFixe,
-          description:'Frais de gestion fixe (moto) — facturation du '+f.date,
-          auto_genere:true,facturation_id:f.id,payeur:'gestionnaire',date_depense:f.date,created_at:new Date().toISOString()});
-      }
-    }
-
+    genererFraisMoto(db,f);
     saveDB(db);return res.end(JSON.stringify({id:f.id,message:'Facturation enregistrée',updated:false}));
   }
   // MODIFIER une facturation
@@ -1632,9 +1657,10 @@ async function handleAPI(req, res, body) {
     const idx=db.facturations.findIndex(f=>f.id===facM[1]);
     if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
     if(!peutFacturer(db,auth,db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,db.facturations[idx].vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
     const old=db.facturations[idx];
     db.facturations[idx]={...old,...data,updated_at:new Date().toISOString()};
+    genererFraisMoto(db,db.facturations[idx]);
     db.historique=(db.historique||[]);
     const vFac=db.vehicules.find(v=>v.id===old.vehicule_id);
     db.historique.push({id:uid(),type:'facturation_modifiee',
@@ -1648,8 +1674,9 @@ async function handleAPI(req, res, body) {
     const fac=db.facturations.find(f=>f.id===facM[1]);
     if(!fac){res.writeHead(404);return res.end(JSON.stringify({detail:'Facturation introuvable'}));}
     if(!peutFacturer(db,auth,fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission de facturer'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,fac.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'V\u00e9hicule non assign\u00e9'}));}
     db.facturations=db.facturations.filter(f=>f.id!==facM[1]);
+    db.depenses=db.depenses.filter(d=>!(d.facturation_id===facM[1]&&(d.categorie==='commission_yango'||d.categorie==='frais_gestion')));
     db.historique=(db.historique||[]);
     const vFacD=db.vehicules.find(v=>v.id===fac.vehicule_id);
     db.historique.push({id:uid(),type:'facturation_supprimee',
@@ -1665,7 +1692,7 @@ async function handleAPI(req, res, body) {
     if(!vehicules_ids||!vehicules_ids.length) return res.end(JSON.stringify({detail:'Aucun véhicule sélectionné'}));
     const results=[];
     for(const vid of vehicules_ids){
-      if(isGest&&!auth.gest.vehicules_ids.includes(vid)) continue;
+      if(isGest&&!gestPeutVoirVehicule(db,auth,vid)) continue;
       if(!peutFacturer(db,auth,vid)) continue;
       const aff=db.affectations.find(a=>a.vehicule_id===vid&&!a.date_fin);
       if(!aff) continue;
@@ -1674,6 +1701,7 @@ async function handleAPI(req, res, body) {
       const existing=db.facturations.findIndex(f=>f.vehicule_id===vid&&f.date===date);
       const fac={id:existing!==-1?db.facturations[existing].id:uid(),vehicule_id:vid,chauffeur_id:aff.chauffeur_id,date,type_journee,montant_facture,montant_base,created_at:new Date().toISOString()};
       if(existing!==-1)db.facturations[existing]=fac;else db.facturations.push(fac);
+      genererFraisMoto(db,fac);
       // Mettre à jour le statut jour
       const sjMap={complet:'actif',demi_panne:'panne',repos:'repos',inactif:'inactif'};
       const statut_jour=sjMap[type_journee]||'actif';
@@ -1692,7 +1720,7 @@ async function handleAPI(req, res, body) {
     const aff_active=db.affectations.find(a=>a.chauffeur_id===chauffeur_id&&!a.date_fin);
     if(!aff_active) return res.end(JSON.stringify({detail:'Aucune affectation active'}));
     if(!peutEncaisser(db,auth,aff_active.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Vous n\'avez pas la permission d\'encaisser'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(aff_active.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,aff_active.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const montant=Number(montant_recu);
     const affIds=db.affectations.filter(a=>a.chauffeur_id===chauffeur_id).map(a=>a.id);
     const total_verse=db.versements.filter(v=>affIds.includes(v.affectation_id)).reduce((s,v)=>s+v.montant,0);
@@ -1943,7 +1971,8 @@ async function handleAPI(req, res, body) {
     };
     if(existIdx!==-1) db.facturations[existIdx]=fac;
     else db.facturations.push(fac);
-    
+    genererFraisMoto(db,fac);
+
     // Historique
     const veh=db.vehicules.find(v=>v.id===vehicule_id);
     db.historique=(db.historique||[]);
@@ -2125,7 +2154,7 @@ async function handleAPI(req, res, body) {
   }
   if(p==='/api/journal'&&method==='POST'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé — lecture seule'}));}
-    if(isGest&&!auth.gest.vehicules_ids.includes(data.vehicule_id)){
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){
       res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));
     }
     if(!db.journal) db.journal=[];
