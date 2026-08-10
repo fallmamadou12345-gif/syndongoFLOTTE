@@ -2089,6 +2089,178 @@ async function api(method, path, data) {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// OFFLINE — INDEXEDDB (Phase 2B-1 : infrastructure + modèle local)
+// Pur stockage local en LECTURE ; ne remplace aucun appel réseau existant et n'est
+// appelé par aucune page pour l'instant. La file de synchronisation (écriture offline)
+// arrive en 2B-2 — ce bloc pose seulement les fondations : ouverture de la base,
+// remplissage du mirror depuis les endpoints déjà scopés côté serveur, et la garde de
+// sécurité "appareil partagé" (jamais deux utilisateurs à voir les données l'un de l'autre).
+// ═══════════════════════════════════════════════════════
+const OFFLINE_DB_NAME = 'syndongo_offline_db';
+const OFFLINE_DB_VERSION = 1;
+const OFFLINE_STORES = ['mirror_vehicules', 'mirror_chauffeurs', 'mirror_affectations', 'mirror_ordres_maintenance', 'mirror_historique', 'meta'];
+
+let _offlineDbPromise = null;
+function openOfflineDB() {
+  if (_offlineDbPromise) return _offlineDbPromise;
+  _offlineDbPromise = new Promise(function(resolve) {
+    if (!window.indexedDB) { resolve(null); return; } // navigateur sans IndexedDB : offline simplement indisponible, rien ne casse ailleurs
+    const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+    req.onupgradeneeded = function(e) {
+      const db = e.target.result;
+      OFFLINE_STORES.forEach(function(name) {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name, { keyPath: name === 'meta' ? 'key' : 'id' });
+        }
+      });
+    };
+    req.onsuccess = function(e) { resolve(e.target.result); };
+    req.onerror = function(e) { console.warn('[offline] IndexedDB indisponible :', e.target.error); resolve(null); };
+  });
+  return _offlineDbPromise;
+}
+
+async function idbGetAll(storeName) {
+  const db = await openOfflineDB();
+  if (!db) return [];
+  return new Promise(function(resolve) {
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = function() { resolve(req.result || []); };
+    req.onerror = function() { resolve([]); };
+  });
+}
+
+async function idbGet(storeName, key) {
+  const db = await openOfflineDB();
+  if (!db) return undefined;
+  return new Promise(function(resolve) {
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).get(key);
+    req.onsuccess = function() { resolve(req.result); };
+    req.onerror = function() { resolve(undefined); };
+  });
+}
+
+async function idbPut(storeName, value) {
+  const db = await openOfflineDB();
+  if (!db) return;
+  return new Promise(function(resolve) {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).put(value);
+    tx.oncomplete = function() { resolve(); };
+    tx.onerror = function() { resolve(); };
+  });
+}
+
+async function idbBulkPut(storeName, items) {
+  const db = await openOfflineDB();
+  if (!db || !Array.isArray(items)) return;
+  return new Promise(function(resolve) {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    items.forEach(function(item) { if (item && item.id != null) store.put(item); });
+    tx.oncomplete = function() { resolve(); };
+    tx.onerror = function() { resolve(); };
+  });
+}
+
+async function idbClear(storeName) {
+  const db = await openOfflineDB();
+  if (!db) return;
+  return new Promise(function(resolve) {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).clear();
+    tx.oncomplete = function() { resolve(); };
+    tx.onerror = function() { resolve(); };
+  });
+}
+
+async function idbClearAll() {
+  for (const name of OFFLINE_STORES) { await idbClear(name); }
+}
+
+// device_id : identifiant d'appareil, généré une seule fois, persistant. Différent du
+// token (qui identifie l'utilisateur) — le device_id identifie l'appareil physique,
+// nécessaire pour la file de synchronisation (2B-2) et pour distinguer plusieurs
+// appareils utilisés par le même gestionnaire.
+function getDeviceId() {
+  let id = localStorage.getItem('snd_device_id');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    localStorage.setItem('snd_device_id', id);
+  }
+  return id;
+}
+
+// Identifiant stable de l'utilisateur connecté (PAS le token, qui change si le mot de
+// passe est réinitialisé) — utilisé uniquement pour détecter un changement de compte sur
+// le même appareil.
+function getCurrentUserKey() {
+  if (ROLE === 'gestionnaire') return 'gestionnaire:' + (GEST_INFO.gest_id || '');
+  if (ROLE === 'proprietaire') return 'proprietaire:' + (USER || '');
+  if (ROLE === 'livreur') return 'livreur:' + (LIVREUR_ID || '');
+  if (ROLE === 'manager') return 'manager';
+  return '';
+}
+
+// Sécurité — appareil partagé : si le cache local appartient à un AUTRE utilisateur que
+// celui qui vient de se connecter, on l'efface avant de charger quoi que ce soit. Ne
+// jamais laisser un utilisateur B voir les données mises en cache par un utilisateur A
+// sur le même navigateur.
+async function wipeLocalMirrorIfUserChanged() {
+  const currentKey = getCurrentUserKey();
+  if (!currentKey) return;
+  const meta = await idbGet('meta', 'mirror_user');
+  if (meta && meta.value && meta.value !== currentKey) {
+    console.info('[offline] Changement d\'utilisateur détecté (' + meta.value + ' → ' + currentKey + ') — nettoyage du cache local.');
+    await idbClearAll();
+  }
+  await idbPut('meta', { key: 'mirror_user', value: currentKey });
+}
+
+// Remplit le mirror local à partir des endpoints EXISTANTS, déjà scopés côté serveur par
+// vehsVisibles()/gestPeutVoirVehicule() — le pull ne renvoie donc jamais rien que
+// l'utilisateur ne pourrait déjà voir en ligne ; aucune nouvelle règle de permission
+// n'est introduite ici. Best-effort : si le réseau est indisponible, échoue
+// silencieusement et le mirror garde son contenu précédent (c'est tout l'intérêt).
+async function refreshLocalMirror() {
+  if (!TOKEN || ROLE === 'livreur') return { ok: false, reason: 'non applicable pour ce rôle' };
+  try {
+    const [vehs, chauffeurs, affs, ordres] = await Promise.all([
+      api('GET', '/vehicules?inclure_archives=1'),
+      api('GET', '/chauffeurs'),
+      api('GET', '/affectations?tout=1'),
+      api('GET', '/ordres_maintenance')
+    ]);
+    if (Array.isArray(vehs)) await idbBulkPut('mirror_vehicules', vehs);
+    if (Array.isArray(chauffeurs)) await idbBulkPut('mirror_chauffeurs', chauffeurs);
+    if (Array.isArray(affs)) await idbBulkPut('mirror_affectations', affs);
+    if (Array.isArray(ordres)) await idbBulkPut('mirror_ordres_maintenance', ordres);
+    const hist = await api('GET', '/historique?limit=200');
+    if (Array.isArray(hist)) await idbBulkPut('mirror_historique', hist);
+    await idbPut('meta', { key: 'last_pull_at', value: new Date().toISOString() });
+    return { ok: true, counts: {
+      vehicules: Array.isArray(vehs) ? vehs.length : 0,
+      chauffeurs: Array.isArray(chauffeurs) ? chauffeurs.length : 0,
+      affectations: Array.isArray(affs) ? affs.length : 0,
+      ordres_maintenance: Array.isArray(ordres) ? ordres.length : 0,
+      historique: Array.isArray(hist) ? hist.length : 0
+    }};
+  } catch (e) {
+    return { ok: false, reason: 'réseau indisponible' };
+  }
+}
+
+// Point d'entrée appelé après une connexion réussie (voir demarrerApp) : vérifie le
+// changement d'utilisateur PUIS lance un rafraîchissement best-effort du mirror, sans
+// bloquer le démarrage de l'application.
+async function initOfflineMirror() {
+  await wipeLocalMirrorIfUserChanged();
+  refreshLocalMirror();
+}
+
 // Bouton chargement
 function setBtnLoad(btn, loading) {
   if (!btn) return;
@@ -2155,8 +2327,9 @@ async function loginLivreur() {
   }
 }
 
-function logout() {
+async function logout() {
   localStorage.removeItem('snd_tk');
+  try { await idbClearAll(); } catch(e) {}
   location.reload();
 }
 
@@ -2204,6 +2377,10 @@ window.addEventListener('load', async function() {
 function demarrerApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+
+  // Offline (Phase 2B-1) : vérifie un éventuel changement d'utilisateur sur cet appareil
+  // puis rafraîchit le mirror local en arrière-plan — ne bloque jamais le démarrage.
+  initOfflineMirror();
 
   // Espace livreur : mini-app dédiée en lecture seule, on ne touche à rien du reste
   // (pas de dashboard/nav manager, pas d'appels aux endpoints manager qui seraient de toute façon refusés).
