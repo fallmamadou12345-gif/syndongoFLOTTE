@@ -540,7 +540,8 @@ function loadDB() {
   if(db.tags) db.tags = normalizeTags(db.tags);
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
-   'livreurs','recettes_livreurs','paiements_livreurs','chat_messages','traites'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'livreurs','recettes_livreurs','paiements_livreurs','chat_messages','traites',
+   'ordres_maintenance'].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   if(!db.config_frais_moto) db.config_frais_moto = { frais_gestion_jour: 1000, commission_pct: 0, tags: ['MOTO GESTION','MOTO SY TRANSPORT'] };
@@ -1081,6 +1082,25 @@ async function handleAPI(req, res, body) {
     return res.end(JSON.stringify({vehicule:v,chauffeur,affectation:affActive,versements:versements.slice(-20).reverse(),depenses:depenses.slice(-10).reverse(),total_facture,total_verse,total_depenses,recette_nette:total_verse-total_depenses,manquant:Math.max(0,total_facture-total_verse),historique}));
   }
 
+  // Historique du kilométrage — dérivé de db.historique (entrées vehicule_modifie déjà
+  // écrites par le PATCH /vehicules/:id, Phase 1 F-06). Aucune nouvelle donnée stockée.
+  const kmHistM=p.match(/^\/api\/vehicules\/([^/]+)\/km_historique$/);
+  if(kmHistM&&method==='GET'){
+    const veh=db.vehicules.find(v=>v.id===kmHistM[1]);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Véhicule introuvable'}));}
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    if(!myVehs.includes(veh.id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    let entries=(db.historique||[]).filter(h=>h.type==='vehicule_modifie'&&h.objet_id===kmHistM[1]&&h.changements&&h.changements.km_actuel);
+    if(q.date_debut&&q.date_fin){
+      entries=entries.filter(h=>{const d=(h.date||'').split('T')[0];return d>=q.date_debut&&d<=q.date_fin;});
+    }
+    entries=entries.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(h=>({
+      date:h.date, avant:h.changements.km_actuel.avant, apres:h.changements.km_actuel.apres, auteur:h.auteur
+    }));
+    const km_parcourus=entries.length?(entries[entries.length-1].apres||0)-(entries[0].avant||0):null;
+    return res.end(JSON.stringify({vehicule_id:kmHistM[1],km_actuel:veh.km_actuel,historique:entries,km_parcourus}));
+  }
+
   // ── ACTIVITES ─────────────────────────────────────────────
   if(p==='/api/activites'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
@@ -1363,6 +1383,170 @@ async function handleAPI(req, res, body) {
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
   }
   if(dM&&method==='PATCH'){if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.depenses.findIndex(d=>d.id===dM[1]);if(idx!==-1){db.depenses[idx]={...db.depenses[idx],...data};saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+
+  // ── ORDRES DE MAINTENANCE (Phase 2A) ────────────────────────
+  function genererNumeroMO(db){
+    const annee=new Date().getFullYear();
+    const prefix='MO-'+annee+'-';
+    const nums=db.ordres_maintenance.filter(o=>o.numero&&o.numero.startsWith(prefix)).map(o=>parseInt(o.numero.slice(prefix.length),10)||0);
+    const suivant=(nums.length?Math.max(...nums):0)+1;
+    return prefix+String(suivant).padStart(4,'0');
+  }
+  const STATUTS_MO=['PLANIFIE','OUVERT','EN_COURS','EN_ATTENTE_PIECE','TERMINE','ANNULE'];
+  const STATUTS_MO_OUVERTS=['OUVERT','EN_COURS','EN_ATTENTE_PIECE'];
+  function normaliserPieceMO(p){
+    return {
+      nom:(p.nom||'').trim(), reference:(p.reference||'').trim(), quantite:Number(p.quantite)||0,
+      prix_unitaire:Number(p.prix_unitaire)||0, fournisseur:(p.fournisseur||'').trim(),
+      total:(Number(p.quantite)||0)*(Number(p.prix_unitaire)||0)
+    };
+  }
+  function calculerCoutMO(o){
+    const piecesTotal=(o.pieces||[]).reduce((s,pc)=>s+(Number(pc.total)||0),0);
+    const moCout=Number(o.main_oeuvre&&o.main_oeuvre.cout)||0;
+    const autres=Number(o.autres_couts)||0;
+    return piecesTotal+moCout+autres;
+  }
+
+  if(p==='/api/ordres_maintenance'&&method==='GET'){
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=db.ordres_maintenance.filter(o=>myVehs.includes(o.vehicule_id));
+    if(q.vehicule_id) list=list.filter(o=>o.vehicule_id===q.vehicule_id);
+    if(q.statut) list=list.filter(o=>o.statut===q.statut);
+    list=list.map(o=>{
+      const dep=o.depense_id?db.depenses.find(d=>d.id===o.depense_id):null;
+      return{...o,
+        depense_introuvable: !!(o.depense_id && !dep),
+        montant_incoherent: !!(dep && o.depense_montant_enregistre!==undefined && dep.montant!==o.depense_montant_enregistre)
+      };
+    });
+    return res.end(JSON.stringify(list.slice().reverse()));
+  }
+  if(p==='/api/ordres_maintenance'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.vehicule_id) return res.end(JSON.stringify({detail:'Véhicule obligatoire'}));
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    const veh=db.vehicules.find(v=>v.id===data.vehicule_id);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Véhicule introuvable'}));}
+    const statut=STATUTS_MO.includes(data.statut)?data.statut:'OUVERT';
+    const o={
+      id:uid(), numero:genererNumeroMO(db), vehicule_id:data.vehicule_id,
+      type: data.type==='preventive'?'preventive':'corrective',
+      sous_type: (data.sous_type||'').trim()||null,
+      statut,
+      date_ouverture: data.date_ouverture||today(),
+      km_ouverture: data.km_ouverture!==undefined&&data.km_ouverture!==''?Number(data.km_ouverture):(veh.km_actuel||null),
+      date_cloture: null, km_cloture: null,
+      probleme: (data.probleme||'').trim(),
+      garage: (data.garage||'').trim(),
+      pieces: Array.isArray(data.pieces)?data.pieces.map(normaliserPieceMO):[],
+      main_oeuvre:{
+        mecanicien:((data.main_oeuvre&&data.main_oeuvre.mecanicien)||'').trim(),
+        heures:Number(data.main_oeuvre&&data.main_oeuvre.heures)||0,
+        taux_horaire:Number(data.main_oeuvre&&data.main_oeuvre.taux_horaire)||0,
+        cout:0,
+        commentaire:((data.main_oeuvre&&data.main_oeuvre.commentaire)||'').trim()
+      },
+      autres_couts: Number(data.autres_couts)||0,
+      depense_id:null, depense_montant_enregistre:null,
+      cree_par:isGest?auth.gest.id:'manager', auteur:isGest?auth.gest.nom:'Manager',
+      created_at:new Date().toISOString(), updated_at:new Date().toISOString()
+    };
+    o.main_oeuvre.cout = o.main_oeuvre.heures*o.main_oeuvre.taux_horaire;
+    o.cout_total = calculerCoutMO(o);
+    db.ordres_maintenance.push(o);
+    // Lien statut véhicule : un ordre ouvert/en cours/en attente pièce met le véhicule
+    // en maintenance — réutilise le statut existant, n'en crée aucun nouveau.
+    if(STATUTS_MO_OUVERTS.includes(o.statut) && veh.statut!=='archive'){
+      veh.statut='en_maintenance';
+    }
+    db.historique=(db.historique||[]);
+    db.historique.push({id:uid(),type:'maintenance_ouverte',objet:'ordre_maintenance',objet_id:o.id,
+      ref_nom:o.numero+' — '+veh.immatriculation,
+      auteur:o.auteur,auteur_id:isGest?auth.gest.id:null,role:auth.role,date:new Date().toISOString()});
+    saveDB(db);
+    return res.end(JSON.stringify({id:o.id,numero:o.numero,message:'Ordre de maintenance créé'}));
+  }
+  const moM=p.match(/^\/api\/ordres_maintenance\/([^/]+)$/);
+  if(moM&&method==='PATCH'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.ordres_maintenance.findIndex(o=>o.id===moM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Ordre de maintenance introuvable'}));}
+    const o=db.ordres_maintenance[idx];
+    if(isGest&&!gestPeutVoirVehicule(db,auth,o.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    const veh=db.vehicules.find(v=>v.id===o.vehicule_id);
+    const ancienStatut=o.statut;
+    if(data.type!==undefined) o.type = data.type==='preventive'?'preventive':'corrective';
+    if(data.sous_type!==undefined) o.sous_type=(data.sous_type||'').trim()||null;
+    if(data.statut!==undefined && STATUTS_MO.includes(data.statut)) o.statut=data.statut;
+    if(data.probleme!==undefined) o.probleme=(data.probleme||'').trim();
+    if(data.garage!==undefined) o.garage=(data.garage||'').trim();
+    if(data.km_cloture!==undefined) o.km_cloture=data.km_cloture===''?null:(Number(data.km_cloture)||null);
+    if(data.autres_couts!==undefined) o.autres_couts=Number(data.autres_couts)||0;
+    if(Array.isArray(data.pieces)) o.pieces=data.pieces.map(normaliserPieceMO);
+    if(data.main_oeuvre){
+      const mo=data.main_oeuvre;
+      o.main_oeuvre={
+        mecanicien:(mo.mecanicien!==undefined?mo.mecanicien:o.main_oeuvre.mecanicien||'').trim(),
+        heures:mo.heures!==undefined?(Number(mo.heures)||0):o.main_oeuvre.heures,
+        taux_horaire:mo.taux_horaire!==undefined?(Number(mo.taux_horaire)||0):o.main_oeuvre.taux_horaire,
+        cout:0,
+        commentaire:(mo.commentaire!==undefined?mo.commentaire:o.main_oeuvre.commentaire||'').trim()
+      };
+      o.main_oeuvre.cout=o.main_oeuvre.heures*o.main_oeuvre.taux_horaire;
+    }
+    o.cout_total=calculerCoutMO(o);
+    o.updated_at=new Date().toISOString();
+    if((o.statut==='TERMINE'||o.statut==='ANNULE') && !o.date_cloture) o.date_cloture=today();
+    // Ne repasse le véhicule à 'actif' que si c'est bien CET ordre qui l'avait mis en
+    // maintenance, et seulement s'il n'y a pas d'AUTRE ordre encore ouvert sur ce véhicule
+    // (n'écrase jamais un 'en_panne' saisi indépendamment entre-temps).
+    if(veh){
+      if(STATUTS_MO_OUVERTS.includes(o.statut) && veh.statut!=='archive'){
+        veh.statut='en_maintenance';
+      } else if(!STATUTS_MO_OUVERTS.includes(o.statut) && veh.statut==='en_maintenance'){
+        const autreOuvert=db.ordres_maintenance.some(x=>x.id!==o.id&&x.vehicule_id===o.vehicule_id&&STATUTS_MO_OUVERTS.includes(x.statut));
+        if(!autreOuvert) veh.statut='actif';
+      }
+    }
+    if(ancienStatut!==o.statut){
+      db.historique=(db.historique||[]);
+      db.historique.push({id:uid(),type:'maintenance_mise_a_jour',objet:'ordre_maintenance',objet_id:o.id,
+        ref_nom:o.numero+(veh?' — '+veh.immatriculation:''),
+        auteur:isGest?auth.gest.nom:'Manager',auteur_id:isGest?auth.gest.id:null,role:auth.role,date:new Date().toISOString(),
+        changements:{statut:{avant:ancienStatut,apres:o.statut}}});
+    }
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Mis à jour',cout_total:o.cout_total}));
+  }
+  if(moM&&method==='DELETE'){
+    if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const o=db.ordres_maintenance.find(x=>x.id===moM[1]);
+    if(!o){res.writeHead(404);return res.end(JSON.stringify({detail:'Ordre de maintenance introuvable'}));}
+    if(o.depense_id) return res.end(JSON.stringify({detail:'Impossible : une dépense est déjà liée à cet ordre. Supprimez d\'abord la dépense si nécessaire.'}));
+    db.ordres_maintenance=db.ordres_maintenance.filter(x=>x.id!==moM[1]);
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Ordre de maintenance supprimé'}));
+  }
+  const moDepM=p.match(/^\/api\/ordres_maintenance\/([^/]+)\/enregistrer_depense$/);
+  if(moDepM&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const o=db.ordres_maintenance.find(x=>x.id===moDepM[1]);
+    if(!o){res.writeHead(404);return res.end(JSON.stringify({detail:'Ordre de maintenance introuvable'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,o.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(o.depense_id) return res.end(JSON.stringify({detail:'Cette maintenance est déjà enregistrée comme dépense.'}));
+    const d={id:uid(),vehicule_id:o.vehicule_id,categorie:'reparation',montant:o.cout_total,
+      description:'Maintenance '+o.numero+(o.sous_type?' — '+o.sous_type:'')+(o.probleme?' — '+o.probleme:''),
+      justificatif:null,date_facture:null,payeur:'gestionnaire',tiers_nom:null,tiers_statut:null,
+      ordre_maintenance_id:o.id,
+      date_depense:today(),created_at:new Date().toISOString()};
+    db.depenses.push(d);
+    o.depense_id=d.id;
+    o.depense_montant_enregistre=o.cout_total;
+    o.updated_at=new Date().toISOString();
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Dépense enregistrée',depense_id:d.id,montant:d.montant}));
+  }
 
   // ── LIVREURS MOTO — CONFIG (taux horaire + paliers de primes) ──
   if(p==='/api/config_livreurs'&&method==='GET'){

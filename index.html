@@ -3568,12 +3568,14 @@ async function renderFicheVeh() {
   if (perLabel) perLabel.textContent = per ? per.debut + ' → ' + per.fin : 'Toute la période';
 
   // Charger toutes les données
-  const [f, affs, vers, deps, facs] = await Promise.all([
+  const [f, affs, vers, deps, facs, kmHist, ordresMO] = await Promise.all([
     api('GET', '/vehicules/' + _ficheVehIdCur + '/fiche'),
     api('GET', '/affectations?tout=1'),
     api('GET', '/versements?vehicule_id=' + _ficheVehIdCur),  // Tous les versements de CE véhicule
     api('GET', '/depenses'),
-    api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur)
+    api('GET', '/facturations?vehicule_id=' + _ficheVehIdCur),
+    api('GET', '/vehicules/' + _ficheVehIdCur + '/km_historique'),
+    api('GET', '/ordres_maintenance?vehicule_id=' + _ficheVehIdCur)
   ]);
 
   if (!f || !f.vehicule) { body.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }
@@ -3819,7 +3821,104 @@ async function renderFicheVeh() {
     (v.km_actuel?'<div style="font-size:11px;color:var(--muted);margin-left:auto">'+v.km_actuel.toLocaleString('fr-FR')+' km</div>':'') +
     '</div>';
 
-  body.innerHTML = infoHTML + kpiHTML + fraisMotoHTML + creditHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML;
+  // ── Historique — timeline chauffeurs (db.affectations, déjà chargées) + kilométrage
+  // (dérivé de db.historique côté serveur) — aucune nouvelle donnée, juste affichée.
+  var affTimeline = affVeh.slice().sort(function(a,b){ return (a.date_debut||'').localeCompare(b.date_debut||''); });
+  var chauffeurTimelineHTML = affTimeline.length ? affTimeline.map(function(a){
+    var periode = (a.date_debut||'?') + ' → ' + (a.date_fin || 'actuel');
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+      '<div>' + (a.chauffeur||'?') + (!a.date_fin ? ' ' + pill('actuel','ok') : '') + '</div>' +
+      '<div style="color:var(--muted)">' + periode + '</div></div>';
+  }).join('') : '<div class="empty" style="padding:8px 0">Aucune affectation enregistrée</div>';
+
+  var kmEntries = (kmHist && kmHist.historique) || [];
+  var kmTimelineHTML = kmEntries.length ? kmEntries.slice().reverse().map(function(h){
+    return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+      '<div style="color:var(--muted)">' + (h.date||'').split('T')[0] + '</div>' +
+      '<div>' + (h.avant||0).toLocaleString('fr-FR') + ' → <b>' + (h.apres||0).toLocaleString('fr-FR') + ' km</b></div></div>';
+  }).join('') : '<div class="empty" style="padding:8px 0">Aucun changement de kilométrage enregistré</div>';
+
+  var historiqueHTML = '<div class="card" style="margin-bottom:14px">' +
+    '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px">HISTORIQUE CHAUFFEURS' + (kmHist && kmHist.km_parcourus != null ? ' · ' + kmHist.km_parcourus.toLocaleString('fr-FR') + ' km parcourus sur la période affichée' : '') + '</div>' +
+    chauffeurTimelineHTML +
+    '<div style="font-size:11px;font-weight:600;color:var(--muted);margin:14px 0 8px">HISTORIQUE KILOMÉTRAGE</div>' +
+    kmTimelineHTML +
+  '</div>';
+
+  // ── Maintenance — ordres liés à ce véhicule (nouvelle collection db.ordres_maintenance)
+  var motStatutColor = { PLANIFIE:'gray', OUVERT:'warn', EN_COURS:'warn', EN_ATTENTE_PIECE:'warn', TERMINE:'ok', ANNULE:'gray' };
+  var maintenanceHTML = '<div class="card" style="margin-bottom:14px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<div style="font-size:11px;font-weight:600;color:var(--muted)">MAINTENANCE (' + (ordresMO||[]).length + ')</div>' +
+      '<button class="btn-sm" onclick="toggleFormMO()">+ Nouvel ordre</button>' +
+    '</div>' +
+    '<div id="fv-mo-form" style="display:none;margin-bottom:12px;padding:10px;background:var(--bg);border-radius:8px">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">' +
+        '<select id="mo-type"><option value="corrective">Corrective (panne)</option><option value="preventive">Préventive</option></select>' +
+        '<input id="mo-sous-type" placeholder="Sous-type (vidange, pneus…)">' +
+      '</div>' +
+      '<input id="mo-probleme" placeholder="Problème / description" style="width:100%;margin-bottom:6px">' +
+      '<input id="mo-garage" placeholder="Garage" style="width:100%;margin-bottom:6px">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">' +
+        '<input id="mo-pieces" type="number" placeholder="Coût pièces (F)" value="0">' +
+        '<input id="mo-heures" type="number" placeholder="Heures main-d\'œuvre" value="0">' +
+        '<input id="mo-taux" type="number" placeholder="Taux horaire (F)" value="0">' +
+      '</div>' +
+      '<button class="btn-sm" style="background:var(--ok-bg);color:var(--ok-text)" onclick="addOrdreMaintenance()">Créer l\'ordre</button>' +
+    '</div>' +
+    ((ordresMO||[]).length ? (ordresMO||[]).map(function(o){
+      var incoherence = o.depense_introuvable ? '<span style="color:var(--red);font-size:10px">⚠ dépense liée introuvable</span>'
+        : o.montant_incoherent ? '<span style="color:var(--orange);font-size:10px">⚠ montant incohérent avec la dépense liée</span>' : '';
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div><b>' + o.numero + '</b> ' + pill(o.statut, motStatutColor[o.statut]||'gray') + ' ' + (o.sous_type||o.type) + '</div>' +
+          '<div style="font-weight:600">' + fmt(o.cout_total) + '</div>' +
+        '</div>' +
+        '<div style="color:var(--muted);font-size:11px;margin-top:2px">' + (o.probleme||'') + (o.garage?' · '+o.garage:'') + '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+          (o.statut!=='TERMINE'&&o.statut!=='ANNULE' ? '<button class="btn-sm" onclick="changerStatutMO(\''+o.id+'\',\'TERMINE\')">Clôturer</button>' : '') +
+          (!o.depense_id ? '<button class="btn-sm" style="background:var(--ok-bg);color:var(--ok-text)" onclick="enregistrerDepenseMO(\''+o.id+'\')">Enregistrer comme dépense</button>' : '<span style="font-size:10px;color:var(--muted)">✓ Enregistré comme dépense</span>') +
+          incoherence +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div class="empty" style="padding:8px 0">Aucun ordre de maintenance</div>') +
+  '</div>';
+
+  body.innerHTML = infoHTML + kpiHTML + fraisMotoHTML + creditHTML + calHTML + chaufHTML + facHTML + versHTML + depHTML + historiqueHTML + maintenanceHTML;
+}
+
+function toggleFormMO() {
+  var el = document.getElementById('fv-mo-form');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function addOrdreMaintenance() {
+  var pieces = +((document.getElementById('mo-pieces')||{}).value) || 0;
+  var heures = +((document.getElementById('mo-heures')||{}).value) || 0;
+  var taux = +((document.getElementById('mo-taux')||{}).value) || 0;
+  var r = await api('POST', '/ordres_maintenance', {
+    vehicule_id: _ficheVehIdCur,
+    type: (document.getElementById('mo-type')||{}).value || 'corrective',
+    sous_type: (document.getElementById('mo-sous-type')||{}).value || '',
+    probleme: (document.getElementById('mo-probleme')||{}).value || '',
+    garage: (document.getElementById('mo-garage')||{}).value || '',
+    pieces: pieces > 0 ? [{ nom: 'Pièces', quantite: 1, prix_unitaire: pieces }] : [],
+    main_oeuvre: { heures: heures, taux_horaire: taux }
+  });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Ordre ' + r.numero + ' créé');
+  renderFicheVeh();
+}
+async function changerStatutMO(id, statut) {
+  var r = await api('PATCH', '/ordres_maintenance/' + id, { statut: statut });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  toast('Ordre mis à jour');
+  renderFicheVeh();
+}
+async function enregistrerDepenseMO(id) {
+  var r = await api('POST', '/ordres_maintenance/' + id + '/enregistrer_depense', {});
+  if (r.detail) { toast(r.detail, r.detail.includes('déjà') ? 'info' : 'err'); return; }
+  toast('Dépense de ' + fmt(r.montant) + ' enregistrée');
+  renderFicheVeh();
 }
 
 function labelCategorieDep(cat) {
