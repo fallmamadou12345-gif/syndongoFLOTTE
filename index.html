@@ -4733,6 +4733,20 @@ async function envoyerAlerte(btn) {
   loadAlertes();
 }
 
+// Le mot de passe n'est plus jamais renvoyé par l'API après la création (il est haché
+// côté serveur, donc irrécupérable). Pour aider un compte qui a perdu le sien, on
+// génère un nouveau mot de passe (montré une seule fois, comme à la création).
+async function resetPassword(kind, id, nom) {
+  if (!confirm('Réinitialiser le mot de passe de ' + nom + ' ?\nL\'ancien mot de passe cessera de fonctionner immédiatement.')) return;
+  var url = kind === 'proprio' ? '/proprietaires/' + id : '/gestionnaires/' + id;
+  var r = await api('PATCH', url, { reset_password: true });
+  if (r.detail) { toast(r.detail, 'err'); return; }
+  if (!r.password) { toast('Seul le manager peut réinitialiser ce mot de passe', 'err'); return; }
+  toast('✅ Nouveau mot de passe pour ' + nom + ' : ' + r.password);
+  try { navigator.clipboard.writeText(r.password); toast('📋 Copié dans le presse-papier', 'info'); } catch (e) {}
+  if (kind === 'proprio') loadProprietaires(); else loadGestionnaires();
+}
+
 // ═══════════════════════════════════════════════════════
 // PROPRIETAIRES
 // ═══════════════════════════════════════════════════════
@@ -4752,8 +4766,7 @@ async function loadProprietaires() {
       '<div><div style="font-weight:600">' + p.nom + '</div><div style="font-size:12px;color:var(--muted);margin-top:2px">' + (p.telephone || '') + (p.email ? ' · ' + p.email : '') + '</div>' +
       '<div style="margin-top:6px">' + (pveh.length ? pveh.map(function(v) { return pill(v.immatriculation, 'blue'); }).join(' ') : '<span style="font-size:12px;color:#aaa">Aucun véhicule</span>') + '</div></div>' +
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">' +
-      '<div style="font-size:10px;color:var(--muted)">Mot de passe :</div>' +
-      '<div onclick="navigator.clipboard.writeText(\'' + (p.password || '') + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:12px;background:var(--bg);padding:3px 8px;border-radius:4px;border:1px solid var(--border);cursor:pointer" title="Cliquer pour copier">' + (p.password || '—') + ' 📋</div>' +
+      '<div onclick="resetPassword(\'proprio\',\'' + p.id + '\',\'' + p.nom.replace(/'/g,"\\'") + '\')" style="font-family:monospace;font-size:12px;background:var(--bg);padding:3px 8px;border-radius:4px;border:1px solid var(--border);cursor:pointer" title="Générer un nouveau mot de passe">🔑 Réinitialiser</div>' +
       '<div style="display:flex;gap:5px"><button class="btn-sm" style="background:var(--ok-bg);color:var(--ok-text)" onclick="assignerVehProp(\'' + p.id + '\',\'' + p.nom + '\')">Véhicules</button><button class="btn-sm" style="background:var(--err-bg);color:var(--red)" onclick="delProp(\'' + p.id + '\',\'' + p.nom + '\')">Suppr.</button></div>' +
       '</div></div>';
   }).join('');
@@ -4867,8 +4880,7 @@ async function loadGestionnaires() {
       pillPermissionScope(g.id, 'encaisser_scope', g.encaisser_scope, 'Encaisser') +
       ['Saisir statut', 'Voir retards', 'Voir rapports'].map(function(p) { return '<span style="font-size:10px;padding:2px 7px;border-radius:99px;background:var(--ok-bg);color:var(--ok-text);font-weight:600">' + p + '</span>'; }).join('') + '</div>' +
       '</div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">' +
-      '<div style="font-size:10px;color:var(--muted)">Mot de passe :</div>' +
-      '<div onclick="navigator.clipboard.writeText(\'' + (g.password || '') + '\').then(function(){toast(\'Copié !\');})" style="font-family:monospace;font-size:12px;background:var(--bg);padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="Cliquer pour copier">' + (g.password || '—') + ' 📋</div>' +
+      '<div onclick="resetPassword(\'gest\',\'' + g.id + '\',\'' + g.nom.replace(/'/g,"\\'") + '\')" style="font-family:monospace;font-size:12px;background:var(--bg);padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="Générer un nouveau mot de passe">🔑 Réinitialiser</div>' +
       '<div style="display:flex;gap:5px;margin-top:4px">' +
       '<button class="btn-sm" style="background:var(--purple-bg);color:var(--purple-text)" onclick="assignerVehGest(\'' + g.id + '\',\'' + g.nom + '\')">Véhicules</button>' +
       '<button class="btn-sm" style="background:var(--purple-bg);color:var(--purple-text)" onclick="editerTagsGest(\'' + g.id + '\',\'' + g.nom + '\')">🏷️ Tags</button>' +
@@ -8185,8 +8197,7 @@ loadProprietaires = async function() {
           '</div>' +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
-          '<div style="font-size:10px;color:var(--muted)">Mot de passe</div>' +
-          '<div onclick="try{navigator.clipboard.writeText(\'' + (p.password||'') + '\').then(function(){toast(\'📋 Copié !\');})}catch(e){}" style="font-family:monospace;font-size:13px;background:var(--bg);padding:5px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="Cliquer pour copier">' + (p.password||'—') + ' 📋</div>' +
+          (canEdit ? '<div onclick="resetPassword(\'proprio\',\'' + p.id + '\',\'' + p.nom.replace(/'/g,"\\'") + '\')" style="font-family:monospace;font-size:13px;background:var(--bg);padding:5px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="Générer un nouveau mot de passe">🔑 Réinitialiser</div>' : '') +
           (canEdit ?
             '<div style="display:flex;gap:5px;margin-top:4px">' +
               '<button class="btn-sm" style="background:var(--info-bg);color:var(--info-text)" onclick="assignerVehProp(\'' + p.id + '\',\'' + p.nom + '\')">Véhicules</button>' +
@@ -9774,7 +9785,7 @@ async function loadAnalysePage() {
     api('GET', '/affectations?tout=1'),
     api('GET', '/facturations'),
     api('GET', '/versements'),
-    api('GET', '/depenses'),
+    api('GET', '/depenses?date_debut=' + encodeURIComponent(per.debut) + '&date_fin=' + encodeURIComponent(per.fin)),
     api('GET', '/activites?jours=60')
   ]);
   if (!Array.isArray(vehs)) { el.innerHTML = '<div class="empty">Erreur de chargement</div>'; return; }

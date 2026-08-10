@@ -3,9 +3,40 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 const DB_FILE = process.env.DATA_PATH || './syndongo_data.json';
 const PORT = process.env.PORT || 8000;
+
+// ── Mots de passe gestionnaire/propriétaire : hash au repos (scrypt natif Node,
+// aucune dépendance ajoutée) ────────────────────────────────────────────────
+// Format stocké : "scrypt$<sel_hex>$<hash_hex>". Les comptes existants créés avant
+// ce changement ont encore leur mot de passe en clair dans le fichier — verifyPassword()
+// reste compatible avec ce cas (comparaison directe), et le convertit en hash dès la
+// prochaine connexion réussie (voir POST /api/auth). Aucun compte existant n'est cassé
+// par ce changement ; la migration est progressive, un compte à la fois, à la connexion.
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  return 'scrypt$' + salt + '$' + hash;
+}
+function isHashedPassword(stored) {
+  return typeof stored === 'string' && stored.startsWith('scrypt$');
+}
+function verifyPassword(plain, stored) {
+  if (typeof stored !== 'string' || !stored) return false;
+  if (isHashedPassword(stored)) {
+    const parts = stored.split('$');
+    if (parts.length !== 3) return false;
+    try {
+      const hashBuf = Buffer.from(parts[2], 'hex');
+      const testBuf = crypto.scryptSync(String(plain), parts[1], hashBuf.length);
+      return hashBuf.length === testBuf.length && crypto.timingSafeEqual(hashBuf, testBuf);
+    } catch (e) { return false; }
+  }
+  // Compte pas encore migré : mot de passe encore en clair dans le fichier.
+  return stored === plain;
+}
 
 // ── Helpers tags ──────────────────────────────────────────
 function normalizeTag(t) { return typeof t==='object' ? (t.nom||t.name||'') : String(t||''); }
@@ -543,10 +574,12 @@ function getRole(req) {
   const token = parsed.query.token || req.headers['x-token'] || '';
   if (token === MANAGER_PASSWORD) return { role:'manager' };
   const db = loadDB();
-  const proprio = db.proprietaires.find(p => p.password === token);
-  if (proprio) return { role:'proprietaire', proprio };
-  const gest = db.gestionnaires.find(g => g.password === token);
-  if (gest) return { role:'gestionnaire', gest };
+  if (token) {
+    const proprio = db.proprietaires.find(p => verifyPassword(token, p.password));
+    if (proprio) return { role:'proprietaire', proprio };
+    const gest = db.gestionnaires.find(g => verifyPassword(token, g.password));
+    if (gest) return { role:'gestionnaire', gest };
+  }
   if (token.startsWith('lv:')) {
     const [, lvId, lvPin] = token.split(':');
     const livreur = db.chauffeurs.find(c => c.id === lvId && c.statut === 'actif' && c.pin && c.pin === lvPin);
@@ -730,10 +763,15 @@ async function handleAPI(req, res, body) {
   if (p === '/api/auth' && method === 'POST') {
     if (data.password === MANAGER_PASSWORD)
       return res.end(JSON.stringify({ role:'manager', token:data.password, nom:'Manager' }));
-    const pr = db.proprietaires.find(x => x.password === data.password);
-    if (pr) return res.end(JSON.stringify({ role:'proprietaire', token:data.password, nom:pr.nom, proprio_id:pr.id }));
-    const gt = db.gestionnaires.find(x => x.password === data.password);
-    if (gt) return res.end(JSON.stringify({
+    const pr = db.proprietaires.find(x => verifyPassword(data.password, x.password));
+    if (pr) {
+      if (!isHashedPassword(pr.password)) { pr.password = hashPassword(data.password); saveDB(db); }
+      return res.end(JSON.stringify({ role:'proprietaire', token:data.password, nom:pr.nom, proprio_id:pr.id }));
+    }
+    const gt = db.gestionnaires.find(x => verifyPassword(data.password, x.password));
+    if (gt) {
+      if (!isHashedPassword(gt.password)) { gt.password = hashPassword(data.password); saveDB(db); }
+      return res.end(JSON.stringify({
       role:'gestionnaire',
       token:data.password,
       nom:gt.nom,
@@ -745,7 +783,8 @@ async function handleAPI(req, res, body) {
       affiche_comme: gt.is_manager ? 'Manager' : 'Gestionnaire',
       facturer_scope: gt.facturer_scope || 'tous',
       encaisser_scope: gt.encaisser_scope || 'tous'
-    }));
+      }));
+    }
     if (data.telephone && data.pin) {
       const tel = String(data.telephone).trim();
       const pin = String(data.pin).trim();
@@ -931,6 +970,7 @@ async function handleAPI(req, res, body) {
   // ── VEHICULES ─────────────────────────────────────────────
   if (p==='/api/vehicules'&&method==='GET') {
     let list = vehsVisibles(db, auth);
+    if(!q.inclure_archives) list = list.filter(v=>v.statut!=='archive');
     if(q.q){const sq=q.q.toLowerCase();list=list.filter(v=>(v.immatriculation||'').toLowerCase().includes(sq)||(v.marque||'').toLowerCase().includes(sq)||(v.tag||'').toLowerCase().includes(sq));}
     if(q.tag) list=list.filter(v=>v.tag===q.tag);
     if(q.tags){const tl=q.tags.split(',').map(t=>t.trim()).filter(Boolean);if(tl.length)list=list.filter(v=>tl.includes(v.tag));}
@@ -967,26 +1007,50 @@ async function handleAPI(req, res, body) {
   if(vM&&method==='PATCH'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const idx=db.vehicules.findIndex(v=>v.id===vM[1]);
-    if(idx!==-1){
-      if(data.immatriculation!==undefined){
-        const immatMaj=(data.immatriculation||'').toUpperCase().trim();
-        if(db.vehicules.find(v=>v.id!==vM[1]&&v.immatriculation===immatMaj)) return res.end(JSON.stringify({detail:immatMaj+' déjà enregistré sur un autre véhicule'}));
-        data={...data,immatriculation:immatMaj};
-      }
-      db.vehicules[idx]={...db.vehicules[idx],...data};
-      if(data.proprio_id!==undefined){db.proprietaires.forEach(pr=>{pr.vehicules_ids=pr.vehicules_ids.filter(id=>id!==vM[1]);});if(data.proprio_id){const pr=db.proprietaires.find(x=>x.id===data.proprio_id);if(pr)pr.vehicules_ids.push(vM[1]);}}
-      if(data.gest_id!==undefined){db.gestionnaires.forEach(gt=>{gt.vehicules_ids=gt.vehicules_ids.filter(id=>id!==vM[1]);});if(data.gest_id){const gt=db.gestionnaires.find(x=>x.id===data.gest_id);if(gt)gt.vehicules_ids.push(vM[1]);}}
-      saveDB(db);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Véhicule introuvable'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,vM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(data.immatriculation!==undefined){
+      const immatMaj=(data.immatriculation||'').toUpperCase().trim();
+      if(db.vehicules.find(v=>v.id!==vM[1]&&v.immatriculation===immatMaj)) return res.end(JSON.stringify({detail:immatMaj+' déjà enregistré sur un autre véhicule'}));
+      data={...data,immatriculation:immatMaj};
     }
+    if(data.km_actuel!==undefined){
+      const nouveauKm=Number(data.km_actuel);
+      const ancienKm=Number(db.vehicules[idx].km_actuel)||0;
+      if(!Number.isFinite(nouveauKm)||nouveauKm<0) return res.end(JSON.stringify({detail:'Kilométrage invalide : doit être un nombre positif'}));
+      if(nouveauKm<ancienKm) return res.end(JSON.stringify({detail:'Kilométrage refusé : '+nouveauKm+' km est inférieur à la valeur actuelle ('+ancienKm+' km).'}));
+    }
+    const avant=db.vehicules[idx];
+    db.vehicules[idx]={...avant,...data};
+    if(data.proprio_id!==undefined){db.proprietaires.forEach(pr=>{pr.vehicules_ids=pr.vehicules_ids.filter(id=>id!==vM[1]);});if(data.proprio_id){const pr=db.proprietaires.find(x=>x.id===data.proprio_id);if(pr)pr.vehicules_ids.push(vM[1]);}}
+    if(data.gest_id!==undefined){db.gestionnaires.forEach(gt=>{gt.vehicules_ids=gt.vehicules_ids.filter(id=>id!==vM[1]);});if(data.gest_id){const gt=db.gestionnaires.find(x=>x.id===data.gest_id);if(gt)gt.vehicules_ids.push(vM[1]);}}
+    const changements={};
+    Object.keys(data).forEach(k=>{
+      if(JSON.stringify(avant[k])!==JSON.stringify(db.vehicules[idx][k])) changements[k]={avant:avant[k]===undefined?null:avant[k],apres:db.vehicules[idx][k]};
+    });
+    if(Object.keys(changements).length){
+      db.historique=(db.historique||[]);
+      db.historique.push({id:uid(),type:'vehicule_modifie',objet:'vehicule',objet_id:vM[1],ref_nom:db.vehicules[idx].immatriculation,
+        auteur:isGest?auth.gest.nom:'Manager',auteur_id:isGest?auth.gest.id:null,role:auth.role,date:new Date().toISOString(),changements});
+    }
+    saveDB(db);
     return res.end(JSON.stringify({message:'Mis à jour'}));
   }
   if(vM&&method==='DELETE'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.vehicules.findIndex(v=>v.id===vM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Véhicule introuvable'}));}
     if(db.affectations.find(a=>a.vehicule_id===vM[1]&&!a.date_fin)) return res.end(JSON.stringify({detail:'Impossible : chauffeur affecté'}));
-    db.vehicules=db.vehicules.filter(v=>v.id!==vM[1]);
-    db.proprietaires.forEach(pr=>{pr.vehicules_ids=pr.vehicules_ids.filter(id=>id!==vM[1]);});
-    db.gestionnaires.forEach(gt=>{gt.vehicules_ids=gt.vehicules_ids.filter(id=>id!==vM[1]);});
-    saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
+    // Archivage plutôt que suppression définitive : conserve facturations, dépenses,
+    // commissions, affectations et historique — seul le statut change, le véhicule
+    // disparaît des listes opérationnelles (GET /vehicules) mais reste accessible par id.
+    const avant=db.vehicules[idx];
+    db.vehicules[idx]={...avant,statut:'archive'};
+    db.historique=(db.historique||[]);
+    db.historique.push({id:uid(),type:'vehicule_archive',objet:'vehicule',objet_id:vM[1],ref_nom:avant.immatriculation,
+      auteur:isGest?auth.gest.nom:'Manager',auteur_id:isGest?auth.gest.id:null,role:auth.role,date:new Date().toISOString(),
+      changements:{statut:{avant:avant.statut||null,apres:'archive'}}});
+    saveDB(db);return res.end(JSON.stringify({message:'Véhicule archivé'}));
   }
 
   // ── FICHE VEHICULE ────────────────────────────────────────
@@ -1094,7 +1158,32 @@ async function handleAPI(req, res, body) {
   }
   const cM=p.match(/^\/api\/chauffeurs\/([^/]+)$/);
   if(cM&&method==='DELETE'){if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){db.chauffeurs[idx].statut='depart';saveDB(db);}return res.end(JSON.stringify({message:'Chauffeur marqué comme parti'}));}
-  if(cM&&method==='PATCH'){if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);if(idx!==-1){if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));db.chauffeurs[idx]={...db.chauffeurs[idx],...data};if(!db.chauffeurs[idx].pin)db.chauffeurs[idx].pin=genPin();saveDB(db);}return res.end(JSON.stringify({message:'Mis à jour'}));}
+  if(cM&&method==='PATCH'){
+    if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const idx=db.chauffeurs.findIndex(c=>c.id===cM[1]);
+    if(idx===-1){res.writeHead(404);return res.end(JSON.stringify({detail:'Chauffeur introuvable'}));}
+    if(isGest){
+      const affActive=db.affectations.find(a=>a.chauffeur_id===cM[1]&&!a.date_fin);
+      const visible=affActive?gestPeutVoirVehicule(db,auth,affActive.vehicule_id):db.chauffeurs[idx].cree_par===auth.gest.id;
+      if(!visible){res.writeHead(403);return res.end(JSON.stringify({detail:'Chauffeur non assigné'}));}
+    }
+    if(data.telephone&&data.telephone!==db.chauffeurs[idx].telephone&&db.chauffeurs.find((c,i)=>i!==idx&&c.telephone===data.telephone))return res.end(JSON.stringify({detail:'Téléphone déjà utilisé'}));
+    const avant=db.chauffeurs[idx];
+    db.chauffeurs[idx]={...avant,...data};
+    if(!db.chauffeurs[idx].pin)db.chauffeurs[idx].pin=genPin();
+    const changements={};
+    Object.keys(data).forEach(k=>{
+      if(k==='pin'||k==='password') return;
+      if(JSON.stringify(avant[k])!==JSON.stringify(db.chauffeurs[idx][k])) changements[k]={avant:avant[k]===undefined?null:avant[k],apres:db.chauffeurs[idx][k]};
+    });
+    if(Object.keys(changements).length){
+      db.historique=(db.historique||[]);
+      db.historique.push({id:uid(),type:'chauffeur_modifie',objet:'chauffeur',objet_id:cM[1],ref_nom:db.chauffeurs[idx].prenom+' '+db.chauffeurs[idx].nom,
+        auteur:isGest?auth.gest.nom:'Manager',auteur_id:isGest?auth.gest.id:null,role:auth.role,date:new Date().toISOString(),changements});
+    }
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Mis à jour'}));
+  }
 
   // ── FICHE CHAUFFEUR ───────────────────────────────────────
   const cFiche=p.match(/^\/api\/chauffeurs\/([^/]+)\/fiche$/);
@@ -1246,8 +1335,14 @@ async function handleAPI(req, res, body) {
   if(p==='/api/depenses'&&method==='GET'){
     const myVehs=vehsVisibles(db,auth).map(v=>v.id);
     let list=db.depenses.filter(d=>myVehs.includes(d.vehicule_id));
-    if(q.date_debut&&q.date_fin) list=list.filter(d=>d.date_depense>=q.date_debut&&d.date_depense<=q.date_fin);
-    return res.end(JSON.stringify(list.slice(-300).reverse()));
+    const filtreParDate=!!(q.date_debut&&q.date_fin);
+    if(filtreParDate) list=list.filter(d=>d.date_depense>=q.date_debut&&d.date_depense<=q.date_fin);
+    // Le plafond de 300 protège une requête non bornée (aucune période demandée) ;
+    // avec une période explicite, le filtre de date borne déjà le volume renvoyé —
+    // ne pas tronquer, sinon les rapports/analyses sur une période ancienne ou large
+    // perdent silencieusement des dépenses (commission, frais de gestion, etc.).
+    const result=filtreParDate?list.reverse():list.slice(-300).reverse();
+    return res.end(JSON.stringify(result));
   }
   if(p==='/api/depenses'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
@@ -1832,24 +1927,27 @@ async function handleAPI(req, res, body) {
   if(p==='/api/gestionnaires'&&method==='GET'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(isGest){
-      // Un gestionnaire ne voit que sa propre fiche (avec clé Wave masquée)
+      // Un gestionnaire ne voit que sa propre fiche (mot de passe et clé Wave masqués)
       const g=db.gestionnaires.find(x=>x.id===auth.gest.id);
       if(!g) return res.end(JSON.stringify([]));
-      const safe={...g, wave_api_key: g.wave_api_key?'***CONFIGUREE***':''};
+      const safe={...g, password:undefined, wave_api_key: g.wave_api_key?'***CONFIGUREE***':''};
       return res.end(JSON.stringify([safe]));
     }
-    // Manager voit tout mais masque les clés Wave
-    const list=db.gestionnaires.map(g=>({...g,wave_api_key:g.wave_api_key?'***CONFIGUREE***':''}));
+    // Manager voit tout mais jamais le mot de passe (hash ou clair) ni les clés Wave en clair
+    const list=db.gestionnaires.map(g=>({...g,password:undefined,wave_api_key:g.wave_api_key?'***CONFIGUREE***':''}));
     return res.end(JSON.stringify(list));
   }
   if(p==='/api/gestionnaires'&&method==='POST'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(db.gestionnaires.find(g=>g.password===data.password)) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
+    const pwdChoisi=data.password||uid().slice(0,8);
+    if(db.gestionnaires.find(g=>verifyPassword(pwdChoisi,g.password))) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
     const scopesValides=['tous','moto','voiture','aucun'];
-    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:data.password||uid().slice(0,8),vehicules_ids:data.vehicules_ids||[],tags:normalizeTags(data.tags||[]),tag:data.tag||'',proprio_id:data.proprio_id||null,
+    const g={id:uid(),nom:data.nom,telephone:data.telephone||'',email:data.email||'',password:hashPassword(pwdChoisi),vehicules_ids:data.vehicules_ids||[],tags:normalizeTags(data.tags||[]),tag:data.tag||'',proprio_id:data.proprio_id||null,
       facturer_scope:scopesValides.includes(data.facturer_scope)?data.facturer_scope:'tous',
       encaisser_scope:scopesValides.includes(data.encaisser_scope)?data.encaisser_scope:'tous'};
-    db.gestionnaires.push(g);saveDB(db);return res.end(JSON.stringify({id:g.id,password:g.password,message:'Gestionnaire créé'}));
+    db.gestionnaires.push(g);saveDB(db);
+    // Le mot de passe en clair n'est renvoyé qu'une seule fois, à la création — jamais depuis GET.
+    return res.end(JSON.stringify({id:g.id,password:pwdChoisi,message:'Gestionnaire créé'}));
   }
   const gM=p.match(/^\/api\/gestionnaires\/([^/]+)$/);
   if(gM&&method==='PATCH'){
@@ -1858,17 +1956,26 @@ async function handleAPI(req, res, body) {
       res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));
     }
     const idx=db.gestionnaires.findIndex(g=>g.id===gM[1]);
-    if(idx!==-1){
-      if(isGest&&!isManager){
-        // Gestionnaire : ne peut modifier que sa clé Wave et ses infos personnelles
-        const allowed={wave_api_key:data.wave_api_key,nom:data.nom,telephone:data.telephone,email:data.email};
-        Object.keys(allowed).forEach(k=>{if(allowed[k]!==undefined)db.gestionnaires[idx][k]=allowed[k];});
-      } else {
-        db.gestionnaires[idx]={...db.gestionnaires[idx],...data};
-      }
-      saveDB(db);
+    if(idx===-1) return res.end(JSON.stringify({message:'Mis à jour'}));
+    // Le mot de passe étant haché (irréversible), il n'est plus jamais consultable après
+    // coup — seul le manager peut le RÉINITIALISER (nouveau mot de passe généré, montré
+    // une seule fois, comme à la création), pas le "récupérer" en clair.
+    let nouveauPassword=null;
+    if(isManager&&data.reset_password===true){
+      nouveauPassword=uid().slice(0,8);
+      db.gestionnaires[idx].password=hashPassword(nouveauPassword);
     }
-    return res.end(JSON.stringify({message:'Mis à jour'}));
+    if(isGest&&!isManager){
+      // Gestionnaire : ne peut modifier que sa clé Wave et ses infos personnelles
+      const allowed={wave_api_key:data.wave_api_key,nom:data.nom,telephone:data.telephone,email:data.email};
+      Object.keys(allowed).forEach(k=>{if(allowed[k]!==undefined)db.gestionnaires[idx][k]=allowed[k];});
+    } else if(isManager){
+      const {password,reset_password,...reste}=data;
+      db.gestionnaires[idx]={...db.gestionnaires[idx],...reste};
+      if(typeof password==='string'&&password&&!nouveauPassword) db.gestionnaires[idx].password=hashPassword(password);
+    }
+    saveDB(db);
+    return res.end(JSON.stringify(nouveauPassword?{message:'Mis à jour',password:nouveauPassword}:{message:'Mis à jour'}));
   }
   if(gM&&method==='DELETE'){
     if(!isManager){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
@@ -1885,13 +1992,14 @@ async function handleAPI(req, res, body) {
       // Filtrer : seulement les propriétaires qui ont au moins 1 véhicule du gestionnaire
       const myVehIds=auth.gest.vehicules_ids||[];
       const myProps=db.proprietaires.filter(pr=>pr.vehicules_ids.some(vid=>myVehIds.includes(vid)));
-      return res.end(JSON.stringify(myProps));
+      return res.end(JSON.stringify(myProps.map(pr=>({...pr,password:undefined}))));
     }
-    return res.end(JSON.stringify(db.proprietaires));
+    return res.end(JSON.stringify(db.proprietaires.map(pr=>({...pr,password:undefined}))));
   }
   if(p==='/api/proprietaires'&&method==='POST'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-    if(db.proprietaires.find(pr=>pr.password===data.password)) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
+    const pwdChoisi=data.password||uid().slice(0,8);
+    if(db.proprietaires.find(pr=>verifyPassword(pwdChoisi,pr.password))) return res.end(JSON.stringify({detail:'Ce mot de passe est déjà utilisé'}));
     // Gestionnaire : ne peut créer un proprio que pour ses propres véhicules
     let vehicules_ids = data.vehicules_ids||[];
     if(isGest){
@@ -1900,27 +2008,36 @@ async function handleAPI(req, res, body) {
       if(!vehicules_ids.length) vehicules_ids=[];
     }
     const pr={id:uid(),nom:data.nom,email:data.email||'',telephone:data.telephone||'',
-               password:data.password||uid().slice(0,8),vehicules_ids,
+               password:hashPassword(pwdChoisi),vehicules_ids,
                cree_par:isGest?auth.gest.id:'manager'};
     db.proprietaires.push(pr);saveDB(db);
-    return res.end(JSON.stringify({id:pr.id,password:pr.password,message:'Propriétaire créé'}));
+    return res.end(JSON.stringify({id:pr.id,password:pwdChoisi,message:'Propriétaire créé'}));
   }
   const prM=p.match(/^\/api\/proprietaires\/([^/]+)$/);
   if(prM&&method==='PATCH'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const idx=db.proprietaires.findIndex(pr=>pr.id===prM[1]);
-    if(idx!==-1){
-      // Gestionnaire : ne peut modifier que les propriétaires liés à ses véhicules
-      if(isGest){
-        const myVehIds=auth.gest.vehicules_ids||[];
-        const prVehs=db.proprietaires[idx].vehicules_ids||[];
-        if(!prVehs.some(vid=>myVehIds.includes(vid))){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
-        // Filtrer les vehicules_ids dans la mise à jour
-        if(data.vehicules_ids) data.vehicules_ids=data.vehicules_ids.filter(vid=>myVehIds.includes(vid));
-      }
-      db.proprietaires[idx]={...db.proprietaires[idx],...data};saveDB(db);
+    if(idx===-1) return res.end(JSON.stringify({message:'Mis à jour'}));
+    // Gestionnaire : ne peut modifier que les propriétaires liés à ses véhicules
+    if(isGest){
+      const myVehIds=auth.gest.vehicules_ids||[];
+      const prVehs=db.proprietaires[idx].vehicules_ids||[];
+      if(!prVehs.some(vid=>myVehIds.includes(vid))){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+      // Filtrer les vehicules_ids dans la mise à jour
+      if(data.vehicules_ids) data.vehicules_ids=data.vehicules_ids.filter(vid=>myVehIds.includes(vid));
     }
-    return res.end(JSON.stringify({message:'Mis à jour'}));
+    // Mot de passe haché (irréversible) : réinitialisable (nouveau mot de passe généré,
+    // montré une seule fois) mais plus jamais "récupérable" en clair après coup.
+    let nouveauPassword=null;
+    if(data.reset_password===true){
+      nouveauPassword=uid().slice(0,8);
+      db.proprietaires[idx].password=hashPassword(nouveauPassword);
+    }
+    const {password,reset_password,...reste}=data;
+    db.proprietaires[idx]={...db.proprietaires[idx],...reste};
+    if(typeof password==='string'&&password&&!nouveauPassword) db.proprietaires[idx].password=hashPassword(password);
+    saveDB(db);
+    return res.end(JSON.stringify(nouveauPassword?{message:'Mis à jour',password:nouveauPassword}:{message:'Mis à jour'}));
   }
   if(prM&&method==='DELETE'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
@@ -2004,10 +2121,16 @@ async function handleAPI(req, res, body) {
       waveKey
     );
     if(result.error) return res.end(JSON.stringify({detail:'Erreur Wave: '+result.error}));
-    // Sauvegarder la référence en attente
-    db.wave_pending=(db.wave_pending||{});
-    db.wave_pending[reference]={chauffeur_id,montant:Number(montant),created_at:new Date().toISOString()};
-    saveDB(db);
+    // Recharger la base ICI, après l'attente réseau : createWavePayment() est un await
+    // réel (aller-retour vers l'API Wave) pendant lequel une autre requête a pu modifier
+    // et sauvegarder la base. On applique notre écriture sur l'état le plus récent plutôt
+    // que sur la copie chargée avant l'attente, pour réduire la fenêtre de perte de mise
+    // à jour (voir audit F-11). Ne remplace pas un vrai verrou, mais réduit la fenêtre de
+    // risque de "toute la durée de l'appel Wave" à "un accès mémoire synchrone".
+    const dbFrais=loadDB();
+    dbFrais.wave_pending=(dbFrais.wave_pending||{});
+    dbFrais.wave_pending[reference]={chauffeur_id,montant:Number(montant),created_at:new Date().toISOString()};
+    saveDB(dbFrais);
     return res.end(JSON.stringify({
       checkout_url: result.wave_launch_url || result.checkout_status?.checkout_url || '',
       reference,
@@ -2181,8 +2304,11 @@ async function handleAPI(req, res, body) {
   if(p==='/api/historique'&&method==='GET'){
     if(!isManager&&!isGest){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     let list=db.historique||[];
-    // Gestionnaire voit seulement son historique
-    if(isGest) list=list.filter(h=>h.auteur===auth.gest.nom||h.role==='gestionnaire');
+    // Gestionnaire voit seulement son historique — par identifiant unique quand disponible
+    // (entrées récentes), sinon par nom exact pour les entrées historiques qui n'avaient
+    // pas encore ce champ. Ne JAMAIS élargir sur h.role==='gestionnaire' seul : ça
+    // fait fuiter l'historique de tous les gestionnaires entre eux.
+    if(isGest) list=list.filter(h=> h.auteur_id ? h.auteur_id===auth.gest.id : h.auteur===auth.gest.nom);
     if(q.limit) list=list.slice(-parseInt(q.limit));
     return res.end(JSON.stringify(list.slice(-100).reverse()));
   }
