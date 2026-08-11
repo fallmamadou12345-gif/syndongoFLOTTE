@@ -1834,7 +1834,22 @@ async function handleAPI(req, res, body) {
     const montantPaye=traitesLiees.reduce((s,t)=>s+(Number(t.montant)||0),0);
     ech.traites_ids=traitesLiees.map(t=>t.id);
     ech.montant_paye=montantPaye;
-    if(traitesLiees.length===0){
+
+    // Phase Financement 2C : avances (non annulées) rattachées à cette échéance.
+    // Si aucune avance n'est rattachée, le comportement ci-dessous est strictement
+    // identique à la Phase 2B (branches inchangées) — non-régression garantie.
+    const avancesLiees=(db.avances||[]).filter(a=>a.echeance_id===echeanceId&&!a.annule);
+    const montantComplete=avancesLiees.reduce((s,a)=>s+(Number(a.montant)||0),0);
+    ech.avances_ids=avancesLiees.map(a=>a.id);
+    ech.montant_complete=montantComplete;
+
+    if(montantComplete>0){
+      const ambiguTraite=traitesLiees.length>1;
+      const totalCouvert=montantPaye+montantComplete;
+      if(totalCouvert>=ech.montant){ech.statut='COMPLETEE_PAR_AVANCE';ech.revue_requise=ambiguTraite;}
+      else {ech.statut='PARTIELLE';ech.revue_requise=ambiguTraite;}
+      ech.raison_ambiguite=ambiguTraite?'plusieurs_paiements_meme_echeance':null;
+    } else if(traitesLiees.length===0){
       ech.statut=ech.date_echeance<=today()?'EN_RETARD':'A_VENIR';
       ech.revue_requise=false;ech.raison_ambiguite=null;
     } else if(traitesLiees.length===1){
@@ -1844,6 +1859,50 @@ async function handleAPI(req, res, body) {
     } else {
       ech.statut='PARTIELLE';ech.revue_requise=true;ech.raison_ambiguite='plusieurs_paiements_meme_echeance';
     }
+  }
+
+  // Validation des liens véhicule/financement/échéance — une seule implémentation,
+  // réutilisée par la création de traite (2B) ET la création d'avance (2C).
+  // Rejette toute incohérence (Véhicule A + Financement A + Échéance B, etc.)
+  // avant toute écriture.
+  function validerLienEcheance(db,vehiculeId,financementId,echeanceId){
+    const echeance=db.echeances.find(e=>e.id===echeanceId);
+    if(!echeance) return {ok:false,detail:'Échéance introuvable'};
+    const financement=db.financements.find(f=>f.id===financementId);
+    if(!financement) return {ok:false,detail:'Financement introuvable'};
+    if(echeance.financement_id!==financement.id) return {ok:false,detail:'Cette échéance n\'appartient pas à ce financement'};
+    if(financement.vehicule_id!==vehiculeId) return {ok:false,detail:'Ce financement ne correspond pas à ce véhicule'};
+    if(echeance.vehicule_id!==vehiculeId) return {ok:false,detail:'Cette échéance ne correspond pas à ce véhicule'};
+    return {ok:true,echeance,financement};
+  }
+
+  // Recettes imputées (FIFO, imputation.js — logique unique partagée) pour un
+  // véhicule sur une période donnée (YYYY-MM). Même appel que la fiche véhicule.
+  function calculerRecettesPeriode(db,vehiculeId,periode){
+    const vFacsAll=db.facturations.filter(f=>f.vehicule_id===vehiculeId);
+    const vAffIds=db.affectations.filter(a=>a.vehicule_id===vehiculeId).map(a=>a.id);
+    const vVersAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
+    const facsPeriode=vFacsAll.filter(f=>(f.date||'').slice(0,7)===periode).map(f=>f.id);
+    return imputerVersements(vFacsAll,vVersAll,facsPeriode,null).encImpute;
+  }
+
+  // Complément potentiel pour UNE échéance donnée (pas seulement le mois courant) —
+  // Phase Financement 2C. Purement informatif : ne crée jamais d'écriture.
+  // max(0, montant_restant_echeance - recettes_disponibles), §3 du feu vert.
+  function calculerComplementEcheance(db,echeanceId){
+    const echeance=db.echeances.find(e=>e.id===echeanceId);
+    if(!echeance) return null;
+    const recettesPeriode=calculerRecettesPeriode(db,echeance.vehicule_id,echeance.periode);
+    // Recettes déjà "consommées" par une vraie traite ne doivent pas réduire le
+    // complément une seconde fois — sinon une échéance déjà partiellement payée
+    // par traite semblerait n'avoir besoin d'aucune avance alors qu'elle en a
+    // encore besoin (les recettes ne sont comptées qu'une fois : soit via la
+    // traite réellement enregistrée, soit via le complément proposé, jamais les deux).
+    const recettesDisponibles=Math.max(0,recettesPeriode-echeance.montant_paye);
+    const montantRestant=Math.max(0,echeance.montant-echeance.montant_paye-echeance.montant_complete);
+    const complementPotentiel=Math.max(0,montantRestant-recettesDisponibles);
+    return {echeance_id:echeance.id,periode:echeance.periode,montant_du:echeance.montant,
+      montant_restant:montantRestant,recettes_periode:recettesPeriode,complement_potentiel:complementPotentiel};
   }
 
   // Recalcule les compteurs agrégés d'un financement à partir des traites (non
@@ -1887,13 +1946,9 @@ async function handleAPI(req, res, body) {
     let financement=null,echeance=null;
     if(data.echeance_id||data.financement_id){
       if(!data.echeance_id||!data.financement_id) return res.end(JSON.stringify({detail:'echeance_id et financement_id doivent être fournis ensemble'}));
-      echeance=db.echeances.find(e=>e.id===data.echeance_id);
-      if(!echeance) return res.end(JSON.stringify({detail:'Échéance introuvable'}));
-      financement=db.financements.find(f=>f.id===data.financement_id);
-      if(!financement) return res.end(JSON.stringify({detail:'Financement introuvable'}));
-      if(echeance.financement_id!==financement.id) return res.end(JSON.stringify({detail:'Cette échéance n\'appartient pas à ce financement'}));
-      if(financement.vehicule_id!==data.vehicule_id) return res.end(JSON.stringify({detail:'Ce financement ne correspond pas à ce véhicule'}));
-      if(echeance.vehicule_id!==data.vehicule_id) return res.end(JSON.stringify({detail:'Cette échéance ne correspond pas à ce véhicule'}));
+      const v=validerLienEcheance(db,data.vehicule_id,data.financement_id,data.echeance_id);
+      if(!v.ok) return res.end(JSON.stringify({detail:v.detail}));
+      echeance=v.echeance;financement=v.financement;
     }
 
     // Écriture — tout ou rien : un seul saveDB() en fin de bloc, aucun `await`
@@ -1991,17 +2046,10 @@ async function handleAPI(req, res, body) {
 
     const moisActuel=today().slice(0,7);
     const echeanceCourante=echeances.find(e=>e.periode===moisActuel)||null;
-    let echeanceCouranteInfo=null;
-    if(echeanceCourante){
-      const vFacsAll=db.facturations.filter(f=>f.vehicule_id===financementM[1]);
-      const vAffIds=db.affectations.filter(a=>a.vehicule_id===financementM[1]).map(a=>a.id);
-      const vVersAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
-      const facsPeriode=vFacsAll.filter(f=>(f.date||'').slice(0,7)===moisActuel).map(f=>f.id);
-      const imp=imputerVersements(vFacsAll,vVersAll,facsPeriode,null);
-      const recettesPeriode=imp.encImpute;
-      const complementPotentiel=Math.max(0,echeanceCourante.montant-recettesPeriode);
-      echeanceCouranteInfo={periode:moisActuel,montant_du:echeanceCourante.montant,recettes_periode:recettesPeriode,complement_potentiel:complementPotentiel};
-    }
+    // Calcul partagé (Phase Financement 2C) : la fiche véhicule (mois courant)
+    // et la création d'avance (n'importe quelle échéance) utilisent la même
+    // fonction — aucune deuxième implémentation du complément potentiel.
+    const echeanceCouranteInfo=echeanceCourante?calculerComplementEcheance(db,echeanceCourante.id):null;
 
     return res.end(JSON.stringify({
       vehicule_id:financementM[1],immatriculation:veh.immatriculation,
@@ -2017,6 +2065,104 @@ async function handleAPI(req, res, body) {
         reste:Math.max(0,e.montant-e.montant_paye-e.montant_complete),statut:e.statut,revue_requise:!!e.revue_requise})),
       echeance_courante:echeanceCouranteInfo
     }));
+  }
+
+  // ── COMPLÉMENT D'ÉCHÉANCE — Phase Financement 2C, LECTURE SEULE ──
+  // Généralise echeance_courante (2A, limité au mois en cours) à N'IMPORTE QUELLE
+  // échéance : nécessaire pour proposer un montant avant de créer une avance.
+  // Purement informatif — ne crée jamais d'écriture.
+  const complementM=p.match(/^\/api\/echeances\/([^/]+)\/complement$/);
+  if(complementM&&method==='GET'){
+    const echeance=db.echeances.find(e=>e.id===complementM[1]);
+    if(!echeance){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(echeance.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    return res.end(JSON.stringify(calculerComplementEcheance(db,echeance.id)));
+  }
+
+  // ── AVANCES DE FINANCEMENT — Phase Financement 2C ──
+  // Une avance : argent que l'entreprise avance à la place du véhicule/chauffeur
+  // pour compléter une échéance quand les recettes ne suffisent pas. TOUJOURS une
+  // action manuelle explicite — jamais créée automatiquement. N'est ni une dépense,
+  // ni une recette, ni une facturation : reste entièrement dans db.avances[].
+  if(p==='/api/avances'&&method==='GET'){
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=(db.avances||[]).filter(a=>myVehs.includes(a.vehicule_id));
+    if(q.vehicule_id) list=list.filter(a=>a.vehicule_id===q.vehicule_id);
+    // Enrichissement en LECTURE SEULE (période de l'échéance) — jamais stocké sur
+    // l'avance elle-même, uniquement calculé à l'affichage pour éviter toute
+    // deuxième source de vérité.
+    const withReste=list.map(a=>{
+      const ech=db.echeances.find(e=>e.id===a.echeance_id);
+      return Object.assign({},a,{reste_a_rembourser:Math.max(0,a.montant-(a.montant_rembourse||0)),periode:ech?ech.periode:null});
+    });
+    return res.end(JSON.stringify(withReste.slice(-500).reverse()));
+  }
+  if(p==='/api/avances'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.vehicule_id) return res.end(JSON.stringify({detail:'Véhicule obligatoire'}));
+    if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    if(!data.financement_id||!data.echeance_id) return res.end(JSON.stringify({detail:'financement_id et echeance_id obligatoires pour une avance'}));
+    const montant=Number(data.montant)||0;
+    if(montant<=0) return res.end(JSON.stringify({detail:'Le montant doit être supérieur à 0'}));
+    const MOTIFS_AVANCE=['RECETTES_INSUFFISANTES','PANNE_PROLONGEE','IMMOBILISATION','RETARD_ACTIVITE','AUTRE'];
+    if(!MOTIFS_AVANCE.includes(data.motif)) return res.end(JSON.stringify({detail:'Motif invalide ou manquant'}));
+    if(data.motif==='AUTRE'&&!(data.commentaire||'').trim()) return res.end(JSON.stringify({detail:'Commentaire obligatoire si motif = AUTRE'}));
+
+    // Idempotence : rejouer le même operation_id renvoie le résultat déjà obtenu.
+    if(data.operation_id){
+      const existante=(db.avances||[]).find(a=>a.operation_id===data.operation_id);
+      if(existante) return res.end(JSON.stringify({id:existante.id,message:'Avance déjà enregistrée (opération rejouée)',rejoue:true}));
+    }
+
+    // Lien véhicule/financement/échéance — même validation que les traites (2B),
+    // une seule implémentation (validerLienEcheance). Rejet avant toute écriture.
+    const lien=validerLienEcheance(db,data.vehicule_id,data.financement_id,data.echeance_id);
+    if(!lien.ok) return res.end(JSON.stringify({detail:lien.detail}));
+    const {echeance,financement}=lien;
+
+    // Plafond métier : une avance ne peut jamais dépasser le complément réellement
+    // nécessaire à CET INSTANT (dû restant − recettes déjà disponibles). C'est ce
+    // plafond, recalculé à chaque nouvelle avance, qui empêche mécaniquement un
+    // double comptage du même déficit (§10 du feu vert) sans avoir besoin d'une
+    // règle de "doublon" séparée : dès que le déficit réel est couvert, le plafond
+    // suivant vaut 0 et toute nouvelle avance positive est refusée.
+    const complement=calculerComplementEcheance(db,echeance.id);
+    if(montant>complement.complement_potentiel){
+      return res.end(JSON.stringify({detail:'Montant supérieur au complément nécessaire ('+complement.complement_potentiel+' F restant à couvrir sur cette échéance)'}));
+    }
+
+    const a={id:uid(),vehicule_id:data.vehicule_id,financement_id:financement.id,echeance_id:echeance.id,
+      montant,date:data.date||today(),motif:data.motif,commentaire:data.commentaire||'',
+      statut:'EN_COURS',montant_rembourse:0,
+      cree_par:isGest?auth.gest.nom:'Manager',auteur:isGest?auth.gest.nom:'Manager',
+      created_at:new Date().toISOString()};
+    if(data.operation_id) a.operation_id=data.operation_id;
+    db.avances.push(a);
+    recalculerEcheance(db,echeance.id);
+    recalculerFinancement(db,financement.id);
+    saveDB(db);
+    return res.end(JSON.stringify({id:a.id,message:'Avance enregistrée',avance:a,
+      echeance:db.echeances.find(e=>e.id===echeance.id)}));
+  }
+  const avM=p.match(/^\/api\/avances\/([^/]+)$/);
+  if(avM&&method==='DELETE'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const aExist=(db.avances||[]).find(a=>a.id===avM[1]);
+    if(!aExist){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(aExist.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(aExist.annule) return res.end(JSON.stringify({detail:'Déjà annulée'}));
+    if(aExist.statut==='PARTIELLEMENT_REMBOURSEE'||aExist.statut==='REMBOURSEE'){
+      return res.end(JSON.stringify({detail:'Impossible d\'annuler une avance déjà (partiellement) remboursée'}));
+    }
+    // Jamais de suppression physique — annulation auditable, conservée pour l'historique.
+    aExist.annule=true;aExist.statut='ANNULEE';
+    aExist.annule_par=isGest?auth.gest.nom:'Manager';aExist.annule_le=new Date().toISOString();
+    aExist.annule_motif=data.motif||'';
+    recalculerEcheance(db,aExist.echeance_id);
+    recalculerFinancement(db,aExist.financement_id);
+    saveDB(db);
+    return res.end(JSON.stringify({message:'Avance annulée (conservée pour l\'historique)',annule:true,
+      echeance:db.echeances.find(e=>e.id===aExist.echeance_id)}));
   }
 
   // Génération (idempotente) des frais de gestion moto (commission + frais fixe/jour)

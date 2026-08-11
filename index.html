@@ -1260,6 +1260,12 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
         <div class="card-title">Historique des traites</div>
         <div id="cr-hist"><div class="empty">Aucune traite enregistrée</div></div>
       </div>
+
+      <div class="card">
+        <div class="card-title">Avances entreprise</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Complète une échéance quand les recettes ne suffisent pas — toujours créée manuellement depuis l'échéancier ci-dessus, jamais automatiquement.</div>
+        <div id="av-hist"><div class="empty">Aucune avance enregistrée</div></div>
+      </div>
     </div>
 
     <!-- MON ESPACE (livreur) -->
@@ -1856,6 +1862,37 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
     <div class="modal-head"><div class="modal-title">Véhicules de <span id="ag-nom"></span></div><button class="modal-close" onclick="fermer('m-assign-gest')">×</button></div>
     <div id="ag-body"></div>
     <div style="margin-top:12px;text-align:right"><button class="btn btn-gray" onclick="fermer('m-assign-gest')">Fermer</button></div>
+  </div>
+</div>
+
+<!-- Phase Financement 2C — création manuelle d'une avance, jamais automatique -->
+<div class="modal-bg" id="m-creer-avance">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-head"><div class="modal-title">Créer une avance</div><button class="modal-close" onclick="fermer('m-creer-avance')">×</button></div>
+    <div id="av-body" style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6"></div>
+    <div class="form-row">
+      <div class="field"><label>Montant réellement avancé (FCFA) *</label><input id="av-montant" type="number"></div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label>Motif *</label>
+        <select id="av-motif" onchange="onAvMotifChange()">
+          <option value="RECETTES_INSUFFISANTES">Recettes insuffisantes</option>
+          <option value="PANNE_PROLONGEE">Panne prolongée</option>
+          <option value="IMMOBILISATION">Immobilisation</option>
+          <option value="RETARD_ACTIVITE">Retard d'activité</option>
+          <option value="AUTRE">Autre</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Commentaire <span id="av-commentaire-req" style="display:none;color:var(--red)">(obligatoire)</span></label><input id="av-commentaire" placeholder="Précision facultative"></div>
+    </div>
+    <div id="av-err" style="font-size:11px;color:var(--red);margin-bottom:6px"></div>
+    <div style="margin-top:10px;text-align:right">
+      <button class="btn btn-gray" onclick="fermer('m-creer-avance')">Annuler</button>
+      <button class="btn btn-blue" onclick="confirmerCreationAvance(this)">Créer l'avance</button>
+    </div>
   </div>
 </div>
 
@@ -6428,6 +6465,7 @@ async function initCreditPage() {
   if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split('T')[0];
   await loadCreditOverview();
   await loadTraitesHistory();
+  await loadAvancesHistory();
 }
 
 async function acCreditVeh(q) {
@@ -6524,7 +6562,7 @@ async function loadFicheFinancement(vid) {
   }
   card.style.display = '';
   const f = r.financement;
-  _currentFinancement = { id: f.id, vehicule_id: vid };
+  _currentFinancement = { id: f.id, vehicule_id: vid, immatriculation: r.immatriculation, montant_traite: f.montant_traite };
   _currentEcheances = r.echeances || [];
   echRow.style.display = '';
   const sel = document.getElementById('cr-echeance-sel');
@@ -6561,7 +6599,7 @@ async function loadFicheFinancement(vid) {
   }
 
   document.getElementById('cr-fin-echeancier').innerHTML = '<div style="overflow-x:auto"><table><thead><tr>' +
-    '<th>Période</th><th>Date</th><th>Montant dû</th><th>Payé</th><th>Complété</th><th>Reste</th><th>Statut</th></tr></thead><tbody>' +
+    '<th>Période</th><th>Date</th><th>Montant dû</th><th>Payé</th><th>Complété</th><th>Reste</th><th>Statut</th><th>Avance</th></tr></thead><tbody>' +
     r.echeances.map(function(e) {
       const lbl = STATUT_ECHEANCE_LABELS[e.statut] || [e.statut, 'gray'];
       return '<tr>' +
@@ -6572,6 +6610,7 @@ async function loadFicheFinancement(vid) {
         '<td>' + fmt(e.montant_complete) + '</td>' +
         '<td>' + fmt(e.reste) + '</td>' +
         '<td>' + pill(lbl[0], lbl[1]) + (e.revue_requise ? ' <span style="font-size:10px;color:var(--orange)" title="Cas à revue manuelle">⚠ à vérifier</span>' : '') + '</td>' +
+        '<td>' + (e.reste > 0 ? '<button class="btn-sm" style="background:var(--info-bg);color:var(--info-text)" onclick="ouvrirModalAvance(\'' + e.id + '\')">Avancer…</button>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
         '</tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -6603,6 +6642,104 @@ async function addTraite(btn) {
   onCreditVehChange();
   loadCreditOverview();
   loadTraitesHistory();
+}
+
+// ── Avances entreprise (Phase Financement 2C) — création MANUELLE uniquement.
+// Le complément est une simple proposition affichée ; rien n'est jamais créé
+// sans confirmation explicite via ce modal.
+const MOTIF_AVANCE_LABELS = {
+  RECETTES_INSUFFISANTES: 'Recettes insuffisantes', PANNE_PROLONGEE: 'Panne prolongée',
+  IMMOBILISATION: 'Immobilisation', RETARD_ACTIVITE: "Retard d'activité", AUTRE: 'Autre',
+};
+const STATUT_AVANCE_LABELS = {
+  EN_COURS: ['En cours', 'warn'], PARTIELLEMENT_REMBOURSEE: ['Partiellement remboursée', 'info'],
+  REMBOURSEE: ['Remboursée', 'ok'], ANNULEE: ['Annulée', 'gray'],
+};
+let _avEcheanceCourante = null;
+let _avOpId = null;
+
+function regenererAvOpId() {
+  _avOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+    'av_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+async function ouvrirModalAvance(echeanceId) {
+  const ech = _currentEcheances.find(function(e) { return e.id === echeanceId; });
+  if (!ech || !_currentFinancement) return;
+  const r = await api('GET', '/echeances/' + echeanceId + '/complement');
+  if (!r || r.detail) { toast(r ? r.detail : 'Erreur', 'err'); return; }
+  _avEcheanceCourante = { echeance_id: echeanceId, financement_id: _currentFinancement.id, vehicule_id: _currentFinancement.vehicule_id, complement: r };
+  regenererAvOpId();
+  document.getElementById('av-body').innerHTML =
+    '<b>' + (_currentFinancement.immatriculation || '') + '</b> · échéance ' + ech.periode + ' (' + fmt(ech.montant) + ')<br>' +
+    'Recettes du mois : <strong style="color:var(--green)">' + fmt(r.recettes_periode) + '</strong><br>' +
+    'Montant restant dû sur l\'échéance : <strong>' + fmt(r.montant_restant) + '</strong><br>' +
+    'Complément potentiel (proposé) : <strong style="color:var(--orange)">' + fmt(r.complement_potentiel) + '</strong>';
+  document.getElementById('av-montant').value = r.complement_potentiel || '';
+  document.getElementById('av-motif').value = 'RECETTES_INSUFFISANTES';
+  document.getElementById('av-commentaire').value = '';
+  document.getElementById('av-err').textContent = '';
+  onAvMotifChange();
+  ouvrir('m-creer-avance');
+}
+
+function onAvMotifChange() {
+  const isAutre = document.getElementById('av-motif').value === 'AUTRE';
+  document.getElementById('av-commentaire-req').style.display = isAutre ? '' : 'none';
+}
+
+async function confirmerCreationAvance(btn) {
+  if (!_avEcheanceCourante) return;
+  const montant = +(document.getElementById('av-montant').value || 0);
+  const motif = document.getElementById('av-motif').value;
+  const commentaire = document.getElementById('av-commentaire').value.trim();
+  const errEl = document.getElementById('av-err');
+  errEl.textContent = '';
+  if (montant <= 0) { errEl.textContent = 'Le montant doit être supérieur à 0.'; return; }
+  if (motif === 'AUTRE' && !commentaire) { errEl.textContent = 'Commentaire obligatoire si motif = Autre.'; return; }
+  if (!_avOpId) regenererAvOpId();
+  setBtnLoad(btn, true);
+  const r = await api('POST', '/avances', {
+    vehicule_id: _avEcheanceCourante.vehicule_id, financement_id: _avEcheanceCourante.financement_id,
+    echeance_id: _avEcheanceCourante.echeance_id, montant, motif, commentaire, operation_id: _avOpId
+  });
+  setBtnLoad(btn, false);
+  if (r.detail) { errEl.textContent = r.detail; return; } // operation_id conservé : un nouveau clic rejoue la même opération
+  toast(r.rejoue ? 'Déjà enregistrée (opération déjà traitée)' : 'Avance de ' + fmt(montant) + ' créée');
+  fermer('m-creer-avance');
+  regenererAvOpId(); // succès : prochaine saisie = nouvelle intention
+  const vid = document.getElementById('cr-veh').value;
+  if (vid) loadFicheFinancement(vid);
+  loadAvancesHistory();
+}
+
+async function loadAvancesHistory() {
+  const list = await api('GET', '/avances');
+  const el = document.getElementById('av-hist');
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune avance enregistrée</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Échéance</th><th>Montant</th><th>Motif</th><th>Statut</th><th>Auteur</th><th>Action</th></tr></thead><tbody>' +
+    list.slice(0, 100).map(function(a) {
+      const v = _creditVehsCache.find(function(x) { return x.id === a.vehicule_id; }) || allVehs.find(function(x) { return x.id === a.vehicule_id; });
+      const lbl = STATUT_AVANCE_LABELS[a.statut] || [a.statut, 'gray'];
+      const action = a.annule ? pill('Annulée', 'gray') :
+        (a.statut === 'EN_COURS' ? '<button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="annulerAvance(\'' + a.id + '\')">Annuler</button>' : '<span style="color:var(--muted)">—</span>');
+      return '<tr' + (a.annule ? ' style="opacity:.5"' : '') + '><td>' + a.date + '</td><td>' + (v ? v.immatriculation : a.vehicule_id) + '</td>' +
+        '<td>' + (a.periode || '—') + '</td>' +
+        '<td style="font-weight:700;color:var(--orange)">' + fmt(a.montant) + '</td>' +
+        '<td>' + (MOTIF_AVANCE_LABELS[a.motif] || a.motif) + (a.commentaire ? ' <span style="color:var(--muted)">(' + esc(a.commentaire) + ')</span>' : '') + '</td>' +
+        '<td>' + pill(lbl[0], lbl[1]) + '</td><td>' + (a.auteur || '—') + '</td><td>' + action + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+async function annulerAvance(id) {
+  const motif = prompt('Motif de l\'annulation de cette avance (obligatoire pour la traçabilité) :');
+  if (!motif) { toast('Annulation abandonnée : motif requis', 'err'); return; }
+  const r = await api('DELETE', '/avances/' + id, { motif });
+  if (r && r.detail) { toast(r.detail, 'err'); return; }
+  toast('Avance annulée', 'info');
+  loadAvancesHistory();
+  const vid = document.getElementById('cr-veh').value;
+  if (vid) loadFicheFinancement(vid);
 }
 
 async function loadCreditOverview() {
