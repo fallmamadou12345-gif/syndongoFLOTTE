@@ -1266,6 +1266,12 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Complète une échéance quand les recettes ne suffisent pas — toujours créée manuellement depuis l'échéancier ci-dessus, jamais automatiquement.</div>
         <div id="av-hist"><div class="empty">Aucune avance enregistrée</div></div>
       </div>
+
+      <div class="card">
+        <div class="card-title">Historique des remboursements</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Argent rendu par le véhicule/chauffeur à l'entreprise — jamais confondu avec une traite, une recette ou une dépense.</div>
+        <div id="rb-hist"><div class="empty">Aucun remboursement enregistré</div></div>
+      </div>
     </div>
 
     <!-- MON ESPACE (livreur) -->
@@ -1892,6 +1898,36 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
     <div style="margin-top:10px;text-align:right">
       <button class="btn btn-gray" onclick="fermer('m-creer-avance')">Annuler</button>
       <button class="btn btn-blue" onclick="confirmerCreationAvance(this)">Créer l'avance</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phase Financement 2D — remboursement manuel d'une avance -->
+<div class="modal-bg" id="m-rembourser-avance">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head"><div class="modal-title">Rembourser une avance</div><button class="modal-close" onclick="fermer('m-rembourser-avance')">×</button></div>
+    <div id="rb-body" style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6"></div>
+    <div class="form-row">
+      <div class="field"><label>Montant du remboursement (FCFA) *</label><input id="rb-montant" type="number" min="1"></div>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label>Mode de paiement</label>
+        <select id="rb-mode">
+          <option value="especes">Espèces</option>
+          <option value="wave">Wave</option>
+          <option value="orange_money">Orange Money</option>
+          <option value="virement">Virement</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Commentaire</label><input id="rb-commentaire" placeholder="Précision facultative"></div>
+    </div>
+    <div id="rb-err" style="font-size:11px;color:var(--red);margin-bottom:6px"></div>
+    <div style="margin-top:10px;text-align:right">
+      <button class="btn btn-gray" onclick="fermer('m-rembourser-avance')">Annuler</button>
+      <button class="btn btn-blue" onclick="confirmerRemboursement(this)">Confirmer le remboursement</button>
     </div>
   </div>
 </div>
@@ -6466,6 +6502,7 @@ async function initCreditPage() {
   await loadCreditOverview();
   await loadTraitesHistory();
   await loadAvancesHistory();
+  await loadRemboursementsHistory();
 }
 
 async function acCreditVeh(q) {
@@ -6713,21 +6750,102 @@ async function confirmerCreationAvance(btn) {
   loadAvancesHistory();
 }
 
+let _avancesCache = [];
+
 async function loadAvancesHistory() {
   const list = await api('GET', '/avances');
+  _avancesCache = Array.isArray(list) ? list : [];
   const el = document.getElementById('av-hist');
-  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune avance enregistrée</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Échéance</th><th>Montant</th><th>Motif</th><th>Statut</th><th>Auteur</th><th>Action</th></tr></thead><tbody>' +
-    list.slice(0, 100).map(function(a) {
+  if (!_avancesCache.length) { el.innerHTML = '<div class="empty">Aucune avance enregistrée</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Échéance</th><th>Avancé</th><th>Remboursé</th><th>Reste</th><th>Motif</th><th>Statut</th><th>Auteur</th><th>Action</th></tr></thead><tbody>' +
+    _avancesCache.slice(0, 100).map(function(a) {
       const v = _creditVehsCache.find(function(x) { return x.id === a.vehicule_id; }) || allVehs.find(function(x) { return x.id === a.vehicule_id; });
       const lbl = STATUT_AVANCE_LABELS[a.statut] || [a.statut, 'gray'];
-      const action = a.annule ? pill('Annulée', 'gray') :
-        (a.statut === 'EN_COURS' ? '<button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="annulerAvance(\'' + a.id + '\')">Annuler</button>' : '<span style="color:var(--muted)">—</span>');
+      const rembOk = !a.annule && a.statut !== 'REMBOURSEE';
+      let actions = '';
+      if (a.annule) actions = pill('Annulée', 'gray');
+      else {
+        if (rembOk) actions += '<button class="btn-sm" style="background:var(--info-bg);color:var(--info-text);margin-right:4px" onclick="ouvrirModalRemboursement(\'' + a.id + '\')">Rembourser…</button>';
+        if (a.statut === 'EN_COURS') actions += '<button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="annulerAvance(\'' + a.id + '\')">Annuler</button>';
+        else if (!rembOk) actions += '<span style="color:var(--muted)">—</span>';
+      }
       return '<tr' + (a.annule ? ' style="opacity:.5"' : '') + '><td>' + a.date + '</td><td>' + (v ? v.immatriculation : a.vehicule_id) + '</td>' +
         '<td>' + (a.periode || '—') + '</td>' +
         '<td style="font-weight:700;color:var(--orange)">' + fmt(a.montant) + '</td>' +
+        '<td style="color:var(--green)">' + fmt(a.montant_rembourse || 0) + '</td>' +
+        '<td style="font-weight:700">' + fmt(a.reste_a_rembourser != null ? a.reste_a_rembourser : a.montant) + '</td>' +
         '<td>' + (MOTIF_AVANCE_LABELS[a.motif] || a.motif) + (a.commentaire ? ' <span style="color:var(--muted)">(' + esc(a.commentaire) + ')</span>' : '') + '</td>' +
-        '<td>' + pill(lbl[0], lbl[1]) + '</td><td>' + (a.auteur || '—') + '</td><td>' + action + '</td></tr>';
+        '<td>' + pill(lbl[0], lbl[1]) + '</td><td>' + (a.auteur || '—') + '</td><td>' + actions + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+// ── Remboursements d'avance (Phase Financement 2D) ──
+const MODE_PAIEMENT_LABELS = { especes: '💵 Espèces', wave: '📱 Wave', orange_money: '📱 Orange Money', virement: '🏦 Virement' };
+let _rembAvanceCourante = null;
+let _rembOpId = null;
+
+function regenererRembOpId() {
+  _rembOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+    'rb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+function ouvrirModalRemboursement(avanceId) {
+  const av = _avancesCache.find(function(a) { return a.id === avanceId; });
+  if (!av) return;
+  const v = _creditVehsCache.find(function(x) { return x.id === av.vehicule_id; }) || allVehs.find(function(x) { return x.id === av.vehicule_id; });
+  const reste = av.reste_a_rembourser != null ? av.reste_a_rembourser : (av.montant - (av.montant_rembourse || 0));
+  _rembAvanceCourante = { avance_id: av.id, reste: reste };
+  regenererRembOpId();
+  document.getElementById('rb-body').innerHTML =
+    '<b>' + (v ? v.immatriculation : av.vehicule_id) + '</b> · échéance ' + (av.periode || '—') + '<br>' +
+    'Avance : <strong style="color:var(--orange)">' + fmt(av.montant) + '</strong>' +
+    ' · Déjà remboursé : <strong style="color:var(--green)">' + fmt(av.montant_rembourse || 0) + '</strong>' +
+    ' · Reste : <strong>' + fmt(reste) + '</strong>';
+  document.getElementById('rb-montant').value = '';
+  document.getElementById('rb-montant').max = reste;
+  document.getElementById('rb-mode').value = 'especes';
+  document.getElementById('rb-commentaire').value = '';
+  document.getElementById('rb-err').textContent = '';
+  ouvrir('m-rembourser-avance');
+}
+
+async function confirmerRemboursement(btn) {
+  if (!_rembAvanceCourante) return;
+  const montant = +(document.getElementById('rb-montant').value || 0);
+  const errEl = document.getElementById('rb-err');
+  errEl.textContent = '';
+  if (montant <= 0) { errEl.textContent = 'Le montant doit être supérieur à 0.'; return; }
+  if (montant > _rembAvanceCourante.reste) { errEl.textContent = 'Le montant dépasse le reste à rembourser (' + fmt(_rembAvanceCourante.reste) + ').'; return; }
+  if (!_rembOpId) regenererRembOpId();
+  setBtnLoad(btn, true);
+  const r = await api('POST', '/remboursements_avance', {
+    avance_id: _rembAvanceCourante.avance_id, montant,
+    mode_paiement: document.getElementById('rb-mode').value,
+    commentaire: document.getElementById('rb-commentaire').value.trim(),
+    operation_id: _rembOpId
+  });
+  setBtnLoad(btn, false);
+  if (r.detail) { errEl.textContent = r.detail; return; }
+  toast(r.rejoue ? 'Déjà enregistré (opération déjà traitée)' : 'Remboursement de ' + fmt(montant) + ' enregistré');
+  fermer('m-rembourser-avance');
+  regenererRembOpId();
+  loadAvancesHistory();
+  loadRemboursementsHistory();
+}
+
+async function loadRemboursementsHistory() {
+  const list = await api('GET', '/remboursements_avance');
+  const el = document.getElementById('rb-hist');
+  if (!el) return;
+  if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucun remboursement enregistré</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Montant</th><th>Mode</th><th>Commentaire</th><th>Auteur</th></tr></thead><tbody>' +
+    list.slice(0, 100).map(function(r) {
+      const v = _creditVehsCache.find(function(x) { return x.id === r.vehicule_id; }) || allVehs.find(function(x) { return x.id === r.vehicule_id; });
+      return '<tr><td>' + r.date + '</td><td>' + (v ? v.immatriculation : r.vehicule_id) + '</td>' +
+        '<td style="font-weight:700;color:var(--green)">' + fmt(r.montant) + '</td>' +
+        '<td>' + (MODE_PAIEMENT_LABELS[r.mode_paiement] || r.mode_paiement) + '</td>' +
+        '<td>' + (r.commentaire ? esc(r.commentaire) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        '<td>' + (r.auteur || '—') + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 

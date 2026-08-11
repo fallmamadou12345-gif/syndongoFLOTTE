@@ -2165,6 +2165,70 @@ async function handleAPI(req, res, body) {
       echeance:db.echeances.find(e=>e.id===aExist.echeance_id)}));
   }
 
+  // ── REMBOURSEMENTS D'AVANCE — Phase Financement 2D ──
+  // Un remboursement est l'argent que le véhicule/chauffeur rend à l'entreprise
+  // pour solder une avance. Ce n'est ni une traite, ni une recette, ni une
+  // facturation, ni une dépense — il ne touche QUE db.avances/db.remboursements_avance,
+  // jamais db.echeances (echeance.montant reste inchangé, montant_paye n'est
+  // jamais confondu avec un remboursement).
+  //
+  // Recalcule montant_rembourse/statut d'une avance à partir de la somme de ses
+  // remboursements. Ne touche jamais echeance.montant ni montant_paye.
+  function recalculerAvance(db,avanceId){
+    const av=(db.avances||[]).find(a=>a.id===avanceId);
+    if(!av||av.annule) return;
+    const rembs=(db.remboursements_avance||[]).filter(r=>r.avance_id===avanceId);
+    const montantRembourse=rembs.reduce((s,r)=>s+(Number(r.montant)||0),0);
+    av.montant_rembourse=montantRembourse;
+    const reste=Math.max(0,av.montant-montantRembourse);
+    if(reste<=0) av.statut='REMBOURSEE';
+    else if(montantRembourse>0) av.statut='PARTIELLEMENT_REMBOURSEE';
+    else av.statut='EN_COURS';
+  }
+
+  if(p==='/api/remboursements_avance'&&method==='GET'){
+    const myVehs=vehsVisibles(db,auth).map(v=>v.id);
+    let list=(db.remboursements_avance||[]).filter(r=>myVehs.includes(r.vehicule_id));
+    if(q.avance_id) list=list.filter(r=>r.avance_id===q.avance_id);
+    if(q.vehicule_id) list=list.filter(r=>r.vehicule_id===q.vehicule_id);
+    return res.end(JSON.stringify(list.slice(-500).reverse()));
+  }
+  if(p==='/api/remboursements_avance'&&method==='POST'){
+    if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!data.avance_id) return res.end(JSON.stringify({detail:'avance_id obligatoire'}));
+    const av=(db.avances||[]).find(a=>a.id===data.avance_id);
+    if(!av){res.writeHead(404);return res.end(JSON.stringify({detail:'Avance introuvable'}));}
+    if(isGest&&!gestPeutVoirVehicule(db,auth,av.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
+    const montant=Number(data.montant)||0;
+    if(montant<=0) return res.end(JSON.stringify({detail:'Le montant doit être supérieur à 0'}));
+    if(av.annule) return res.end(JSON.stringify({detail:'Cette avance est annulée'}));
+    if(av.statut==='REMBOURSEE') return res.end(JSON.stringify({detail:'Cette avance est déjà entièrement remboursée'}));
+
+    // Idempotence : rejouer le même operation_id renvoie le résultat déjà obtenu.
+    if(data.operation_id){
+      const existant=(db.remboursements_avance||[]).find(r=>r.operation_id===data.operation_id);
+      if(existant) return res.end(JSON.stringify({id:existant.id,message:'Remboursement déjà enregistré (opération rejouée)',rejoue:true}));
+    }
+
+    // Plafond, recalculé à l'instant (jamais depuis une valeur mise en cache) :
+    // même garantie qu'en 2B/2C — aucun `await` entre cette lecture et saveDB,
+    // donc deux requêtes concurrentes ne peuvent jamais s'entrelacer ici.
+    const resteActuel=Math.max(0,av.montant-(av.montant_rembourse||0));
+    if(montant>resteActuel){
+      return res.end(JSON.stringify({detail:'Montant supérieur au reste à rembourser ('+resteActuel+' F restant)'}));
+    }
+
+    const r={id:uid(),avance_id:av.id,vehicule_id:av.vehicule_id,montant,
+      date:data.date||today(),mode_paiement:data.mode_paiement||'especes',commentaire:data.commentaire||'',
+      cree_par:isGest?auth.gest.nom:'Manager',auteur:isGest?auth.gest.nom:'Manager',created_at:new Date().toISOString()};
+    if(data.operation_id) r.operation_id=data.operation_id;
+    db.remboursements_avance.push(r);
+    recalculerAvance(db,av.id);
+    saveDB(db);
+    return res.end(JSON.stringify({id:r.id,message:'Remboursement enregistré',remboursement:r,
+      avance:db.avances.find(a=>a.id===av.id)}));
+  }
+
   // Génération (idempotente) des frais de gestion moto (commission + frais fixe/jour)
   // pour une facturation donnée, selon le tag du véhicule. Appelée à chaque création
   // OU mise à jour de facturation, quel que soit le point d'entrée (facturation simple,
