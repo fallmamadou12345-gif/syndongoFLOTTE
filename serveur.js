@@ -2229,6 +2229,136 @@ async function handleAPI(req, res, body) {
       avance:db.avances.find(a=>a.id===av.id)}));
   }
 
+  // ── RENTABILITÉ — Phase Financement 2E-1 ────────────────────────────────
+  // Couche analytique STRICTEMENT en lecture : ces fonctions ne mutent jamais
+  // `db` et n'appellent jamais saveDB(). Elles ne recalculent rien qui existe
+  // déjà ailleurs (recettes réutilise imputation.js tel quel) et ne créent
+  // aucune nouvelle collection. Trois niveaux, jamais mélangés :
+  //   1. Résultat opérationnel      = recettes − dépenses (identique à l'existant)
+  //   2. Résultat après financement = niveau 1 − traites RÉELLEMENT payées
+  //   3. Trésorerie / créance       = avances / remboursements — jamais dans 1 ou 2
+
+  function calculerRentabiliteVehicule(db,vehiculeId,dateDebut,dateFin){
+    const vFacsAll=db.facturations.filter(f=>f.vehicule_id===vehiculeId);
+    const vAffIds=db.affectations.filter(a=>a.vehicule_id===vehiculeId).map(a=>a.id);
+    const vVersAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
+    const facsPeriodeIds=vFacsAll.filter(f=>(f.date||'')>=dateDebut&&(f.date||'')<=dateFin).map(f=>f.id);
+    const recettes=imputerVersements(vFacsAll,vVersAll,facsPeriodeIds,null).encImpute;
+
+    const depensesPeriode=db.depenses.filter(d=>d.vehicule_id===vehiculeId&&(d.date_depense||'')>=dateDebut&&(d.date_depense||'')<=dateFin);
+    const depenses=depensesPeriode.reduce((s,d)=>s+(Number(d.montant)||0),0);
+    const resultatOperationnel=recettes-depenses;
+
+    const traitesPeriode=(db.traites||[]).filter(t=>t.vehicule_id===vehiculeId&&!t.annule&&(t.date_paiement||'')>=dateDebut&&(t.date_paiement||'')<=dateFin);
+    const traitesMontant=traitesPeriode.reduce((s,t)=>s+(Number(t.montant)||0),0);
+    const resultatApresFinancement=resultatOperationnel-traitesMontant;
+
+    const avancesVeh=(db.avances||[]).filter(a=>a.vehicule_id===vehiculeId&&!a.annule);
+    const avancesAccordeesPeriode=avancesVeh.filter(a=>(a.date||'')>=dateDebut&&(a.date||'')<=dateFin).reduce((s,a)=>s+(Number(a.montant)||0),0);
+    const rembVeh=(db.remboursements_avance||[]).filter(r=>r.vehicule_id===vehiculeId);
+    const remboursementsRecusPeriode=rembVeh.filter(r=>(r.date||'')>=dateDebut&&(r.date||'')<=dateFin).reduce((s,r)=>s+(Number(r.montant)||0),0);
+    const creanceRestanteCumulative=avancesVeh.reduce((s,a)=>s+Math.max(0,(Number(a.montant)||0)-(Number(a.montant_rembourse)||0)),0);
+
+    const finsVeh=(db.financements||[]).filter(f=>f.vehicule_id===vehiculeId);
+    const finVeh=finsVeh.find(f=>f.statut==='EN_COURS')||finsVeh.find(f=>f.statut==='EN_RETARD')||
+      finsVeh.slice().sort((a,b)=>(b.date_debut||'').localeCompare(a.date_debut||''))[0]||null;
+
+    return {vehicule_id:vehiculeId,periode:{debut:dateDebut,fin:dateFin},
+      recettes,depenses,resultat_operationnel:resultatOperationnel,
+      traites_periode:traitesMontant,resultat_apres_financement:resultatApresFinancement,
+      avances_accordees_periode:avancesAccordeesPeriode,remboursements_recus_periode:remboursementsRecusPeriode,
+      creance_restante_cumulative:creanceRestanteCumulative,
+      financement:finVeh?{id:finVeh.id,statut:finVeh.statut,montant_traite:finVeh.montant_traite,
+        solde_financement_restant:finVeh.solde_financement_restant}:null};
+  }
+
+  function calculerRentabiliteFinancement(db,financementId){
+    const fin=(db.financements||[]).find(f=>f.id===financementId);
+    if(!fin) return null;
+    const echeancesFin=(db.echeances||[]).filter(e=>e.financement_id===financementId);
+    const totalTraites=(db.traites||[]).filter(t=>t.financement_id===financementId&&!t.annule).reduce((s,t)=>s+(Number(t.montant)||0),0);
+    const avancesFin=(db.avances||[]).filter(a=>a.financement_id===financementId&&!a.annule);
+    const totalAvances=avancesFin.reduce((s,a)=>s+(Number(a.montant)||0),0);
+    const totalRemboursements=avancesFin.reduce((s,a)=>s+(Number(a.montant_rembourse)||0),0);
+    const avanceEncoreDue=avancesFin.reduce((s,a)=>s+Math.max(0,(Number(a.montant)||0)-(Number(a.montant_rembourse)||0)),0);
+    return {financement:{id:fin.id,vehicule_id:fin.vehicule_id,prix_achat:fin.prix_achat,apport_montant:fin.apport_montant,
+        montant_finance:fin.montant_finance,nombre_traites:fin.nombre_traites,montant_traite:fin.montant_traite,statut:fin.statut},
+      echeances_payees:echeancesFin.filter(e=>e.statut==='PAYEE').length,
+      echeances_partielles:echeancesFin.filter(e=>e.statut==='PARTIELLE').length,
+      echeances_completees_par_avance:echeancesFin.filter(e=>e.statut==='COMPLETEE_PAR_AVANCE').length,
+      total_traites:totalTraites,total_avances:totalAvances,total_remboursements:totalRemboursements,
+      avance_encore_due:avanceEncoreDue,solde_financement_restant:fin.solde_financement_restant};
+  }
+
+  function calculerRentabiliteFlotte(db,auth,dateDebut,dateFin){
+    const vehs=vehsVisibles(db,auth);
+    const vehicules=vehs.map(v=>Object.assign({immatriculation:v.immatriculation},calculerRentabiliteVehicule(db,v.id,dateDebut,dateFin)));
+    const kpis=vehicules.reduce((acc,l)=>{
+      acc.ca+=l.recettes;acc.depenses+=l.depenses;acc.resultat_operationnel+=l.resultat_operationnel;
+      acc.echeances+=l.traites_periode;acc.avances_accordees+=l.avances_accordees_periode;
+      acc.remboursements_recus+=l.remboursements_recus_periode;acc.avances_dues+=l.creance_restante_cumulative;
+      return acc;
+    },{ca:0,depenses:0,resultat_operationnel:0,echeances:0,avances_accordees:0,remboursements_recus:0,avances_dues:0});
+    return {kpis,vehicules};
+  }
+
+  // Diagnostic de cohérence — vérifie STRUCTURELLEMENT (pas juste en test) que le
+  // moteur de rentabilité ne mélange jamais avance/dépense, remboursement/recette,
+  // échéance/dépense, ou ne double-compte rien. Recalculé à la demande, jamais mis en cache.
+  function diagnostiquerCoherenceRentabilite(db,vehiculeId,dateDebut,dateFin){
+    const r=calculerRentabiliteVehicule(db,vehiculeId,dateDebut,dateFin);
+
+    const idsAvances=new Set((db.avances||[]).filter(a=>a.vehicule_id===vehiculeId).map(a=>a.id));
+    const depensesPeriode=db.depenses.filter(d=>d.vehicule_id===vehiculeId&&(d.date_depense||'')>=dateDebut&&(d.date_depense||'')<=dateFin);
+    const avanceCompteeCommeDepense=depensesPeriode.some(d=>idsAvances.has(d.id)||idsAvances.has(d.avance_id));
+
+    const idsRemb=new Set((db.remboursements_avance||[]).filter(rb=>rb.vehicule_id===vehiculeId).map(rb=>rb.id));
+    const vFacsAll=db.facturations.filter(f=>f.vehicule_id===vehiculeId);
+    const vAffIds=db.affectations.filter(a=>a.vehicule_id===vehiculeId).map(a=>a.id);
+    const vVersAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
+    const remboursementCompteCommeRecette=vFacsAll.some(f=>idsRemb.has(f.id))||vVersAll.some(vs=>idsRemb.has(vs.id));
+
+    const echeancesVeh=(db.echeances||[]).filter(e=>e.vehicule_id===vehiculeId);
+    const echeanceModifiee=echeancesVeh.some(e=>{
+      const fin=(db.financements||[]).find(f=>f.id===e.financement_id);
+      return fin&&e.montant!==fin.montant_traite;
+    });
+    const doubleComptageDetecte=echeancesVeh.some(e=>(Number(e.montant_paye)||0)+(Number(e.montant_complete)||0)>e.montant);
+
+    return {vehicule_id:vehiculeId,periode:{debut:dateDebut,fin:dateFin},
+      recettes:r.recettes,depenses_operationnelles:r.depenses,
+      financement:{echeance:r.financement?r.financement.montant_traite:null,traites_periode:r.traites_periode},
+      avances:{avance_periode:r.avances_accordees_periode,rembourse_periode:r.remboursements_recus_periode,creance_a_date:r.creance_restante_cumulative},
+      controle:{avance_comptee_comme_depense:avanceCompteeCommeDepense,
+        remboursement_compte_comme_recette:remboursementCompteCommeRecette,
+        echeance_modifiee:echeanceModifiee,double_comptage_detecte:doubleComptageDetecte}};
+  }
+
+  if(p==='/api/rentabilite/flotte'&&method==='GET'){
+    return res.end(JSON.stringify(calculerRentabiliteFlotte(db,auth,q.date_debut||'0000-00-00',q.date_fin||'9999-99-99')));
+  }
+  const rentVehM=p.match(/^\/api\/vehicules\/([^/]+)\/rentabilite$/);
+  if(rentVehM&&method==='GET'){
+    const veh=db.vehicules.find(v=>v.id===rentVehM[1]);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(rentVehM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    return res.end(JSON.stringify(calculerRentabiliteVehicule(db,rentVehM[1],q.date_debut||'0000-00-00',q.date_fin||'9999-99-99')));
+  }
+  const rentDiagM=p.match(/^\/api\/vehicules\/([^/]+)\/rentabilite\/diagnostic$/);
+  if(rentDiagM&&method==='GET'){
+    const veh=db.vehicules.find(v=>v.id===rentDiagM[1]);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(rentDiagM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    return res.end(JSON.stringify(diagnostiquerCoherenceRentabilite(db,rentDiagM[1],q.date_debut||'0000-00-00',q.date_fin||'9999-99-99')));
+  }
+  const rentFinM=p.match(/^\/api\/financements\/([^/]+)\/rentabilite$/);
+  if(rentFinM&&method==='GET'){
+    const fin=(db.financements||[]).find(f=>f.id===rentFinM[1]);
+    if(!fin){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(fin.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    return res.end(JSON.stringify(calculerRentabiliteFinancement(db,rentFinM[1])));
+  }
+
   // Génération (idempotente) des frais de gestion moto (commission + frais fixe/jour)
   // pour une facturation donnée, selon le tag du véhicule. Appelée à chaque création
   // OU mise à jour de facturation, quel que soit le point d'entrée (facturation simple,
