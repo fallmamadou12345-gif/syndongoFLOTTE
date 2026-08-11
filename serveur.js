@@ -4,6 +4,7 @@ const path = require('path');
 const url = require('url');
 const zlib = require('zlib');
 const crypto = require('crypto');
+const { imputerVersements } = require('./imputation.js');
 
 const DB_FILE = process.env.DATA_PATH || './syndongo_data.json';
 const PORT = process.env.PORT || 8000;
@@ -529,7 +530,8 @@ function loadDB() {
     fs.writeFileSync(DB_FILE, JSON.stringify({
       vehicules:[], chauffeurs:[], affectations:[],
       versements:[], depenses:[], alertes:[], activites:[],
-      facturations:[], tags:[], proprietaires:[], gestionnaires:[]
+      facturations:[], tags:[], proprietaires:[], gestionnaires:[],
+      financements:[], echeances:[], avances:[], remboursements_avance:[], avenants_financement:[]
     }, null, 2));
   }
   const mtimeMs = fs.statSync(DB_FILE).mtimeMs;
@@ -541,7 +543,10 @@ function loadDB() {
   ['activites','facturations','tags','proprietaires','versements',
    'depenses','alertes','gestionnaires','historique','journal',
    'livreurs','recettes_livreurs','paiements_livreurs','chat_messages','traites',
-   'ordres_maintenance'].forEach(k=>{ if(!db[k]) db[k]=[]; });
+   'ordres_maintenance',
+   // Phase Financement 1 — modèle uniquement, aucune logique branchée encore.
+   'financements','echeances','avances','remboursements_avance','avenants_financement'
+   ].forEach(k=>{ if(!db[k]) db[k]=[]; });
   if(!db.config_livreurs) db.config_livreurs = { taux_horaire: 500, paliers: [] };
   if(!Array.isArray(db.config_livreurs.paliers)) db.config_livreurs.paliers = [];
   if(!db.config_frais_moto) db.config_frais_moto = { frais_gestion_jour: 1000, commission_pct: 0, tags: ['MOTO GESTION','MOTO SY TRANSPORT'] };
@@ -1815,23 +1820,116 @@ async function handleAPI(req, res, body) {
     if(q.vehicule_id) list=list.filter(t=>t.vehicule_id===q.vehicule_id);
     return res.end(JSON.stringify(list.slice(-500).reverse()));
   }
+  // Recalcule l'état d'une échéance à partir des traites (non annulées) qui lui
+  // sont rattachées. Une seule implémentation du rapprochement, réutilisée par le
+  // POST (nouvelle traite) et le DELETE (annulation) — même règle qu'à la migration
+  // (Phase Financement 1, migrate_financement.js) : un paiement unique exact ->
+  // PAYEE, un paiement unique partiel -> PARTIELLE, plusieurs paiements sur la même
+  // échéance -> toujours revue_requise, quel que soit le total (jamais deviné).
+  // Le montant dû original (echeance.montant) n'est JAMAIS modifié ici.
+  function recalculerEcheance(db,echeanceId){
+    const ech=db.echeances.find(e=>e.id===echeanceId);
+    if(!ech) return;
+    const traitesLiees=db.traites.filter(t=>t.echeance_id===echeanceId&&!t.annule);
+    const montantPaye=traitesLiees.reduce((s,t)=>s+(Number(t.montant)||0),0);
+    ech.traites_ids=traitesLiees.map(t=>t.id);
+    ech.montant_paye=montantPaye;
+    if(traitesLiees.length===0){
+      ech.statut=ech.date_echeance<=today()?'EN_RETARD':'A_VENIR';
+      ech.revue_requise=false;ech.raison_ambiguite=null;
+    } else if(traitesLiees.length===1){
+      if(montantPaye===ech.montant){ech.statut='PAYEE';ech.revue_requise=false;ech.raison_ambiguite=null;}
+      else if(montantPaye<ech.montant){ech.statut='PARTIELLE';ech.revue_requise=false;ech.raison_ambiguite=null;}
+      else {ech.statut='PARTIELLE';ech.revue_requise=true;ech.raison_ambiguite='montant_paye_superieur_au_montant_attendu';}
+    } else {
+      ech.statut='PARTIELLE';ech.revue_requise=true;ech.raison_ambiguite='plusieurs_paiements_meme_echeance';
+    }
+  }
+
+  // Recalcule les compteurs agrégés d'un financement à partir des traites (non
+  // annulées) qui lui sont rattachées. Mêmes formules qu'à la migration
+  // (migrate_financement.js) : solde = montant_finance - Σ traites payées, statut
+  // SOLDE si solde<=0, EN_RETARD si la date de fin est dépassée, sinon EN_COURS.
+  // Nécessaire pour que la fiche de consultation (Phase 2A), qui lit ces champs
+  // directement, reste exacte une fois que de vraies traites commencent à arriver.
+  function recalculerFinancement(db,financementId){
+    const fin=db.financements.find(f=>f.id===financementId);
+    if(!fin) return;
+    const traitesLiees=db.traites.filter(t=>t.financement_id===financementId&&!t.annule);
+    const totalPaye=traitesLiees.reduce((s,t)=>s+(Number(t.montant)||0),0);
+    fin.solde_financement_restant=Math.max(0,fin.montant_finance-totalPaye);
+    const echeancesFin=db.echeances.filter(e=>e.financement_id===financementId);
+    fin.traites_payees=echeancesFin.filter(e=>e.statut==='PAYEE'||e.statut==='COMPLETEE_PAR_AVANCE').length;
+    fin.traites_restantes=Math.max(0,fin.nombre_traites-fin.traites_payees);
+    if(fin.solde_financement_restant<=0) fin.statut='SOLDE';
+    else if(today()>fin.date_fin) fin.statut='EN_RETARD';
+    else fin.statut='EN_COURS';
+    fin.updated_at=new Date().toISOString();
+  }
+
   if(p==='/api/traites'&&method==='POST'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     if(!data.vehicule_id) return res.end(JSON.stringify({detail:'Véhicule obligatoire'}));
     if(isGest&&!gestPeutVoirVehicule(db,auth,data.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Véhicule non assigné'}));}
     const montant=Number(data.montant)||0;
     if(!montant) return res.end(JSON.stringify({detail:'Montant obligatoire'}));
+
+    // Idempotence : rejouer le même operation_id renvoie le résultat déjà obtenu,
+    // sans rien créer de plus. Vérifié avant toute validation/mutation.
+    if(data.operation_id){
+      const existant=db.traites.find(t=>t.operation_id===data.operation_id);
+      if(existant) return res.end(JSON.stringify({id:existant.id,message:'Traite déjà enregistrée (opération rejouée)',rejoue:true}));
+    }
+
+    // Lien financement/échéance (facultatif) — validation complète AVANT toute
+    // écriture : si une incohérence est détectée, rien n'est jamais muté ni
+    // sauvegardé ("rollback" = ne rien écrire tant que tout n'est pas validé).
+    let financement=null,echeance=null;
+    if(data.echeance_id||data.financement_id){
+      if(!data.echeance_id||!data.financement_id) return res.end(JSON.stringify({detail:'echeance_id et financement_id doivent être fournis ensemble'}));
+      echeance=db.echeances.find(e=>e.id===data.echeance_id);
+      if(!echeance) return res.end(JSON.stringify({detail:'Échéance introuvable'}));
+      financement=db.financements.find(f=>f.id===data.financement_id);
+      if(!financement) return res.end(JSON.stringify({detail:'Financement introuvable'}));
+      if(echeance.financement_id!==financement.id) return res.end(JSON.stringify({detail:'Cette échéance n\'appartient pas à ce financement'}));
+      if(financement.vehicule_id!==data.vehicule_id) return res.end(JSON.stringify({detail:'Ce financement ne correspond pas à ce véhicule'}));
+      if(echeance.vehicule_id!==data.vehicule_id) return res.end(JSON.stringify({detail:'Cette échéance ne correspond pas à ce véhicule'}));
+    }
+
+    // Écriture — tout ou rien : un seul saveDB() en fin de bloc, aucun `await`
+    // entre ce point et saveDB, donc rien ne peut interrompre ce bloc au milieu
+    // (event loop mono-thread) : deux requêtes ne peuvent jamais s'entrelacer ici.
     const t={id:uid(),vehicule_id:data.vehicule_id,mois:data.mois||today().slice(0,7),montant,
       date_paiement:data.date_paiement||today(),note:data.note||'',
       auteur:isGest?auth.gest.nom:'Manager',created_at:new Date().toISOString()};
-    db.traites.push(t);saveDB(db);
-    return res.end(JSON.stringify({id:t.id,message:'Traite enregistrée'}));
+    if(data.operation_id) t.operation_id=data.operation_id;
+    if(financement) t.financement_id=financement.id;
+    if(echeance) t.echeance_id=echeance.id;
+    db.traites.push(t);
+    if(echeance){recalculerEcheance(db,echeance.id);recalculerFinancement(db,financement.id);}
+    saveDB(db);
+    return res.end(JSON.stringify({id:t.id,message:'Traite enregistrée',
+      echeance:echeance?db.echeances.find(e=>e.id===echeance.id):null}));
   }
   const trM=p.match(/^\/api\/traites\/([^/]+)$/);
   if(trM&&method==='DELETE'){
     if(!canWrite){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
     const tExist=db.traites.find(t=>t.id===trM[1]);
-    if(isGest&&tExist&&!vehsVisibles(db,auth).map(v=>v.id).includes(tExist.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(!tExist){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(isGest&&!vehsVisibles(db,auth).map(v=>v.id).includes(tExist.vehicule_id)){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    if(tExist.echeance_id){
+      // Traite rattachée à une échéance (Phase Financement 2B) : jamais de
+      // suppression physique — annulation auditable, conservée pour l'historique.
+      if(tExist.annule) return res.end(JSON.stringify({detail:'Déjà annulée'}));
+      tExist.annule=true;tExist.annule_par=isGest?auth.gest.nom:'Manager';
+      tExist.annule_le=new Date().toISOString();tExist.annule_motif=data.motif||'';
+      recalculerEcheance(db,tExist.echeance_id);
+      if(tExist.financement_id) recalculerFinancement(db,tExist.financement_id);
+      saveDB(db);
+      return res.end(JSON.stringify({message:'Traite annulée (conservée pour l\'historique)',annule:true,
+        echeance:db.echeances.find(e=>e.id===tExist.echeance_id)}));
+    }
+    // Traite "ancien style" (non rattachée à une échéance) : suppression physique inchangée.
     db.traites=db.traites.filter(t=>t.id!==trM[1]);
     saveDB(db);return res.end(JSON.stringify({message:'Supprimé'}));
   }
@@ -1866,6 +1964,59 @@ async function handleAPI(req, res, body) {
       duree_mois:dureeMois,traite_mensuelle:traiteMensuelle,mois_ecoules:moisEcoules,nb_traites_payees:nbTraitesPayees,
       total_paye:totalPaye,total_attendu:totalAttendu,retard,solde_restant:soldeRestant,
       solde_avant_apport:prixTotal-apportMontant}));
+  }
+
+  // ── FINANCEMENT — fiche + échéancier (Phase Financement 2A, LECTURE SEULE) ──
+  // N'écrit jamais db.financements/db.echeances : affiche uniquement ce que la
+  // migration (ou une future étape d'écriture) y a déjà placé. Les recettes sont
+  // calculées via imputation.js, la même logique partagée que la fiche véhicule —
+  // aucune deuxième implémentation, aucun recalcul du rapprochement traites/échéances ici.
+  const financementM=p.match(/^\/api\/vehicules\/([^/]+)\/financement$/);
+  if(financementM&&method==='GET'){
+    const veh=db.vehicules.find(v=>v.id===financementM[1]);
+    if(!veh){res.writeHead(404);return res.end(JSON.stringify({detail:'Introuvable'}));}
+    if(!vehsVisibles(db,auth).map(v=>v.id).includes(financementM[1])){res.writeHead(403);return res.end(JSON.stringify({detail:'Refusé'}));}
+    const finsVeh=(db.financements||[]).filter(f=>f.vehicule_id===financementM[1]);
+    const fin=finsVeh.find(f=>f.statut==='EN_COURS')||finsVeh.find(f=>f.statut==='EN_RETARD')||
+      finsVeh.slice().sort((a,b)=>(b.date_debut||'').localeCompare(a.date_debut||''))[0]||null;
+    if(!fin){
+      return res.end(JSON.stringify({vehicule_id:financementM[1],immatriculation:veh.immatriculation,financement:null,
+        message:'Aucun financement pour ce véhicule'}));
+    }
+    const echeances=(db.echeances||[]).filter(e=>e.financement_id===fin.id).sort((a,b)=>a.periode.localeCompare(b.periode));
+    const echeancesPayees=echeances.filter(e=>e.statut==='PAYEE'||e.statut==='COMPLETEE_PAR_AVANCE').length;
+    const echeancesEnRetard=echeances.filter(e=>e.statut==='EN_RETARD').length;
+    const echeancesAVenir=echeances.filter(e=>e.statut==='A_VENIR').length;
+    const echeancesRestantes=echeances.length-echeancesPayees;
+
+    const moisActuel=today().slice(0,7);
+    const echeanceCourante=echeances.find(e=>e.periode===moisActuel)||null;
+    let echeanceCouranteInfo=null;
+    if(echeanceCourante){
+      const vFacsAll=db.facturations.filter(f=>f.vehicule_id===financementM[1]);
+      const vAffIds=db.affectations.filter(a=>a.vehicule_id===financementM[1]).map(a=>a.id);
+      const vVersAll=db.versements.filter(vs=>vAffIds.includes(vs.affectation_id));
+      const facsPeriode=vFacsAll.filter(f=>(f.date||'').slice(0,7)===moisActuel).map(f=>f.id);
+      const imp=imputerVersements(vFacsAll,vVersAll,facsPeriode,null);
+      const recettesPeriode=imp.encImpute;
+      const complementPotentiel=Math.max(0,echeanceCourante.montant-recettesPeriode);
+      echeanceCouranteInfo={periode:moisActuel,montant_du:echeanceCourante.montant,recettes_periode:recettesPeriode,complement_potentiel:complementPotentiel};
+    }
+
+    return res.end(JSON.stringify({
+      vehicule_id:financementM[1],immatriculation:veh.immatriculation,
+      financement:{
+        id:fin.id,financeur:fin.financeur,prix_achat:fin.prix_achat,apport_pct:fin.apport_pct,apport_montant:fin.apport_montant,
+        montant_finance:fin.montant_finance,nombre_traites:fin.nombre_traites,montant_traite:fin.montant_traite,
+        date_debut:fin.date_debut,date_fin:fin.date_fin,solde_financement_restant:fin.solde_financement_restant,statut:fin.statut,
+        echeances_payees:echeancesPayees,echeances_restantes:echeancesRestantes,
+        echeances_en_retard:echeancesEnRetard,echeances_a_venir:echeancesAVenir
+      },
+      echeances:echeances.map(e=>({id:e.id,periode:e.periode,date_echeance:e.date_echeance,montant:e.montant,
+        montant_paye:e.montant_paye,montant_complete:e.montant_complete,
+        reste:Math.max(0,e.montant-e.montant_paye-e.montant_complete),statut:e.statut,revue_requise:!!e.revue_requise})),
+      echeance_courante:echeanceCouranteInfo
+    }));
   }
 
   // Génération (idempotente) des frais de gestion moto (commission + frais fixe/jour)
@@ -2690,6 +2841,7 @@ const server=http.createServer((req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
   if(req.url.startsWith('/api/')){let body='';req.on('data',c=>body+=c);req.on('end',()=>handleAPI(req,res,body));return;}
   if(req.url==='/'||req.url.startsWith('/index')){res.setHeader('Content-Type','text/html; charset=utf-8');res.setHeader('Cache-Control','no-cache, must-revalidate');res.end(fs.readFileSync(path.join(__dirname,'index.html'),'utf8'));return;}
+  if(req.url==='/imputation.js'){res.setHeader('Content-Type','application/javascript; charset=utf-8');res.setHeader('Cache-Control','no-cache, must-revalidate');res.end(fs.readFileSync(path.join(__dirname,'imputation.js'),'utf8'));return;}
   res.writeHead(404);res.end('Not found');
 });
 server.listen(PORT,()=>console.log('\n  SyNdongo v9 — port '+PORT+'\n  DB: '+DB_FILE+'\n'));

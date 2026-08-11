@@ -1214,6 +1214,21 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
         <div id="cr-table"><div class="empty">Chargement…</div></div>
       </div>
 
+      <div class="card" id="cr-fin-card" style="display:none">
+        <div class="card-title">Fiche financement — <span id="cr-fin-immat"></span></div>
+        <div class="kpi-row-wrap" style="margin-bottom:12px">
+          <div class="kpi-stat purple"><div class="kpi-label">Montant financé</div><div class="kpi-val" id="cr-fin-finance" style="color:#8B5CF6">—</div></div>
+          <div class="kpi-stat blue"><div class="kpi-label">Traite mensuelle</div><div class="kpi-val" id="cr-fin-traite" style="color:var(--blue)">—</div></div>
+          <div class="kpi-stat orange"><div class="kpi-label">Solde financement</div><div class="kpi-val" id="cr-fin-solde" style="color:var(--orange)">—</div></div>
+          <div class="kpi-stat green"><div class="kpi-label">Échéances payées</div><div class="kpi-val" id="cr-fin-payees" style="color:var(--green)">—</div></div>
+          <div class="kpi-stat crimson"><div class="kpi-label">En retard</div><div class="kpi-val" id="cr-fin-retard" style="color:#DC2626">—</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px" id="cr-fin-detail"></div>
+        <div id="cr-fin-courante"></div>
+        <div style="font-size:12px;font-weight:700;margin:14px 0 6px">Échéancier</div>
+        <div id="cr-fin-echeancier"><div class="empty">—</div></div>
+      </div>
+
       <div class="card">
         <div class="card-title">Enregistrer une traite</div>
         <div class="form-row">
@@ -1226,6 +1241,12 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
             <select id="cr-veh" style="margin-top:6px" onchange="onCreditVehChange()"><option value="">— choisir —</option></select>
           </div>
           <div class="field"><label>Mois</label><input id="cr-mois" type="month"></div>
+        </div>
+        <div class="form-row" id="cr-echeance-row" style="display:none">
+          <div class="field">
+            <label>Échéance à régler</label>
+            <select id="cr-echeance-sel" onchange="onCreditEcheanceChange()"><option value="">— aucune (traite libre, non rattachée) —</option></select>
+          </div>
         </div>
         <div class="form-row">
           <div class="field"><label>Montant versé (FCFA) *</label><input id="cr-montant" type="number" placeholder="Traite mensuelle"></div>
@@ -1838,6 +1859,7 @@ tr:hover td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
   </div>
 </div>
 
+<script src="/imputation.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // SEARCHABLE SELECT — enrichit tout <select> natif avec recherche,
@@ -1973,59 +1995,9 @@ new MutationObserver(function(muts) {
 // Calcule l'encaissé imputé sur les facturations d'une période
 // ═══════════════════════════════════════════════════════
 
-/**
- * imputerVersementsSurPeriode(facsTout, versTout, facsFiltIds, affIds)
- * 
- * Logique : les versements règlent les facturations dans l'ordre chronologique (FIFO).
- * On calcule combien de chaque facture a été réglé, puis on somme
- * uniquement pour les factures de la période choisie.
- *
- * Résultat : { encImpute, retard }
- * - encImpute : montant encaissé imputé sur la période (≤ facturé période)
- * - retard    : montant non encore payé pour la période
- */
-function imputerVersements(facsTout, versTout, facsPeriodeIds, affIds) {
-  // Trier les facturations par date (plus ancien en premier)
-  var facsTriees = (facsTout||[]).slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
-
-  // Trier les versements par date
-  // affIds=null signifie que versTout est déjà filtré par le bon véhicule
-  var versFiltrés = affIds === null
-    ? (versTout||[]).slice()
-    : (versTout||[]).filter(function(vs){ return (affIds||[]).includes(vs.affectation_id); });
-  var versTriees = versFiltrés.sort(function(a,b){ return a.date_versement.localeCompare(b.date_versement); });
-
-  // Pool FIFO : chaque versement est utilisé une seule fois
-  var pool = versTriees.map(function(vs){ return vs.montant; });
-
-  // Imputer séquentiellement sur chaque facture (ordre chronologique)
-  var imputations = {};
-  facsTriees.forEach(function(fac) {
-    var due = fac.montant_facture || 0;
-    var impute = 0;
-    for (var i = 0; i < pool.length && due > 0; i++) {
-      var prise = Math.min(pool[i], due);
-      impute += prise;
-      pool[i] -= prise;
-      due -= prise;
-    }
-    imputations[fac.id] = impute;
-  });
-
-  // Sommer uniquement sur les factures de la période demandée
-  var periodeSet = new Set(facsPeriodeIds || []);
-  var facMontant = 0, encImpute = 0;
-  facsTriees.forEach(function(fac) {
-    if (periodeSet.has(fac.id)) {
-      facMontant += (fac.montant_facture || 0);
-      encImpute  += (imputations[fac.id] || 0);
-    }
-  });
-
-  // Cap : l'encaissé imputé ne peut pas dépasser le facturé de la période
-  encImpute = Math.min(encImpute, facMontant);
-  return { encImpute: encImpute, retard: Math.max(0, facMontant - encImpute) };
-}
+// imputerVersements() vit maintenant dans imputation.js (fichier unique partagé
+// avec le serveur, Phase Financement 1) — chargé via <script src="/imputation.js">
+// juste avant ce bloc. Comportement strictement inchangé, voir ce fichier.
 
 // Comme imputerVersements, mais renvoie le détail des facturations non couvertes
 // (jour par jour) au lieu d'un seul total — utilisé par la page Retards.
@@ -6481,28 +6453,153 @@ function selectAcCreditVeh(id, immat) {
 async function onCreditVehChange() {
   const vid = document.getElementById('cr-veh').value;
   const info = document.getElementById('cr-veh-info');
-  if (!vid) { info.textContent = ''; return; }
+  _currentFinancement = null;
+  _currentEcheances = [];
+  regenererTraiteOpId();
+  if (!vid) {
+    info.textContent = '';
+    document.getElementById('cr-fin-card').style.display = 'none';
+    document.getElementById('cr-echeance-row').style.display = 'none';
+    return;
+  }
   const r = await api('GET', '/vehicules/' + vid + '/credit_calcul');
-  if (!r || r.detail) { info.textContent = r ? r.detail : ''; return; }
-  document.getElementById('cr-montant').value = r.traite_mensuelle || '';
-  info.innerHTML = 'Traite habituelle : <strong>' + fmt(r.traite_mensuelle) + '</strong> · Déjà payé : ' + fmt(r.total_paye) +
-    ' · Solde restant : ' + fmt(r.solde_restant) + (r.retard > 0 ? ' · <span style="color:var(--red)">Retard : ' + fmt(r.retard) + '</span>' : '');
+  if (!r || r.detail) { info.textContent = r ? r.detail : ''; }
+  else {
+    document.getElementById('cr-montant').value = r.traite_mensuelle || '';
+    info.innerHTML = 'Traite habituelle : <strong>' + fmt(r.traite_mensuelle) + '</strong> · Déjà payé : ' + fmt(r.total_paye) +
+      ' · Solde restant : ' + fmt(r.solde_restant) + (r.retard > 0 ? ' · <span style="color:var(--red)">Retard : ' + fmt(r.retard) + '</span>' : '');
+  }
+  loadFicheFinancement(vid);
+}
+
+// ── Idempotence (Phase Financement 2B) : un operation_id est attaché à
+// l'intention de saisie en cours (véhicule + échéance choisis). Il est
+// réutilisé tel quel si l'utilisateur re-clique ou si une erreur réseau
+// force une nouvelle tentative — seule une saisie réussie, ou un changement
+// de véhicule/échéance, en génère un nouveau.
+let _currentTraiteOpId = null;
+let _currentFinancement = null;
+let _currentEcheances = [];
+
+function regenererTraiteOpId() {
+  _currentTraiteOpId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+    'op_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+function onCreditEcheanceChange() {
+  regenererTraiteOpId();
+  const echId = document.getElementById('cr-echeance-sel').value;
+  const ech = _currentEcheances.find(function(e) { return e.id === echId; });
+  if (ech) {
+    const reste = Math.max(0, ech.montant - ech.montant_paye - ech.montant_complete);
+    document.getElementById('cr-montant').value = reste || ech.montant;
+    document.getElementById('cr-mois').value = ech.periode;
+  }
+}
+
+// ── Fiche financement (Phase Financement 2A — consultation, lecture seule) ──
+const STATUT_ECHEANCE_LABELS = {
+  A_VENIR: ['À venir', 'gray'],
+  EN_RETARD: ['En retard', 'err'],
+  PARTIELLE: ['Partielle', 'warn'],
+  PAYEE: ['Payée', 'ok'],
+  COMPLETEE_PAR_AVANCE: ['Complétée (avance)', 'purple'],
+};
+const STATUT_FINANCEMENT_LABELS = {
+  EN_COURS: ['En cours', 'blue'],
+  SOLDE: ['Soldé', 'ok'],
+  EN_RETARD: ['En retard', 'err'],
+  ANNULE: ['Annulé', 'gray'],
+};
+
+async function loadFicheFinancement(vid) {
+  const card = document.getElementById('cr-fin-card');
+  const echRow = document.getElementById('cr-echeance-row');
+  if (!vid) { card.style.display = 'none'; echRow.style.display = 'none'; return; }
+  const r = await api('GET', '/vehicules/' + vid + '/financement');
+  if (!r || r.detail || !r.financement) {
+    card.style.display = 'none'; echRow.style.display = 'none';
+    _currentFinancement = null; _currentEcheances = [];
+    return;
+  }
+  card.style.display = '';
+  const f = r.financement;
+  _currentFinancement = { id: f.id, vehicule_id: vid };
+  _currentEcheances = r.echeances || [];
+  echRow.style.display = '';
+  const sel = document.getElementById('cr-echeance-sel');
+  sel.innerHTML = '<option value="">— aucune (traite libre, non rattachée) —</option>' +
+    _currentEcheances.map(function(e) {
+      const lbl = STATUT_ECHEANCE_LABELS[e.statut] || [e.statut, 'gray'];
+      const reste = Math.max(0, e.montant - e.montant_paye - e.montant_complete);
+      return '<option value="' + e.id + '">' + e.periode + ' — ' + fmt(e.montant) + ' (' + lbl[0] + (reste !== e.montant ? ', reste ' + fmt(reste) : '') + ')</option>';
+    }).join('');
+  document.getElementById('cr-fin-immat').textContent = r.immatriculation || '';
+  document.getElementById('cr-fin-finance').textContent = fmt(f.montant_finance);
+  document.getElementById('cr-fin-traite').textContent = fmt(f.montant_traite);
+  document.getElementById('cr-fin-solde').textContent = fmt(f.solde_financement_restant);
+  document.getElementById('cr-fin-payees').textContent = f.echeances_payees + ' / ' + (f.echeances_payees + f.echeances_restantes);
+  document.getElementById('cr-fin-retard').textContent = f.echeances_en_retard;
+  const finLbl = STATUT_FINANCEMENT_LABELS[f.statut] || [f.statut, 'gray'];
+  document.getElementById('cr-fin-detail').innerHTML =
+    'Prix total : ' + fmt(f.prix_achat) + ' · Apport : ' + fmt(f.apport_montant) + ' (' + f.apport_pct + '%)' +
+    ' · Durée : ' + f.nombre_traites + ' mois · Du ' + (f.date_debut || '—') + ' au ' + (f.date_fin || '—') +
+    ' · Statut financement : ' + pill(finLbl[0], finLbl[1]);
+
+  const cc = document.getElementById('cr-fin-courante');
+  if (r.echeance_courante) {
+    const ec = r.echeance_courante;
+    cc.innerHTML = '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:10px">' +
+      'Recettes du mois (' + ec.periode + ') : <strong style="color:var(--green)">' + fmt(ec.recettes_periode) + '</strong>' +
+      ' · Traite : <strong>' + fmt(ec.montant_du) + '</strong>' +
+      (ec.complement_potentiel > 0
+        ? ' · <span style="color:var(--orange)">Complément potentiel : <strong>' + fmt(ec.complement_potentiel) + '</strong></span> — information uniquement, aucune avance créée automatiquement'
+        : ' · <span style="color:var(--green)">Recettes suffisantes pour couvrir la traite du mois</span>') +
+      '</div>';
+  } else {
+    cc.innerHTML = '';
+  }
+
+  document.getElementById('cr-fin-echeancier').innerHTML = '<div style="overflow-x:auto"><table><thead><tr>' +
+    '<th>Période</th><th>Date</th><th>Montant dû</th><th>Payé</th><th>Complété</th><th>Reste</th><th>Statut</th></tr></thead><tbody>' +
+    r.echeances.map(function(e) {
+      const lbl = STATUT_ECHEANCE_LABELS[e.statut] || [e.statut, 'gray'];
+      return '<tr>' +
+        '<td>' + e.periode + '</td>' +
+        '<td>' + (e.date_echeance || '—') + '</td>' +
+        '<td>' + fmt(e.montant) + '</td>' +
+        '<td>' + fmt(e.montant_paye) + '</td>' +
+        '<td>' + fmt(e.montant_complete) + '</td>' +
+        '<td>' + fmt(e.reste) + '</td>' +
+        '<td>' + pill(lbl[0], lbl[1]) + (e.revue_requise ? ' <span style="font-size:10px;color:var(--orange)" title="Cas à revue manuelle">⚠ à vérifier</span>' : '') + '</td>' +
+        '</tr>';
+    }).join('') + '</tbody></table></div>';
 }
 
 async function addTraite(btn) {
   const vid = document.getElementById('cr-veh').value;
   const montant = +(document.getElementById('cr-montant').value || 0);
   if (!vid || !montant) { toast('Véhicule et montant obligatoires', 'err'); return; }
-  setBtnLoad(btn, true);
-  const r = await api('POST', '/traites', {
+  if (!_currentTraiteOpId) regenererTraiteOpId();
+  const echId = document.getElementById('cr-echeance-sel').value;
+  const payload = {
     vehicule_id: vid, montant,
     mois: document.getElementById('cr-mois').value,
-    date_paiement: document.getElementById('cr-date').value
-  });
+    date_paiement: document.getElementById('cr-date').value,
+    operation_id: _currentTraiteOpId
+  };
+  if (echId && _currentFinancement) {
+    payload.echeance_id = echId;
+    payload.financement_id = _currentFinancement.id;
+  }
+  setBtnLoad(btn, true);
+  const r = await api('POST', '/traites', payload);
   setBtnLoad(btn, false);
-  if (r.detail) { toast(r.detail, 'err'); return; }
-  toast('Traite de ' + fmt(montant) + ' enregistrée');
+  if (r.detail) { toast(r.detail, 'err'); return; } // opération conservée : un nouveau clic rejoue le même operation_id
+  toast(r.rejoue ? 'Déjà enregistrée (opération déjà traitée)' : 'Traite de ' + fmt(montant) + ' enregistrée');
   document.getElementById('cr-montant').value = '';
+  document.getElementById('cr-echeance-sel').value = '';
+  regenererTraiteOpId(); // succès : prochaine saisie = nouvelle intention
   onCreditVehChange();
   loadCreditOverview();
   loadTraitesHistory();
@@ -6551,21 +6648,36 @@ async function loadTraitesHistory() {
   const list = await api('GET', '/traites');
   const el = document.getElementById('cr-hist');
   if (!Array.isArray(list) || !list.length) { el.innerHTML = '<div class="empty">Aucune traite enregistrée</div>'; return; }
-  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Mois</th><th>Montant</th><th>Par</th><th>Action</th></tr></thead><tbody>' +
+  el.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Véhicule</th><th>Mois</th><th>Montant</th><th>Par</th><th>Échéance liée</th><th>Action</th></tr></thead><tbody>' +
     list.slice(0, 100).map(function(t) {
       const v = _creditVehsCache.find(function(x) { return x.id === t.vehicule_id; }) || allVehs.find(function(x) { return x.id === t.vehicule_id; });
-      return '<tr><td>' + t.date_paiement + '</td><td>' + (v ? v.immatriculation : '—') + '</td><td>' + (t.mois || '—') + '</td>' +
+      const lie = !!t.echeance_id;
+      let action;
+      if (t.annule) action = pill('Annulée', 'gray');
+      else if (lie) action = '<button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="delTraite(\'' + t.id + '\', true)">Annuler</button>';
+      else action = '<button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="delTraite(\'' + t.id + '\', false)">Suppr.</button>';
+      return '<tr' + (t.annule ? ' style="opacity:.5"' : '') + '><td>' + t.date_paiement + '</td><td>' + (v ? v.immatriculation : '—') + '</td><td>' + (t.mois || '—') + '</td>' +
         '<td style="font-weight:700;color:var(--green)">' + fmt(t.montant) + '</td><td>' + (t.auteur || '—') + '</td>' +
-        '<td><button class="btn-sm" style="background:var(--err-bg);color:var(--err-text)" onclick="delTraite(\'' + t.id + '\')">Suppr.</button></td></tr>';
+        '<td>' + (lie ? pill('Rattachée', 'info') : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        '<td>' + action + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
 
-async function delTraite(id) {
-  if (!confirm('Supprimer cette traite ?')) return;
-  await api('DELETE', '/traites/' + id);
-  toast('Supprimé', 'info');
+async function delTraite(id, lieAUneEcheance) {
+  // Traite rattachée à une échéance (Phase Financement 2B) : DELETE déclenche une
+  // annulation auditable côté serveur (jamais une suppression physique), pas une
+  // vraie destruction — mais on redemande confirmation + motif car l'action a un
+  // effet visible (l'échéance redevient non payée).
+  const motif = lieAUneEcheance ? prompt('Motif de l\'annulation de cette traite (obligatoire pour la traçabilité) :') : null;
+  if (lieAUneEcheance && !motif) { toast('Annulation abandonnée : motif requis', 'err'); return; }
+  if (!lieAUneEcheance && !confirm('Supprimer cette traite ?')) return;
+  const r = await api('DELETE', '/traites/' + id, lieAUneEcheance ? { motif } : undefined);
+  if (r && r.detail) { toast(r.detail, 'err'); return; }
+  toast(r && r.annule ? 'Traite annulée' : 'Supprimé', 'info');
   loadCreditOverview();
   loadTraitesHistory();
+  const vid = document.getElementById('cr-veh').value;
+  if (vid) loadFicheFinancement(vid);
 }
 
 // ═══════════════════════════════════════════════════════
